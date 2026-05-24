@@ -481,6 +481,52 @@ select {
   }
 }
 
+/* ══════════════════════════════════════════
+   TEST LIST ITEM v3 (management left panel)
+   ══════════════════════════════════════════ */
+.test-list-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0.5rem var(--s-3);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background 0.12s, border-color 0.12s;
+}
+.test-list-item:hover {
+  background: var(--surface-3);
+}
+.test-list-item.is-active {
+  background: var(--primary-soft);
+  border-left-color: var(--primary);
+}
+.test-list-item__info {
+  flex: 1;
+  min-width: 0;
+}
+.test-list-item__title {
+  font-size: var(--font-body);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.test-list-item__sub {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+.test-list-item__acc {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  flex-shrink: 0;
+  color: var(--text-subtle);
+}
+.test-list-item__acc--has-value {
+  color: var(--primary);
+}
+
 button.secondary {
   background: var(--neutral);
   color: var(--text);

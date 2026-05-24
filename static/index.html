@@ -46,28 +46,6 @@
         min-height: calc(100vh - 56px);
         padding: 1.5rem;
       }
-      /* Test tabs — pill style */
-      .test-tab.is-active {
-        background: white !important;
-        color: var(--primary) !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      }
-      :root[data-theme="dark"] .test-tab.is-active {
-        background: #1f2937 !important;
-      }
-      .test-tab {
-        background: transparent !important;
-        color: #6b7280 !important;
-        border-radius: 8px !important;
-        padding: 0.4rem 1rem !important;
-        font-size: 0.85rem !important;
-        font-weight: 500 !important;
-        min-height: 0 !important;
-        border: none !important;
-        transition: background 0.15s, color 0.15s;
-      }
-      .test-tab:hover { color: #111827 !important; background: rgba(255,255,255,0.6) !important; }
-      :root[data-theme="dark"] .test-tab:hover { color: #f9fafb !important; }
       /* Stats view tabs */
       .stats-view-tab {
         background: transparent !important;
@@ -294,21 +272,21 @@
             <!-- Left: tabs + actions + test list (self-contained card) -->
             <div class="card" style="padding:0;overflow:hidden;">
               <!-- Filter tabs -->
-              <div class="test-tabs" id="test-tabs" style="padding:0.625rem 0.75rem 0;display:flex;gap:0.25rem;flex-wrap:wrap;">
-                <button type="button" class="test-tab is-active" data-filter="" data-i18n="tabAllTests">Все</button>
-                <button type="button" class="test-tab" data-filter="my" data-i18n="tabMyTests">Мои</button>
-                <button type="button" class="test-tab" data-filter="shared" data-i18n="tabSharedTests">Доступные</button>
-                <button type="button" class="test-tab" data-filter="public" data-i18n="tabPublicTests">Публичные</button>
+              <div class="pill-tabs" id="test-tabs" style="padding: var(--s-3) var(--s-3) 0;">
+                <button type="button" class="pill-tabs__tab is-active" data-filter="" data-i18n="tabAllTests">Все</button>
+                <button type="button" class="pill-tabs__tab" data-filter="my" data-i18n="tabMyTests">Мои</button>
+                <button type="button" class="pill-tabs__tab" data-filter="shared" data-i18n="tabSharedTests">Доступные</button>
+                <button type="button" class="pill-tabs__tab" data-filter="public" data-i18n="tabPublicTests">Публичные</button>
               </div>
               <!-- Action bar -->
-              <div style="display:flex;gap:0.5rem;padding:0.5rem 0.75rem;border-bottom:1px solid var(--border);">
+              <div style="display:flex;gap:0.5rem;padding:var(--s-2) var(--s-3);border-bottom:1px solid var(--border);">
                 <button type="button" id="create-test-btn"
-                  class="ghost" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;font-size:0.8125rem;padding:0.375rem 0.5rem;">
+                  class="btn btn--ghost btn--sm" style="flex:1;gap:0.3rem;">
                   <svg style="width:14px;height:14px;flex-shrink:0;" aria-hidden="true"><use href="/static/icons.svg#plus"/></svg>
                   <span data-i18n="createTestButton">Создать</span>
                 </button>
                 <button type="button" id="import-test-btn"
-                  class="ghost" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;font-size:0.8125rem;padding:0.375rem 0.5rem;">
+                  class="btn btn--ghost btn--sm" style="flex:1;gap:0.3rem;">
                   <svg style="width:14px;height:14px;flex-shrink:0;" aria-hidden="true"><use href="/static/icons.svg#arrow-up-tray"/></svg>
                   <span data-i18n="importTestButton">Импорт</span>
                 </button>

@@ -141,9 +141,7 @@ export function renderTestList(tests, activeTestId = null) {
 export async function showTestDetail(test, allTests = []) {
   // Update active row highlight
   document.querySelectorAll(".test-list-item").forEach((el) => {
-    const active = el.dataset.testId === test.id;
-    el.style.borderLeftColor = active ? "var(--primary,#059669)" : "transparent";
-    el.style.background = active ? "var(--primary-soft,#d1fae5)" : "";
+    el.classList.toggle("is-active", el.dataset.testId === test.id);
   });
 
   // Ensure info view is shown (reset from any previously-open settings view)
@@ -368,14 +366,14 @@ export function initializeManagementScreenEvents() {
 
   // Tab switching for test collections
   dom.testTabs?.addEventListener("click", async (event) => {
-    const tab = event.target.closest(".test-tab");
+    const tab = event.target.closest(".pill-tabs__tab");
     if (!tab) return;
 
     const filter = tab.dataset.filter || null;
     state.uiState.activeTestFilter = filter;
 
     // Update active tab
-    dom.testTabs.querySelectorAll(".test-tab").forEach((t) => {
+    dom.testTabs.querySelectorAll(".pill-tabs__tab").forEach((t) => {
       t.classList.toggle("is-active", t === tab);
     });
 

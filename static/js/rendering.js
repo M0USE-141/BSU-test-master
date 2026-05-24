@@ -1679,54 +1679,44 @@ export function renderStatsView() {
  * Render a compact test list row for the management left panel.
  */
 export function renderTestListItem(test, isActive = false) {
+  const ACCESS_CLASS = {
+    public: "access-chip--public",
+    private: "access-chip--private",
+    shared: "access-chip--shared",
+    "owner-only": "access-chip--private",
+  };
   const ACCESS_ICONS = {
     public: "globe-alt",
     private: "lock-closed",
     shared: "users",
     "owner-only": "lock-closed",
   };
-  const ACCESS_COLORS = {
-    public: "#059669",
-    private: "#64748b",
-    shared: "#7c3aed",
-    "owner-only": "#64748b",
-  };
+  const accessClass = ACCESS_CLASS[test.access_level] || "access-chip--private";
   const accessIcon = ACCESS_ICONS[test.access_level] || "lock-closed";
-  const accessColor = ACCESS_COLORS[test.access_level] || "#64748b";
 
   const item = document.createElement("div");
-  item.className = "test-list-item";
+  item.className = `test-list-item${isActive ? " is-active" : ""}`;
   item.dataset.testId = test.id;
-  item.style.cssText = [
-    "display:flex",
-    "align-items:center",
-    "gap:0.625rem",
-    "padding:0.625rem 0.875rem",
-    "cursor:pointer",
-    "border-left:2px solid transparent",
-    "transition:background 0.1s,border-color 0.1s",
-    isActive ? "border-left-color:var(--primary,#059669)" : "",
-    isActive ? "background:var(--primary-soft,#d1fae5)" : "",
-  ].filter(Boolean).join(";");
 
   const iconWrap = document.createElement("div");
-  iconWrap.style.cssText = `width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:${accessColor}22;`;
-  iconWrap.innerHTML = `<svg style="width:15px;height:15px;color:${accessColor}" aria-hidden="true"><use href="/static/icons.svg#${accessIcon}"/></svg>`;
+  iconWrap.className = `access-chip ${accessClass}`;
+  iconWrap.style.cssText = "width:28px;height:28px;border-radius:var(--r-sm);flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0;";
+  iconWrap.innerHTML = `<svg style="width:14px;height:14px;" aria-hidden="true"><use href="/static/icons.svg#${accessIcon}"/></svg>`;
 
   const info = document.createElement("div");
-  info.style.cssText = "flex:1;min-width:0;";
+  info.className = "test-list-item__info";
   const title = document.createElement("div");
-  title.style.cssText = "font-size:0.8125rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);";
+  title.className = "test-list-item__title";
   title.textContent = test.title || test.id;
   const sub = document.createElement("div");
-  sub.style.cssText = "font-size:0.75rem;color:var(--muted);margin-top:1px;";
+  sub.className = "test-list-item__sub";
   sub.textContent = `${test.questions?.length ?? 0} ${t("questionsCount")}`;
   info.appendChild(title);
   info.appendChild(sub);
 
   const lastAccuracy = test.last_accuracy;
   const acc = document.createElement("div");
-  acc.style.cssText = `font-size:0.8125rem;font-weight:600;flex-shrink:0;color:${typeof lastAccuracy === "number" ? "var(--primary,#059669)" : "var(--muted)"};`;
+  acc.className = `test-list-item__acc${typeof lastAccuracy === "number" ? " test-list-item__acc--has-value" : ""}`;
   acc.textContent = typeof lastAccuracy === "number" ? `${Math.round(lastAccuracy)}%` : "—";
 
   item.appendChild(iconWrap);
