@@ -9,7 +9,13 @@ from alembic import context
 from api.config import DATABASE_URL
 from api.database import Base
 # Import all models to ensure they are registered with Base.metadata
-from api.models.db import User, Session
+from api.models.db import (  # noqa: F401
+    User, Session,
+    AccessLevel, TestCollection, TestShare,
+    ChangeRequest, ChangeRequestType, ChangeRequestStatus,
+    Attempt, AttemptAnswer, AttemptStatus,
+    QuestionPerformance,
+)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
