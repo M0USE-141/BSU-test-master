@@ -481,104 +481,254 @@
 
       <!-- ─── TESTING SCREEN ────────────────────────────────────── -->
       <section id="screen-testing" class="app-screen is-hidden">
-        <div style="max-width:1280px;margin:0 auto;padding:1.5rem 1.25rem 3rem;">
-          <section class="panel panel--testing">
-            <div id="panel-settings" class="card panel-card is-open" data-panel="settings">
-              <div class="panel-card__header">
-                <button id="panel-settings-toggle" class="panel-card__toggle" type="button" aria-expanded="true">
-                  <div>
-                    <h2 data-i18n="testSettingsTitle">Настройки теста</h2>
-                  </div>
-                </button>
-                <div class="panel-card__actions">
-                  <button id="exit-test" type="button" class="ghost">
-                    <span data-i18n="exitButton">Выйти</span>
-                  </button>
-                  <button id="finish-test" type="button" class="danger">
-                    <span data-i18n="finishTestButton">Завершить тест</span>
-                  </button>
-                </div>
-              </div>
-              <div class="panel-card__content">
-                <div class="settings-grid">
-                  <div class="settings-item">
-                    <label for="setting-question-count">
-                      <span data-i18n="questionCountLabel">Количество вопросов (0 = все)</span>
-                    </label>
-                    <input type="number" id="setting-question-count" min="0" value="0" />
-                  </div>
-                  <div class="settings-item">
-                    <label for="setting-max-options">
-                      <span data-i18n="maxOptionsLabel">Макс. вариантов ответа</span>
-                    </label>
-                    <input type="number" id="setting-max-options" min="1" value="4" />
-                  </div>
-                  <label class="checkbox-row settings-item settings-item--checkbox" for="setting-random-questions">
-                    <input type="checkbox" id="setting-random-questions" />
-                    <span data-i18n="randomQuestionsLabel">Случайный порядок вопросов</span>
-                  </label>
-                  <label class="checkbox-row settings-item settings-item--checkbox" for="setting-random-options">
-                    <input type="checkbox" id="setting-random-options" />
-                    <span data-i18n="randomOptionsLabel">Случайный порядок вариантов ответов</span>
-                  </label>
-                  <label class="checkbox-row settings-item settings-item--checkbox" for="setting-only-unanswered">
-                    <input type="checkbox" id="setting-only-unanswered" />
-                    <span data-i18n="onlyUnansweredLabel">Только нерешённые вопросы</span>
-                  </label>
-                  <label class="checkbox-row settings-item settings-item--checkbox" for="setting-show-answers">
-                    <input type="checkbox" id="setting-show-answers" checked />
-                    <span data-i18n="showAnswersLabel">Показывать правильный ответ сразу</span>
-                  </label>
-                </div>
-                <button id="start-test" class="primary" type="button" data-i18n="startTestButton">Начать тестирование</button>
+
+        <!-- Pre-test modal (backdrop + centered card) -->
+        <div id="pretest-modal"
+          class="is-hidden fixed inset-0 z-50 flex items-center justify-center"
+          style="background:rgba(0,0,0,0.4);backdrop-filter:blur(4px);">
+          <div class="card" style="width:100%;max-width:400px;padding:1.5rem;margin:1rem;">
+            <h2 id="pretest-modal-title" style="font-size:1.125rem;font-weight:700;margin:0 0 0.25rem;"></h2>
+            <p class="muted" style="margin:0 0 1.25rem;font-size:0.875rem;" data-i18n="pretestSubtitle">Настройки теста</p>
+
+            <!-- Question count stepper -->
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+              <span style="font-size:0.9rem;" data-i18n="questionCountLabel">Вопросов</span>
+              <div style="display:flex;align-items:center;gap:0.5rem;">
+                <button id="pretest-count-minus" type="button"
+                  class="ghost" style="width:28px;height:28px;padding:0;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;">−</button>
+                <span id="pretest-question-count" data-max="20" style="font-size:1rem;font-weight:700;min-width:2rem;text-align:center;">20</span>
+                <button id="pretest-count-plus" type="button"
+                  class="ghost" style="width:28px;height:28px;padding:0;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;">+</button>
               </div>
             </div>
 
-            <div id="panel-results" class="card panel-card" data-panel="results">
-              <div class="panel-card__header">
-                <button id="panel-results-toggle" class="panel-card__toggle" type="button" aria-expanded="false">
-                  <div><h2 data-i18n="resultsTitle">Результаты</h2></div>
+            <!-- Toggle switches -->
+            <div style="display:flex;flex-direction:column;gap:0.625rem;margin-bottom:1.25rem;">
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-size:0.875rem;" data-i18n="randomQuestionsLabel">Перемешать вопросы</span>
+                <button id="pretest-random-questions" type="button" data-checked="false"
+                  class="toggle-switch" aria-pressed="false">
+                  <span class="toggle-switch__thumb"></span>
                 </button>
               </div>
-              <div class="panel-card__content">
-                <p id="result-summary" data-i18n="noCompletedAttempts">Ещё нет завершённых попыток.</p>
-                <ul id="result-details" class="result-details"></ul>
-                <p class="hint" id="progress-hint"></p>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-size:0.875rem;" data-i18n="randomOptionsLabel">Перемешать варианты</span>
+                <button id="pretest-random-options" type="button" data-checked="false"
+                  class="toggle-switch" aria-pressed="false">
+                  <span class="toggle-switch__thumb"></span>
+                </button>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-size:0.875rem;" data-i18n="onlyUnansweredLabel">Только непройденные</span>
+                <button id="pretest-only-unanswered" type="button" data-checked="false"
+                  class="toggle-switch" aria-pressed="false">
+                  <span class="toggle-switch__thumb"></span>
+                </button>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-size:0.875rem;" data-i18n="showAnswersLabel">Показывать ответы</span>
+                <button id="pretest-show-answers" type="button" data-checked="true"
+                  class="toggle-switch is-on" aria-pressed="true">
+                  <span class="toggle-switch__thumb"></span>
+                </button>
               </div>
             </div>
 
-            <div id="panel-questions" class="card panel-card" data-panel="questions">
-              <div class="panel-card__header">
-                <button id="panel-questions-toggle" class="panel-card__toggle" type="button" aria-expanded="false">
-                  <div>
-                    <h2 data-i18n="questionsPanelTitle">Вопросы</h2>
-                    <p id="question-count" class="muted"></p>
-                  </div>
-                </button>
-              </div>
-              <div class="panel-card__content">
-                <div class="card question-card">
-                  <div class="question-card__header">
-                    <div>
-                      <h2 id="question-progress" data-i18n="questionProgressZero">Вопрос 0 из 0</h2>
-                      <p id="question-status" class="muted"></p>
-                    </div>
-                    <div class="question-actions">
-                      <button id="prev-question" type="button" data-i18n="prevButton">Назад</button>
-                      <button id="next-question" type="button" data-i18n="nextButton">Дальше</button>
-                    </div>
-                  </div>
-                  <div id="question-container"></div>
-                </div>
-                <div id="options-container" class="card is-hidden"></div>
-                <div class="card">
-                  <h3 data-i18n="questionNavTitle">Навигация по вопросам</h3>
-                  <div id="question-nav" class="question-nav"></div>
-                </div>
-              </div>
+            <div style="display:flex;gap:0.625rem;">
+              <button id="pretest-cancel-btn" type="button" class="ghost flex-1" data-i18n="cancelButton">Отмена</button>
+              <button id="pretest-start-btn" type="button"
+                class="primary flex-1"
+                style="display:flex;align-items:center;justify-content:center;gap:6px;">
+                <svg style="width:16px;height:16px;" aria-hidden="true"><use href="/static/icons.svg#play"/></svg>
+                <span data-i18n="startTestButton">Начать тест</span>
+              </button>
             </div>
-          </section>
+          </div>
         </div>
+
+        <!-- Desktop two-panel layout -->
+        <div id="testing-layout"
+          style="display:flex;max-width:1280px;margin:0 auto;
+                 padding:1.5rem 1.25rem 3rem;gap:1.25rem;min-height:calc(100vh - 52px);">
+
+          <!-- Left sidebar (hidden on mobile via JS) -->
+          <aside id="test-sidebar"
+            style="width:220px;flex-shrink:0;display:flex;flex-direction:column;">
+            <div class="card"
+              style="padding:1rem;display:flex;flex-direction:column;gap:0.75rem;height:100%;">
+
+              <!-- Title + progress label -->
+              <div>
+                <div id="sidebar-test-title"
+                  style="font-size:0.8125rem;font-weight:600;white-space:nowrap;
+                         overflow:hidden;text-overflow:ellipsis;"></div>
+                <div id="sidebar-question-label"
+                  class="muted" style="font-size:0.75rem;margin-top:2px;"></div>
+              </div>
+
+              <!-- Progress bar -->
+              <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden;">
+                <div id="sidebar-progress-bar"
+                  style="height:100%;width:0%;background:var(--primary,#059669);
+                         transition:width 0.2s;border-radius:2px;"></div>
+              </div>
+
+              <!-- Question grid -->
+              <div id="sidebar-question-grid"
+                style="display:grid;grid-template-columns:repeat(4,1fr);
+                       gap:4px;flex:1;align-content:start;">
+                <!-- Squares populated by JS -->
+              </div>
+
+              <!-- Legend -->
+              <div style="display:flex;gap:0.75rem;font-size:0.7rem;color:var(--muted);">
+                <span style="display:flex;align-items:center;gap:3px;">
+                  <span style="width:8px;height:8px;background:#059669;border-radius:2px;display:inline-block;"></span>
+                  <span data-i18n="legendCorrect">верно</span>
+                </span>
+                <span style="display:flex;align-items:center;gap:3px;">
+                  <span style="width:8px;height:8px;background:#fecaca;border-radius:2px;display:inline-block;"></span>
+                  <span data-i18n="legendWrong">неверно</span>
+                </span>
+              </div>
+
+              <!-- Bottom actions -->
+              <div style="display:flex;flex-direction:column;gap:0.375rem;margin-top:auto;">
+                <button id="sidebar-settings-btn" type="button"
+                  class="ghost" style="font-size:0.8rem;padding:0.4rem 0.625rem;"
+                  data-i18n="settingsButton">Настройки</button>
+                <button id="sidebar-finish-btn" type="button"
+                  class="danger" style="font-size:0.8rem;padding:0.4rem 0.625rem;"
+                  data-i18n="finishTestButton">Завершить</button>
+              </div>
+            </div>
+          </aside>
+
+          <!-- Right: question area -->
+          <div id="testing-question-area"
+            style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1rem;">
+
+            <!-- Mobile top bar (shown on mobile by JS) -->
+            <div id="mobile-top-bar"
+              style="display:none;align-items:center;gap:0.75rem;padding:0.25rem 0;">
+              <div style="flex:1;">
+                <div id="mobile-progress-label"
+                  class="muted" style="font-size:0.75rem;margin-bottom:3px;"></div>
+                <div style="height:3px;background:var(--border);border-radius:2px;overflow:hidden;">
+                  <div id="mobile-progress-bar"
+                    style="height:100%;width:0%;background:var(--primary,#059669);
+                           transition:width 0.2s;border-radius:2px;"></div>
+                </div>
+              </div>
+              <button id="mobile-stop-btn" type="button"
+                class="danger" style="padding:0.3rem 0.75rem;font-size:0.8rem;flex-shrink:0;"
+                data-i18n="stopButton">Стоп</button>
+            </div>
+
+            <!-- Question card -->
+            <div class="card question-card">
+              <div class="question-card__header">
+                <div>
+                  <h2 id="question-progress" data-i18n="questionProgressZero">Вопрос 0 из 0</h2>
+                  <p id="question-status" class="muted"></p>
+                </div>
+              </div>
+              <div id="question-container"></div>
+            </div>
+
+            <!-- Answer options -->
+            <div id="options-container" class="card is-hidden"></div>
+            <div id="answer-feedback" class="is-hidden"></div>
+
+            <!-- Navigation buttons -->
+            <div style="display:flex;justify-content:space-between;gap:0.5rem;">
+              <button id="prev-question" type="button" class="ghost"
+                data-i18n="prevButton">← Назад</button>
+              <button id="next-question" type="button" class="primary"
+                data-i18n="nextButton">Далее →</button>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Mobile bottom strip (collapsed, shown on mobile by JS) -->
+        <div id="mobile-bottom-strip"
+          style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:40;
+                 background:var(--card);border-top:1px solid var(--border);
+                 padding:0.5rem 1rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div id="mobile-strip-grid"
+              style="display:flex;gap:3px;flex-wrap:nowrap;
+                     overflow:hidden;max-width:calc(100% - 40px);">
+              <!-- First ~8 colored squares -->
+            </div>
+            <button id="mobile-strip-chevron" type="button"
+              style="padding:4px;color:var(--muted);background:none;border:none;cursor:pointer;">
+              <svg style="width:20px;height:20px;" aria-hidden="true">
+                <use href="/static/icons.svg#chevron-up"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Mobile bottom sheet backdrop -->
+        <div id="mobile-sheet-backdrop"
+          class="is-hidden"
+          style="position:fixed;inset:0;z-index:40;background:rgba(0,0,0,0.3);"></div>
+
+        <!-- Mobile bottom sheet (expanded) -->
+        <div id="mobile-bottom-sheet"
+          class="is-hidden"
+          style="position:fixed;bottom:0;left:0;right:0;z-index:50;
+                 background:var(--card);border-radius:16px 16px 0 0;
+                 border-top:1px solid var(--border);
+                 padding:0.75rem 1rem 2rem;
+                 box-shadow:0 -4px 20px rgba(0,0,0,0.15);">
+          <!-- Drag handle -->
+          <div style="width:32px;height:4px;background:var(--border);
+                      border-radius:2px;margin:0 auto 0.75rem;"></div>
+          <!-- Full question grid -->
+          <div id="mobile-sheet-grid"
+            style="display:grid;grid-template-columns:repeat(6,1fr);
+                   gap:5px;margin-bottom:0.875rem;">
+          </div>
+          <button id="mobile-sheet-finish" type="button"
+            class="danger" style="width:100%;padding:0.6rem;"
+            data-i18n="finishTestButton">Завершить тест</button>
+        </div>
+
+        <!-- ═══ Legacy elements — kept for existing JS references ═══ -->
+        <!-- These are hidden and must NOT be removed. Old JS finds them by id. -->
+        <div aria-hidden="true" style="display:none!important;">
+          <div id="panel-settings" class="card panel-card is-open" data-panel="settings">
+            <button id="panel-settings-toggle" class="panel-card__toggle" type="button" aria-expanded="true"></button>
+            <div class="panel-card__content">
+              <div class="settings-grid">
+                <input type="number" id="setting-question-count" min="0" value="0" />
+                <input type="number" id="setting-max-options" min="1" value="4" />
+                <input type="checkbox" id="setting-random-questions" />
+                <input type="checkbox" id="setting-random-options" />
+                <input type="checkbox" id="setting-only-unanswered" />
+                <input type="checkbox" id="setting-show-answers" checked />
+              </div>
+              <button id="start-test" class="primary" type="button">Начать</button>
+              <button id="exit-test" type="button">Выйти</button>
+              <button id="finish-test" type="button">Завершить</button>
+            </div>
+          </div>
+          <div id="panel-results" data-panel="results">
+            <button id="panel-results-toggle" type="button"></button>
+            <p id="result-summary"></p>
+            <ul id="result-details"></ul>
+            <p id="progress-hint"></p>
+          </div>
+          <div id="panel-questions" data-panel="questions">
+            <button id="panel-questions-toggle" type="button"></button>
+            <p id="question-count"></p>
+            <div id="question-nav"></div>
+          </div>
+        </div>
+
       </section>
 
       <!-- ─── PROFILE SCREEN ────────────────────────────────────── -->

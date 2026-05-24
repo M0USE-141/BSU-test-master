@@ -384,6 +384,12 @@ const translations = {
     metaAuthor: "автор: {name}",
     timeSeconds: "с",
     timeMinutes: "м",
+    // Testing screen redesign
+    pretestSubtitle: "Настройки теста",
+    legendCorrect: "верно",
+    legendWrong: "неверно",
+    settingsButton: "Настройки",
+    stopButton: "Стоп",
   },
   en: {
     pageTitle: "Word Test Extractor — Web UI",
@@ -763,6 +769,12 @@ const translations = {
     metaAuthor: "author: {name}",
     timeSeconds: "s",
     timeMinutes: "min",
+    // Testing screen redesign
+    pretestSubtitle: "Test settings",
+    legendCorrect: "correct",
+    legendWrong: "wrong",
+    settingsButton: "Settings",
+    stopButton: "Stop",
   },
   uz: {
     pageTitle: "Word Test Extractor — Web UI",
@@ -1145,6 +1157,12 @@ const translations = {
     metaAuthor: "muallif: {name}",
     timeSeconds: "s",
     timeMinutes: "min",
+    // Testing screen redesign
+    pretestSubtitle: "Test sozlamalari",
+    legendCorrect: "to'g'ri",
+    legendWrong: "noto'g'ri",
+    settingsButton: "Sozlamalar",
+    stopButton: "To'xtatish",
   },
 };
 

@@ -2071,3 +2071,35 @@ button.danger:hover {
   color: var(--text-muted);
   padding: 2rem;
 }
+
+/* ── Toggle switch ────────────────────────────────────────── */
+.toggle-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 20px;
+  border: none;
+  background: var(--border, #e2e8f0);
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  padding: 0;
+  outline-offset: 2px;
+}
+.toggle-switch.is-on {
+  background: var(--primary, #059669);
+}
+.toggle-switch__thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 0.2s;
+  pointer-events: none;
+}
+.toggle-switch.is-on .toggle-switch__thumb {
+  transform: translateX(16px);
+}
