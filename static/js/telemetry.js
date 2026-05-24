@@ -147,13 +147,20 @@ export async function startAttempt(session) {
 
 /**
  * Record an answer for a question.
+ * @param {object} session
+ * @param {number} questionId
+ * @param {number} answerIndex - index into displayed (possibly shuffled) options
+ * @param {boolean|null} isCorrect
+ * @param {number} durationMs
+ * @param {number|null} canonicalAnswerIndex - index into the original canonical options array
  */
 export async function recordAnswer(
   session,
   questionId,
   answerIndex,
   isCorrect,
-  durationMs = 0
+  durationMs = 0,
+  canonicalAnswerIndex = null
 ) {
   if (!session?.attemptId || !session?.testId) return;
 
@@ -162,6 +169,7 @@ export async function recordAnswer(
     clientId: session.clientId || getClientId(),
     questionId,
     answerIndex,
+    canonicalAnswerIndex,
     isCorrect,
     durationMs,
     isSkipped: false,
@@ -283,7 +291,18 @@ export function trackAnswerEvent(
   isCorrect,
   durationMs
 ) {
-  recordAnswer(session, questionEntry.questionId, answerIndex, isCorrect, durationMs);
+  // Compute canonical answer index: find selected option in original (unshuffled) list.
+  // When randomOptions is off, displayed options === canonical options so indexOf == answerIndex.
+  const canonicalOptions = questionEntry?.question?.options ?? [];
+  const selectedOption =
+    options && answerIndex >= 0 && answerIndex < options.length
+      ? options[answerIndex]
+      : null;
+  const rawCanonical =
+    selectedOption != null ? canonicalOptions.indexOf(selectedOption) : -1;
+  const canonicalAnswerIndex = rawCanonical >= 0 ? rawCanonical : answerIndex;
+
+  recordAnswer(session, questionEntry.questionId, answerIndex, isCorrect, durationMs, canonicalAnswerIndex);
 }
 
 // Timing utilities (still used client-side for duration tracking)
