@@ -1707,7 +1707,7 @@ export function renderTestListItem(test, isActive = false) {
   title.textContent = test.title || test.id;
   const sub = document.createElement("div");
   sub.style.cssText = "font-size:0.75rem;color:var(--muted);margin-top:1px;";
-  sub.textContent = `${test.questions?.length ?? 0} вопр.`;
+  sub.textContent = `${test.questions?.length ?? 0} ${t("questionsCount")}`;
   info.appendChild(title);
   info.appendChild(sub);
 
@@ -1727,18 +1727,30 @@ export function renderTestListItem(test, isActive = false) {
  */
 export function renderDetailKpis(container, kpis) {
   const ms = kpis.avgTime;
-  const timeStr = !ms ? "—" : ms < 60000 ? `${Math.round(ms / 1000)}с` : `${Math.round(ms / 60000)}м`;
+  const timeStr = !ms ? "—" : ms < 60000
+    ? `${Math.round(ms / 1000)}${t("timeSeconds")}`
+    : `${Math.round(ms / 60000)}${t("timeMinutes")}`;
   const cards = [
-    { label: "Точность", value: typeof kpis.accuracy === "number" ? `${Math.round(kpis.accuracy)}%` : "—" },
-    { label: "Попытки", value: kpis.attempts ?? 0 },
-    { label: "Ср. время", value: timeStr },
-    { label: "Слабых вопр.", value: kpis.weakCount ?? 0 },
+    { label: t("kpiAccuracy"), value: typeof kpis.accuracy === "number" ? `${Math.round(kpis.accuracy)}%` : "—" },
+    { label: t("kpiAttempts"), value: kpis.attempts ?? 0 },
+    { label: t("kpiAvgTime"), value: timeStr },
+    { label: t("kpiWeakCount"), value: kpis.weakCount ?? 0 },
   ];
   container.innerHTML = "";
   cards.forEach((c) => {
     const el = document.createElement("div");
     el.style.cssText = "background:var(--card-muted,#f8fafc);border-radius:10px;padding:0.625rem 0.75rem;";
-    el.innerHTML = `<div style="font-size:0.7rem;color:var(--muted);margin-bottom:0.25rem;">${c.label}</div><div style="font-size:1.125rem;font-weight:700;color:var(--text);">${c.value}</div>`;
+
+    const labelEl = document.createElement("div");
+    labelEl.style.cssText = "font-size:0.7rem;color:var(--muted);margin-bottom:0.25rem;";
+    labelEl.textContent = c.label;
+
+    const valueEl = document.createElement("div");
+    valueEl.style.cssText = "font-size:1.125rem;font-weight:700;color:var(--text);";
+    valueEl.textContent = String(c.value);
+
+    el.appendChild(labelEl);
+    el.appendChild(valueEl);
     container.appendChild(el);
   });
 }

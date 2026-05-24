@@ -41,7 +41,6 @@ import {
   renderManagementScreen,
   renderQuestionNav,
   renderResultSummary,
-  renderTestCards,
   renderTestListItem,
   renderUploadLogs,
   setActiveScreen,
@@ -75,35 +74,12 @@ import { setupDropzone } from "../utils/file-upload.js";
 import { getAuthHeaders } from "../api/auth.js";
 
 /**
- * Render test cards with event handlers
+ * Render test cards with event handlers.
+ * Uses the compact two-panel list view (renderTestList) only.
+ * The old renderTestCards call has been removed to prevent double-rendering
+ * to the same #test-cards container (Fix #3).
  */
 export function renderTestCardsWithHandlers(tests, selectedId) {
-  renderTestCards(tests, selectedId, {
-    onCreateTest: () => {
-      openCreateTestModal();
-    },
-    onImportTest: () => {
-      openImportModal();
-    },
-    onSelectTest: async (testId) => {
-      await selectTest(testId);
-    },
-    onStartTesting: async (testId) => {
-      await selectTest(testId);
-      setActiveScreen("testing");
-    },
-    onEditTest: async (testId) => {
-      await selectTest(testId);
-      openEditorModal();
-      renderEditorQuestionList({ onDeleteQuestion: handleDeleteQuestion });
-      resetEditorForm();
-    },
-    onViewStats: async (testId) => {
-      const { openStatsScreen } = await import("./statistics.js");
-      await openStatsScreen(testId);
-    },
-  });
-  // Also render the compact two-panel list view
   renderTestList(tests, selectedId);
 }
 
@@ -112,6 +88,10 @@ export function renderTestCardsWithHandlers(tests, selectedId) {
  * Replaces the grid-card layout with compact rows.
  */
 export function renderTestList(tests, activeTestId = null) {
+  // Fix #2: Reset right panel to empty state when re-rendering the list
+  document.getElementById("test-detail-panel")?.classList.add("is-hidden");
+  document.getElementById("test-detail-empty")?.style.removeProperty("display");
+
   const container = dom.testCardsContainer;
   if (!container) return;
   container.innerHTML = "";
@@ -154,34 +134,40 @@ export async function showTestDetail(test, allTests = []) {
 
   const meta = document.getElementById("test-detail-meta");
   if (meta) {
-    const parts = [`${test.questions?.length ?? 0} вопросов`];
+    const count = test.questions?.length ?? 0;
+    const parts = [`${count} ${t("metaQuestionsCount")}`];
     if (test.owner_username && state.currentUser && test.owner_username !== state.currentUser.username) {
-      parts.push(`автор: ${test.owner_username}`);
+      parts.push(t("metaAuthor", { name: test.owner_username }));
     }
     meta.textContent = parts.join(" · ");
   }
 
-  // Wire action buttons (clone to remove stale listeners)
-  const startBtn = dom.testDetailStartBtn;
-  const editBtn = dom.testDetailEditBtn;
-  const statsBtn = dom.testDetailStatsBtn;
+  // Wire action buttons (Fix #1: re-query fresh DOM nodes each call so
+  // cloneNode always has a valid parentNode and replaceChild never silently no-ops)
+  const startBtn = document.getElementById("test-detail-start");
+  const editBtn = document.getElementById("test-detail-edit");
+  const statsBtn = document.getElementById("test-detail-stats");
 
   if (startBtn) {
     const newStart = startBtn.cloneNode(true);
     startBtn.parentNode?.replaceChild(newStart, startBtn);
     newStart.addEventListener("click", () => {
-      selectTest(test.id).then(() => setActiveScreen("testing"));
+      selectTest(test.id)
+        .then(() => setActiveScreen("testing"))
+        .catch((err) => console.error("[management] selectTest failed:", err));
     });
   }
   if (editBtn) {
     const newEdit = editBtn.cloneNode(true);
     editBtn.parentNode?.replaceChild(newEdit, editBtn);
     newEdit.addEventListener("click", () => {
-      selectTest(test.id).then(() => {
-        openEditorModal();
-        renderEditorQuestionList({ onDeleteQuestion: handleDeleteQuestion });
-        resetEditorForm();
-      });
+      selectTest(test.id)
+        .then(() => {
+          openEditorModal();
+          renderEditorQuestionList({ onDeleteQuestion: handleDeleteQuestion });
+          resetEditorForm();
+        })
+        .catch((err) => console.error("[management] selectTest (edit) failed:", err));
     });
   }
   if (statsBtn) {
