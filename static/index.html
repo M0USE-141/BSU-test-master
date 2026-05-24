@@ -800,95 +800,102 @@
       </section>
 
       <!-- ─── STATS SCREEN ──────────────────────────────────────── -->
+      <!-- ─── STATS SCREEN ──────────────────────────────────────── -->
       <section id="screen-stats" class="app-screen is-hidden">
-        <div style="max-width:1280px;margin:0 auto;padding:1.5rem 1.25rem 3rem;display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:1.5rem;align-items:start;">
+        <div style="max-width:1280px;margin:0 auto;padding:1.5rem 1.25rem 3rem;
+                    display:grid;grid-template-columns:minmax(240px,300px) 1fr;
+                    gap:1.25rem;align-items:start;">
 
-          <!-- Sidebar -->
-          <section class="panel panel--stats-sidebar">
-            <div class="card stats-card">
-              <div class="stats-header">
-                <div>
-                  <h2 data-i18n="statsTitle">Статистика</h2>
-                  <p class="muted" data-i18n="statsSubtitle">Аналитика по вашим попыткам прохождения тестов.</p>
-                </div>
-                <button id="stats-back" type="button" class="ghost" data-i18n="statsBackButton">К тестам</button>
-              </div>
-              <div class="stats-filters">
-                <label class="stats-filter">
-                  <span data-i18n="statsFilterTest">Тест</span>
-                  <select id="stats-filter-test">
-                    <option value="" data-i18n="statsFilterAllTests">Все тесты</option>
-                  </select>
-                </label>
-                <label class="stats-filter">
-                  <span data-i18n="statsFilterStartDate">С даты</span>
-                  <input type="date" id="stats-filter-start-date" />
-                </label>
-                <label class="stats-filter">
-                  <span data-i18n="statsFilterEndDate">По дату</span>
-                  <input type="date" id="stats-filter-end-date" />
-                </label>
-                <button id="stats-filter-reset" type="button" class="ghost" data-i18n="statsFilterReset">Сбросить</button>
-              </div>
-              <div class="stats-view-tabs" style="display:flex;gap:0.25rem;padding:0.25rem;background:var(--card-muted);border-radius:10px;">
-                <button id="stats-view-single" type="button" class="stats-view-tab is-active" data-i18n="statsViewSingle">Попытка</button>
-                <button id="stats-view-aggregate" type="button" class="stats-view-tab" data-i18n="statsViewAggregate">Все попытки</button>
-              </div>
-              <div id="stats-single-controls" class="stats-controls">
-                <label class="stats-control">
-                  <span data-i18n="statsAttemptLabel">Попытка</span>
-                  <select id="stats-attempt-select"></select>
-                </label>
-                <button id="stats-refresh" type="button" class="secondary" data-i18n="statsRefreshButton">Обновить</button>
-              </div>
-              <div id="stats-empty" class="stats-empty is-hidden">
-                <strong data-i18n="statsEmptyTitle">Пока нет попыток.</strong>
-                <p class="muted" data-i18n="statsEmptyBody">Пройдите тестирование, чтобы здесь появилась аналитика.</p>
-                <button id="stats-start-test" type="button" class="primary" data-i18n="statsEmptyCta">Пройдите тест</button>
-              </div>
+          <!-- Left: test sidebar -->
+          <div id="stats-test-sidebar" class="card" style="padding:0;overflow:hidden;">
+            <div style="padding:0.875rem 1rem;border-bottom:1px solid var(--border);">
+              <h2 style="margin:0;font-size:1rem;font-weight:700;" data-i18n="statsTitle">Статистика</h2>
             </div>
-            <div class="card">
-              <h3 data-i18n="statsAttemptListTitle">Список попыток</h3>
-              <ul id="stats-attempt-list" class="stats-attempts"></ul>
-            </div>
-          </section>
+            <div id="stats-test-sidebar-list"
+              style="max-height:calc(100vh - 140px);overflow-y:auto;"></div>
+          </div>
 
-          <!-- Main content -->
-          <section class="panel panel--stats-main">
-            <div id="stats-kpi-grid" class="stats-kpi-grid"></div>
-            <div class="stats-charts">
-              <div class="card chart-card">
-                <div class="chart-header">
-                  <h3 data-i18n="statsChartAttemptsTitle">Динамика точности</h3>
-                  <p class="muted" data-i18n="statsChartAttemptsSubtitle">По завершённым попыткам.</p>
-                </div>
-                <div class="chart-area"><canvas id="stats-chart-attempts"></canvas></div>
-              </div>
-              <div class="card chart-card">
-                <div class="chart-header">
-                  <h3 data-i18n="statsChartTimeTitle">Темп прохождения</h3>
-                  <p class="muted" data-i18n="statsChartTimeSubtitle">Среднее время на вопрос.</p>
-                </div>
-                <div class="chart-area"><canvas id="stats-chart-time"></canvas></div>
-              </div>
+          <!-- Right: tabbed content -->
+          <div>
+            <!-- Tab bar -->
+            <div style="display:flex;gap:0.25rem;border-bottom:1px solid var(--border);
+                        margin-bottom:1.25rem;">
+              <button id="stats-tab-progress" type="button"
+                class="stats-tab is-active"
+                data-i18n="myProgressTab">Мой прогресс</button>
+              <button id="stats-tab-owner" type="button"
+                class="stats-tab is-hidden"
+                data-i18n="ownerAnalyticsTab">Аналитика теста</button>
             </div>
-            <div class="card">
-              <div class="stats-section-header">
-                <h3 data-i18n="statsQuestionsTitle">Лента вопросов</h3>
-                <p class="muted" data-i18n="statsQuestionsSubtitle">Детализация по выбранной попытке.</p>
+
+            <!-- «Мой прогресс» panel -->
+            <div id="stats-panel-progress">
+              <div id="stats-progress-kpis"
+                style="display:grid;grid-template-columns:repeat(4,1fr);
+                       gap:0.75rem;margin-bottom:1.25rem;"></div>
+              <div class="card" style="padding:1rem;margin-bottom:1rem;">
+                <h3 style="margin:0 0 0.75rem;font-size:0.875rem;font-weight:600;"
+                  data-i18n="progressChartTitle">Точность по попыткам</h3>
+                <canvas id="stats-progress-chart" height="80"></canvas>
               </div>
-              <div class="stats-questions-layout">
-                <div id="stats-question-stream" class="stats-question-stream"></div>
-                <div id="stats-question-preview" class="stats-question-preview is-hidden">
-                  <div class="stats-question-preview__header">
-                    <h4 id="stats-preview-title" data-i18n="statsPreviewTitle">Предпросмотр вопроса</h4>
-                    <button id="stats-preview-close" type="button" class="ghost" aria-label="Close">×</button>
-                  </div>
-                  <div id="stats-preview-content" class="stats-question-preview__content"></div>
+              <div class="card" style="padding:1rem;">
+                <h3 style="margin:0 0 0.75rem;font-size:0.875rem;font-weight:600;"
+                  data-i18n="weakQuestionsTitle">Слабые вопросы</h3>
+                <div id="stats-weak-questions">
+                  <p class="muted" style="font-size:0.875rem;"
+                    data-i18n="noWeakQuestions">Нет слабых вопросов — отличный результат!</p>
                 </div>
               </div>
             </div>
-          </section>
+
+            <!-- «Аналитика теста» panel (owner only) -->
+            <div id="stats-panel-owner" class="is-hidden">
+              <div id="stats-owner-kpis"
+                style="display:grid;grid-template-columns:repeat(4,1fr);
+                       gap:0.75rem;margin-bottom:1.25rem;"></div>
+              <div class="card" style="padding:1rem;margin-bottom:1rem;">
+                <h3 style="margin:0 0 0.75rem;font-size:0.875rem;font-weight:600;"
+                  data-i18n="difficultyChartTitle">Сложность вопросов</h3>
+                <div id="stats-owner-difficulty"></div>
+              </div>
+              <div class="card" style="padding:1rem;margin-bottom:1rem;">
+                <h3 style="margin:0 0 0.75rem;font-size:0.875rem;font-weight:600;"
+                  data-i18n="scoreDistTitle">Распределение баллов</h3>
+                <canvas id="stats-owner-distribution" height="80"></canvas>
+              </div>
+              <div class="card" style="padding:1rem;margin-bottom:1rem;">
+                <h3 style="margin:0 0 0.75rem;font-size:0.875rem;font-weight:600;"
+                  data-i18n="activityTitle">Активность (4 недели)</h3>
+                <div id="stats-owner-activity"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ Legacy elements — hidden, kept for existing JS refs ═══ -->
+        <div aria-hidden="true" style="display:none!important;">
+          <button id="stats-back" type="button"></button>
+          <button id="stats-refresh" type="button"></button>
+          <select id="stats-filter-test"><option value=""></option></select>
+          <input id="stats-filter-start-date" type="date" />
+          <input id="stats-filter-end-date" type="date" />
+          <button id="stats-filter-reset" type="button"></button>
+          <button id="stats-view-single" type="button"></button>
+          <button id="stats-view-aggregate" type="button"></button>
+          <div id="stats-single-controls"></div>
+          <select id="stats-attempt-select"></select>
+          <div id="stats-attempt-list"></div>
+          <div id="stats-kpi-grid"></div>
+          <canvas id="stats-chart-attempts"></canvas>
+          <canvas id="stats-chart-time"></canvas>
+          <div id="stats-question-stream"></div>
+          <div id="stats-question-preview">
+            <h4 id="stats-preview-title"></h4>
+            <button id="stats-preview-close" type="button"></button>
+            <div id="stats-preview-content"></div>
+          </div>
+          <div id="stats-empty"></div>
+          <button id="stats-start-test" type="button"></button>
         </div>
       </section>
 

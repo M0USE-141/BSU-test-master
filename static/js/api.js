@@ -5,6 +5,26 @@ import { getAuthHeaders } from "./api/auth.js";
 // Re-export for use by other modules
 export { getAuthHeaders };
 
+/**
+ * Generic authenticated fetch helper.
+ * Throws on non-OK responses with the API's detail message (if available).
+ */
+export async function apiFetch(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...(options.headers ?? {}),
+    },
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(data?.detail || `HTTP ${response.status}`);
+  }
+  return data;
+}
+
 export async function fetchTests({ force = false, filter = null, limit = null, offset = 0 } = {}) {
   // Only use cache when no filter is specified
   if (!force && !filter) {

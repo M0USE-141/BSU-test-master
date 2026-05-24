@@ -2103,3 +2103,21 @@ button.danger:hover {
 .toggle-switch.is-on .toggle-switch__thumb {
   transform: translateX(16px);
 }
+
+/* ── Stats tab bar ──────────────────────────────────────────── */
+.stats-tab {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+.stats-tab.is-active {
+  color: var(--primary, #059669);
+  border-bottom-color: var(--primary, #059669);
+}

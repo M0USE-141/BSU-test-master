@@ -1,260 +1,646 @@
 /**
- * Statistics Screen - View attempt statistics
+ * Statistics Screen — two-panel redesign
+ *
+ * Left panel: test sidebar
+ * Right panel: tabbed (progress | owner analytics)
  */
 
-import { fetchAttemptDetails, fetchAttemptStats } from "../api.js";
-import { renderStatsView, setActiveScreen, hideStatsQuestionPreview } from "../rendering.js";
+import { apiFetch, fetchAttemptStats } from "../api.js";
+import { setActiveScreen } from "../rendering.js";
 import { dom, state } from "../state.js";
 import { getClientId } from "../telemetry.js";
+import { t } from "../i18n.js";
 
-/**
- * Open statistics screen for specific test (or all tests)
- */
-export async function openStatsScreen(testId = null) {
-  if (testId) {
-    const { selectTest } = await import("./management.js");
-    await selectTest(testId);
-  }
-  state.stats.filterTestId = testId;
-  setActiveScreen("stats");
-  populateTestFilter();
-  await loadStatsData({ preserveSelection: false });
+// ---------------------------------------------------------------------------
+// Chart.js lazy-loader
+// ---------------------------------------------------------------------------
+
+async function ensureChartJs() {
+  if (window.Chart) return;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js";
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
 }
 
-/**
- * Load statistics data from API
- */
-export async function loadStatsData({ preserveSelection = true } = {}) {
+// ---------------------------------------------------------------------------
+// KPI card helper (no innerHTML)
+// ---------------------------------------------------------------------------
+
+function renderKpiCards(container, kpis) {
+  if (!container) return;
+  container.innerHTML = "";
+  kpis.forEach(({ label, value }) => {
+    const card = document.createElement("div");
+    card.style.cssText =
+      "background:var(--card-muted,#f8fafc);border-radius:10px;padding:0.75rem;";
+    const lbl = document.createElement("div");
+    lbl.style.cssText =
+      "font-size:0.7rem;color:var(--muted);margin-bottom:0.25rem;";
+    lbl.textContent = label;
+    const val = document.createElement("div");
+    val.style.cssText = "font-size:1.25rem;font-weight:700;color:var(--text);";
+    val.textContent = String(value ?? "—");
+    card.appendChild(lbl);
+    card.appendChild(val);
+    container.appendChild(card);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Format helpers
+// ---------------------------------------------------------------------------
+
+function fmtPct(value) {
+  if (value === null || value === undefined) return "—";
+  return `${Math.round(value)}%`;
+}
+
+function fmtMs(ms) {
+  if (ms === null || ms === undefined || ms === 0) return "—";
+  const secs = Math.round(ms / 1000);
+  if (secs < 60) return `${secs}${t("timeSeconds")}`;
+  return `${Math.round(secs / 60)}${t("timeMinutes")}`;
+}
+
+// ---------------------------------------------------------------------------
+// Streak loader (fire-and-forget)
+// ---------------------------------------------------------------------------
+
+async function loadStreak() {
   try {
-    const clientId = getClientId();
-
-    // Build filter options
-    const options = {};
-    if (state.stats.filterTestId) {
-      options.testId = state.stats.filterTestId;
-    }
-    if (state.stats.filterStartDate) {
-      options.startDate = state.stats.filterStartDate;
-    }
-    if (state.stats.filterEndDate) {
-      options.endDate = state.stats.filterEndDate;
-    }
-
-    const response = await fetchAttemptStats(clientId, options);
-
-    // Handle new API response format
-    const attempts = response.attempts || response;
-    state.stats.total = response.total ?? attempts.length;
-    state.stats.attempts = attempts;
-
-    if (!attempts.length) {
-      state.stats.selectedAttemptId = null;
-      state.stats.attemptDetails = null;
-      renderStatsView();
-      return;
-    }
-
-    if (
-      !preserveSelection ||
-      !attempts.some((attempt) => attempt.attemptId === state.stats.selectedAttemptId)
-    ) {
-      state.stats.selectedAttemptId = attempts[0]?.attemptId || null;
-    }
-
-    await loadAttemptDetails(state.stats.selectedAttemptId);
-  } catch (error) {
-    if (dom.statsQuestionStream) {
-      dom.statsQuestionStream.textContent = error.message;
-    } else {
-      dom.questionContainer.textContent = error.message;
-    }
+    const data = await apiFetch("/api/stats/streak");
+    state.stats.streak = data.streak ?? 0;
+  } catch {
+    state.stats.streak = 0;
   }
 }
 
-/**
- * Load detailed statistics for specific attempt
- */
-export async function loadAttemptDetails(attemptId) {
-  if (!attemptId) {
-    state.stats.attemptDetails = null;
-    renderStatsView();
+// ---------------------------------------------------------------------------
+// Sidebar rendering
+// ---------------------------------------------------------------------------
+
+export function renderStatsTestSidebar(tests) {
+  const list = dom.statsTestSidebarList;
+  if (!list) return;
+  list.innerHTML = "";
+
+  if (!tests || tests.length === 0) {
+    const empty = document.createElement("div");
+    empty.style.cssText = "padding:1rem;color:var(--muted);font-size:0.85rem;";
+    empty.textContent = t("noTestsAvailable");
+    list.appendChild(empty);
     return;
   }
 
-  try {
-    const clientId = getClientId();
-    const payload = await fetchAttemptDetails(attemptId, clientId);
-    state.stats.attemptDetails = payload;
-  } catch (error) {
-    state.stats.attemptDetails = null;
-  }
+  tests.forEach((test) => {
+    const attemptCount = test.attempt_count ?? 0;
+    const avgAccuracy = test.avg_accuracy ?? null;
+    const isActive = test.id === state.stats.selectedTestId;
 
-  renderStatsView();
+    const row = document.createElement("div");
+    row.style.cssText = [
+      "padding:0.65rem 0.75rem;cursor:pointer;border-radius:8px;",
+      "border-left:2px solid transparent;transition:background 0.15s;",
+      isActive
+        ? "border-left-color:var(--primary,#059669);background:var(--primary-soft,#d1fae5);"
+        : "background:transparent;",
+      attemptCount === 0 ? "opacity:0.4;" : "",
+    ].join("");
+
+    const title = document.createElement("div");
+    title.style.cssText =
+      "font-size:0.85rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+    title.textContent = test.title || `Test ${test.id}`;
+
+    const meta = document.createElement("div");
+    meta.style.cssText = "font-size:0.72rem;color:var(--muted);margin-top:0.2rem;";
+    const pctStr = avgAccuracy !== null ? ` · ${fmtPct(avgAccuracy)} avg` : "";
+    meta.textContent = `${attemptCount} ${t("kpiAttempts").toLowerCase()}${pctStr}`;
+
+    row.appendChild(title);
+    row.appendChild(meta);
+
+    row.addEventListener("click", () => selectStatsTest(test.id));
+
+    list.appendChild(row);
+  });
 }
 
-/**
- * Apply filter changes and reload data
- */
-export function applyFilters() {
-  // Get filter values from DOM
-  if (dom.statsFilterTestSelect) {
-    const testValue = dom.statsFilterTestSelect.value;
-    state.stats.filterTestId = testValue || null;
-  }
-  if (dom.statsFilterStartDate) {
-    const startValue = dom.statsFilterStartDate.value;
-    state.stats.filterStartDate = startValue || null;
-  }
-  if (dom.statsFilterEndDate) {
-    const endValue = dom.statsFilterEndDate.value;
-    state.stats.filterEndDate = endValue || null;
-  }
+// ---------------------------------------------------------------------------
+// Test selection
+// ---------------------------------------------------------------------------
 
-  loadStatsData({ preserveSelection: false });
-}
+export async function selectStatsTest(testId) {
+  state.stats.selectedTestId = testId;
+  renderStatsTestSidebar(state.testsCache);
 
-/**
- * Reset all filters and reload data
- */
-export function resetFilters() {
-  state.stats.filterTestId = null;
-  state.stats.filterStartDate = null;
-  state.stats.filterEndDate = null;
+  const test = state.testsCache.find((t) => t.id === testId);
+  const isOwner = test && state.currentUser && test.owner_id === state.currentUser.id;
 
-  // Reset DOM inputs
-  if (dom.statsFilterTestSelect) {
-    dom.statsFilterTestSelect.value = "";
-  }
-  if (dom.statsFilterStartDate) {
-    dom.statsFilterStartDate.value = "";
-  }
-  if (dom.statsFilterEndDate) {
-    dom.statsFilterEndDate.value = "";
-  }
-
-  loadStatsData({ preserveSelection: false });
-}
-
-/**
- * Populate test filter dropdown with available tests
- */
-export function populateTestFilter() {
-  if (!dom.statsFilterTestSelect) return;
-
-  // Keep current value
-  const currentValue = dom.statsFilterTestSelect.value;
-
-  // Clear existing options except first (All tests)
-  while (dom.statsFilterTestSelect.options.length > 1) {
-    dom.statsFilterTestSelect.remove(1);
-  }
-
-  // Add test options
-  for (const test of state.testsCache) {
-    const option = document.createElement("option");
-    option.value = test.id;
-    option.textContent = test.title;
-    dom.statsFilterTestSelect.appendChild(option);
-  }
-
-  // Restore value if still valid
-  if (currentValue) {
-    const exists = state.testsCache.some((t) => t.id === currentValue);
-    if (exists) {
-      dom.statsFilterTestSelect.value = currentValue;
+  // Show/hide owner tab depending on ownership
+  if (dom.statsOwnerTab) {
+    if (isOwner) {
+      dom.statsOwnerTab.classList.remove("is-hidden");
+    } else {
+      dom.statsOwnerTab.classList.add("is-hidden");
+      // If currently on owner tab, switch to progress
+      if (state.stats.activeTab === "owner") {
+        state.stats.activeTab = "progress";
+        _switchToProgressTab();
+      }
     }
   }
 
-  // Also set from state if filter is active
-  if (state.stats.filterTestId) {
-    dom.statsFilterTestSelect.value = state.stats.filterTestId;
+  // Always load progress tab
+  await loadProgressTab(testId);
+
+  // Load owner tab if visible and on owner tab, or if owner tab is active
+  if (isOwner && state.stats.activeTab === "owner") {
+    await loadOwnerTab(testId);
   }
 }
 
-/**
- * Set view mode for statistics
- * @param {string} mode - "single" or "aggregate"
- */
-export function setStatsViewMode(mode) {
-  state.stats.viewMode = mode;
+// ---------------------------------------------------------------------------
+// Tab switching helpers
+// ---------------------------------------------------------------------------
 
-  // Update tab states
-  dom.statsViewSingleTab?.classList.toggle("is-active", mode === "single");
-  dom.statsViewAggregateTab?.classList.toggle("is-active", mode === "aggregate");
-
-  // Show/hide single attempt controls
-  if (dom.statsSingleControls) {
-    dom.statsSingleControls.style.display = mode === "single" ? "" : "none";
-  }
-
-  // Re-render stats view
-  renderStatsView();
+function _switchToProgressTab() {
+  dom.statsProgressTab?.classList.add("is-active");
+  dom.statsOwnerTab?.classList.remove("is-active");
+  dom.statsProgressPanel?.classList.remove("is-hidden");
+  dom.statsOwnerPanel?.classList.add("is-hidden");
 }
 
-/**
- * Initialize statistics screen event listeners
- */
+function _switchToOwnerTab() {
+  dom.statsOwnerTab?.classList.add("is-active");
+  dom.statsProgressTab?.classList.remove("is-active");
+  dom.statsOwnerPanel?.classList.remove("is-hidden");
+  dom.statsProgressPanel?.classList.add("is-hidden");
+}
+
+// ---------------------------------------------------------------------------
+// Tab initialization
+// ---------------------------------------------------------------------------
+
+export function initStatsTabs() {
+  dom.statsProgressTab?.addEventListener("click", () => {
+    state.stats.activeTab = "progress";
+    _switchToProgressTab();
+  });
+
+  dom.statsOwnerTab?.addEventListener("click", async () => {
+    state.stats.activeTab = "owner";
+    _switchToOwnerTab();
+    if (state.stats.selectedTestId) {
+      await loadOwnerTab(state.stats.selectedTestId);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Progress tab
+// ---------------------------------------------------------------------------
+
+async function loadProgressTab(testId) {
+  if (!testId) return;
+
+  try {
+    const clientId = getClientId();
+    const response = await fetchAttemptStats(clientId, { testId });
+    const attempts = response.attempts || response || [];
+    state.stats.attempts = attempts;
+    state.stats.total = response.total ?? attempts.length;
+
+    // Compute KPIs
+    const count = attempts.length;
+    const avgPct =
+      count > 0
+        ? Math.round(
+            attempts.reduce((s, a) => s + (a.percentCorrect ?? 0), 0) / count
+          )
+        : null;
+    const avgMs =
+      count > 0
+        ? Math.round(
+            attempts.reduce((s, a) => s + (a.totalDurationMs ?? 0), 0) / count
+          )
+        : null;
+
+    const kpis = [
+      { label: t("kpiAttempts"), value: count },
+      { label: t("kpiAccuracy"), value: fmtPct(avgPct) },
+      { label: t("kpiAvgTime"), value: fmtMs(avgMs) },
+      { label: t("kpiStreak"), value: `${state.stats.streak} ${t("daysSuffix")}` },
+    ];
+    renderKpiCards(dom.statsProgressKpis, kpis);
+
+    // Chart — attempts sorted oldest → newest
+    await renderProgressChart(attempts);
+
+    // Weak questions (requires auth)
+    if (state.currentUser) {
+      await loadWeakQuestions(testId);
+    }
+  } catch (err) {
+    console.warn("[stats] loadProgressTab error:", err);
+  }
+}
+
+async function renderProgressChart(attempts) {
+  const canvas = dom.statsProgressChart;
+  if (!canvas) return;
+
+  await ensureChartJs();
+
+  if (canvas._chartInstance) {
+    canvas._chartInstance.destroy();
+    canvas._chartInstance = null;
+  }
+
+  // Reverse for chronological order (oldest left)
+  const sorted = [...attempts].reverse();
+  const labels = sorted.map((_, i) => `#${i + 1}`);
+  const data = sorted.map((a) => a.percentCorrect ?? 0);
+
+  const ctx = canvas.getContext("2d");
+  canvas._chartInstance = new window.Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: t("progressChartTitle"),
+          data,
+          borderColor: "var(--primary,#059669)",
+          backgroundColor: "rgba(5,150,105,0.1)",
+          borderWidth: 2,
+          pointRadius: 3,
+          tension: 0.3,
+          fill: true,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        title: {
+          display: true,
+          text: t("progressChartTitle"),
+          color: "var(--text)",
+          font: { size: 13, weight: "600" },
+        },
+      },
+      scales: {
+        y: {
+          min: 0,
+          max: 100,
+          ticks: { color: "var(--muted)" },
+          grid: { color: "var(--border,#e5e7eb)" },
+        },
+        x: {
+          ticks: { color: "var(--muted)" },
+          grid: { display: false },
+        },
+      },
+    },
+  });
+}
+
+async function loadWeakQuestions(testId) {
+  const container = dom.statsWeakQuestions;
+  if (!container) return;
+
+  try {
+    const data = await apiFetch(`/api/tests/${testId}/weak-questions`);
+    const questions = data.questions || [];
+    state.stats.weakQuestions = questions;
+
+    container.innerHTML = "";
+
+    const heading = document.createElement("div");
+    heading.style.cssText =
+      "font-size:0.8rem;font-weight:700;color:var(--text);margin-bottom:0.5rem;";
+    heading.textContent = t("weakQuestionsTitle");
+    container.appendChild(heading);
+
+    if (questions.length === 0) {
+      const msg = document.createElement("div");
+      msg.style.cssText = "font-size:0.8rem;color:var(--muted);";
+      msg.textContent = t("noWeakQuestions");
+      container.appendChild(msg);
+      return;
+    }
+
+    questions.forEach((q, idx) => {
+      const row = document.createElement("div");
+      row.style.cssText =
+        "display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem;";
+
+      const label = document.createElement("div");
+      label.style.cssText = "font-size:0.78rem;color:var(--text);flex:1;";
+      label.textContent = `Q${idx + 1} (ID ${q.questionId})`;
+
+      const pct = q.totalCount > 0
+        ? Math.round((q.correctCount / q.totalCount) * 100)
+        : 0;
+
+      const bar = document.createElement("div");
+      bar.style.cssText =
+        "height:6px;border-radius:3px;background:var(--border,#e5e7eb);width:80px;flex-shrink:0;";
+      const fill = document.createElement("div");
+      const fillColor =
+        pct < 40
+          ? "var(--danger,#ef4444)"
+          : pct < 70
+          ? "var(--warning,#f59e0b)"
+          : "var(--primary,#059669)";
+      fill.style.cssText = `height:100%;border-radius:3px;width:${pct}%;background:${fillColor};`;
+      bar.appendChild(fill);
+
+      const pctLabel = document.createElement("div");
+      pctLabel.style.cssText =
+        "font-size:0.72rem;color:var(--muted);width:32px;text-align:right;";
+      pctLabel.textContent = `${pct}%`;
+
+      row.appendChild(label);
+      row.appendChild(bar);
+      row.appendChild(pctLabel);
+      container.appendChild(row);
+    });
+  } catch (err) {
+    // Silently ignore (e.g. 401 if not authenticated)
+    console.warn("[stats] loadWeakQuestions error:", err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Owner analytics tab
+// ---------------------------------------------------------------------------
+
+async function loadOwnerTab(testId) {
+  if (!testId) return;
+
+  try {
+    const data = await apiFetch(`/api/tests/${testId}/owner-analytics`);
+    state.stats.ownerAnalytics = data;
+
+    const kpis = data.kpis || {};
+    renderKpiCards(dom.statsOwnerKpis, [
+      { label: "Всего попыток", value: kpis.totalAttempts ?? 0 },
+      { label: "Уник. студентов", value: kpis.uniqueStudents ?? 0 },
+      { label: t("kpiAccuracy"), value: fmtPct(kpis.avgScore) },
+      { label: "Сдали (≥60%)", value: fmtPct(kpis.passRate) },
+    ]);
+
+    renderDifficultyBars(data.questionDifficulty || []);
+    await renderOwnerDistributionChart(data.scoreDistribution || []);
+    renderActivityRows(data.activityByWeek || []);
+  } catch (err) {
+    if (err.message && err.message.includes("403")) {
+      // Not owner — hide tab silently
+      dom.statsOwnerTab?.classList.add("is-hidden");
+      if (state.stats.activeTab === "owner") {
+        state.stats.activeTab = "progress";
+        _switchToProgressTab();
+      }
+    } else {
+      console.warn("[stats] loadOwnerTab error:", err);
+    }
+  }
+}
+
+function renderDifficultyBars(questionDifficulty) {
+  const container = dom.statsOwnerDifficultyChart;
+  if (!container) return;
+  container.innerHTML = "";
+
+  const heading = document.createElement("div");
+  heading.style.cssText =
+    "font-size:0.8rem;font-weight:700;color:var(--text);margin-bottom:0.5rem;";
+  heading.textContent = t("difficultyChartTitle");
+  container.appendChild(heading);
+
+  if (!questionDifficulty.length) {
+    const msg = document.createElement("div");
+    msg.style.cssText = "font-size:0.8rem;color:var(--muted);";
+    msg.textContent = "—";
+    container.appendChild(msg);
+    return;
+  }
+
+  questionDifficulty.forEach((q, idx) => {
+    const pct =
+      q.totalAttempts > 0 ? Math.round(q.correctRate) : 0;
+
+    const row = document.createElement("div");
+    row.style.cssText =
+      "display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem;";
+
+    const label = document.createElement("div");
+    label.style.cssText = "font-size:0.78rem;color:var(--text);flex:1;";
+    label.textContent = `Q${idx + 1}`;
+
+    const bar = document.createElement("div");
+    bar.style.cssText =
+      "height:6px;border-radius:3px;background:var(--border,#e5e7eb);width:100px;flex-shrink:0;";
+    const fill = document.createElement("div");
+    const fillColor =
+      pct < 40
+        ? "var(--danger,#ef4444)"
+        : pct < 70
+        ? "var(--warning,#f59e0b)"
+        : "var(--primary,#059669)";
+    fill.style.cssText = `height:100%;border-radius:3px;width:${pct}%;background:${fillColor};`;
+    bar.appendChild(fill);
+
+    const pctLabel = document.createElement("div");
+    pctLabel.style.cssText =
+      "font-size:0.72rem;color:var(--muted);width:32px;text-align:right;";
+    pctLabel.textContent = `${pct}%`;
+
+    row.appendChild(label);
+    row.appendChild(bar);
+    row.appendChild(pctLabel);
+    container.appendChild(row);
+  });
+}
+
+async function renderOwnerDistributionChart(scoreDistribution) {
+  const canvas = dom.statsOwnerDistChart;
+  if (!canvas) return;
+
+  await ensureChartJs();
+
+  if (canvas._chartInstance) {
+    canvas._chartInstance.destroy();
+    canvas._chartInstance = null;
+  }
+
+  const labels = scoreDistribution.map((d) => d.bucket);
+  const data = scoreDistribution.map((d) => d.count);
+
+  const ctx = canvas.getContext("2d");
+  canvas._chartInstance = new window.Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: t("scoreDistTitle"),
+          data,
+          backgroundColor: "rgba(5,150,105,0.7)",
+          borderRadius: 4,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        title: {
+          display: true,
+          text: t("scoreDistTitle"),
+          color: "var(--text)",
+          font: { size: 13, weight: "600" },
+        },
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { color: "var(--muted)", stepSize: 1 },
+          grid: { color: "var(--border,#e5e7eb)" },
+        },
+        x: {
+          ticks: { color: "var(--muted)" },
+          grid: { display: false },
+        },
+      },
+    },
+  });
+}
+
+function renderActivityRows(activityByWeek) {
+  const container = dom.statsOwnerActivity;
+  if (!container) return;
+  container.innerHTML = "";
+
+  const heading = document.createElement("div");
+  heading.style.cssText =
+    "font-size:0.8rem;font-weight:700;color:var(--text);margin-bottom:0.5rem;";
+  heading.textContent = t("activityTitle");
+  container.appendChild(heading);
+
+  if (!activityByWeek.length) {
+    const msg = document.createElement("div");
+    msg.style.cssText = "font-size:0.8rem;color:var(--muted);";
+    msg.textContent = "—";
+    container.appendChild(msg);
+    return;
+  }
+
+  const maxCount = Math.max(...activityByWeek.map((w) => w.count), 1);
+
+  activityByWeek.forEach((week) => {
+    const pct = Math.round((week.count / maxCount) * 100);
+
+    const row = document.createElement("div");
+    row.style.cssText =
+      "display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem;";
+
+    const label = document.createElement("div");
+    label.style.cssText =
+      "font-size:0.78rem;color:var(--text);width:80px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+    label.textContent = week.week || "—";
+
+    const bar = document.createElement("div");
+    bar.style.cssText =
+      "height:8px;border-radius:4px;background:var(--border,#e5e7eb);flex:1;";
+    const fill = document.createElement("div");
+    fill.style.cssText = `height:100%;border-radius:4px;width:${pct}%;background:var(--primary,#059669);`;
+    bar.appendChild(fill);
+
+    const countLabel = document.createElement("div");
+    countLabel.style.cssText =
+      "font-size:0.72rem;color:var(--muted);width:24px;text-align:right;flex-shrink:0;";
+    countLabel.textContent = String(week.count);
+
+    row.appendChild(label);
+    row.appendChild(bar);
+    row.appendChild(countLabel);
+    container.appendChild(row);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Entry points
+// ---------------------------------------------------------------------------
+
+export async function openStatsScreen(testId = null) {
+  setActiveScreen("stats");
+  renderStatsTestSidebar(state.testsCache);
+
+  if (testId) {
+    state.stats.selectedTestId = testId;
+  }
+
+  if (state.currentUser) {
+    loadStreak(); // fire-and-forget
+  }
+
+  const targetId =
+    state.stats.selectedTestId || state.testsCache[0]?.id || null;
+  if (targetId) {
+    await selectStatsTest(targetId);
+  }
+}
+
+export async function loadStatsData({ preserveSelection = true } = {}) {
+  renderStatsTestSidebar(state.testsCache);
+  const targetId =
+    state.stats.selectedTestId ||
+    state.stats.filterTestId ||
+    state.testsCache[0]?.id ||
+    null;
+  if (targetId) {
+    await selectStatsTest(targetId);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Legacy compat stubs
+// ---------------------------------------------------------------------------
+
+export async function loadAttemptDetails(attemptId) {
+  // no-op in new design — kept for backward compat
+}
+
+export function populateTestFilter() {
+  // no-op in new design — kept for backward compat
+}
+
+// ---------------------------------------------------------------------------
+// Event initialization
+// ---------------------------------------------------------------------------
+
 export function initializeStatsScreenEvents() {
+  initStatsTabs();
+
+  // Back button → management
   dom.statsBackButton?.addEventListener("click", () => {
     setActiveScreen("management");
   });
 
+  // Refresh button — reload current test data
   dom.statsRefreshButton?.addEventListener("click", () => {
-    loadStatsData();
-  });
-
-  // View mode tabs
-  dom.statsViewSingleTab?.addEventListener("click", () => {
-    setStatsViewMode("single");
-  });
-
-  dom.statsViewAggregateTab?.addEventListener("click", () => {
-    setStatsViewMode("aggregate");
-  });
-
-  // Filter event listeners
-  dom.statsFilterTestSelect?.addEventListener("change", applyFilters);
-  dom.statsFilterStartDate?.addEventListener("change", applyFilters);
-  dom.statsFilterEndDate?.addEventListener("change", applyFilters);
-  dom.statsFilterResetButton?.addEventListener("click", resetFilters);
-
-  dom.statsAttemptSelect?.addEventListener("change", (event) => {
-    const attemptId = event.target.value;
-    state.stats.selectedAttemptId = attemptId;
-    loadAttemptDetails(attemptId);
-  });
-
-  dom.statsAttemptList?.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-attempt-id]");
-    if (!button) {
-      return;
+    if (state.stats.selectedTestId) {
+      selectStatsTest(state.stats.selectedTestId);
     }
-    const attemptId = button.dataset.attemptId;
-    state.stats.selectedAttemptId = attemptId;
-    loadAttemptDetails(attemptId);
-  });
-
-  dom.statsStartTestButton?.addEventListener("click", async () => {
-    const { selectTest } = await import("./management.js");
-
-    if (!state.testsCache.length) {
-      setActiveScreen("management");
-      return;
-    }
-
-    const targetTestId =
-      state.stats.filterTestId ||
-      state.currentTest?.id ||
-      state.testsCache[0]?.id;
-
-    if (targetTestId) {
-      await selectTest(targetTestId);
-      setActiveScreen("testing");
-    }
-  });
-
-  // Question preview close button
-  dom.statsPreviewClose?.addEventListener("click", () => {
-    hideStatsQuestionPreview();
   });
 }
