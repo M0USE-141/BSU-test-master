@@ -314,6 +314,17 @@ export function renderProfileScreen() {
   }
 }
 
+export function renderEditorScreen() {
+  [dom.screenAuth, dom.screenManagement, dom.screenTesting, dom.screenStats, dom.screenProfile].forEach((s) => {
+    s?.classList.add("is-hidden");
+    s?.classList.remove("is-active");
+  });
+  if (dom.screenEditor) {
+    dom.screenEditor.classList.remove("is-hidden");
+    dom.screenEditor.classList.add("is-active");
+  }
+}
+
 export function setActiveScreen(screen) {
   if (!screen || screen === state.uiState.activeScreen) {
     return;
@@ -329,6 +340,8 @@ export function setActiveScreen(screen) {
     renderStatsScreen();
   } else if (screen === "profile") {
     renderProfileScreen();
+  } else if (screen === "editor") {
+    renderEditorScreen();
   } else {
     renderManagementScreen();
   }

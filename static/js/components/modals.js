@@ -2,32 +2,27 @@
  * Modal management
  */
 
-import { dom } from "../state.js";
-import { updateEditorTestActions } from "../rendering.js";
+import { dom, state } from "../state.js";
+import { updateEditorTestActions, setActiveScreen } from "../rendering.js";
 import { renderEditorObjects } from "../editor.js";
 
 /**
- * Open editor modal
+ * Open editor (now a full-screen section)
  */
 export function openEditorModal() {
-  if (!dom.editorModal) {
-    return;
-  }
   updateEditorTestActions();
-  dom.editorModal.classList.add("is-open");
-  dom.editorModal.setAttribute("aria-hidden", "false");
   renderEditorObjects();
+  // Update editor header title
+  const titleEl = document.getElementById("editor-screen-test-title");
+  if (titleEl) titleEl.textContent = state.currentTest?.title || state.currentTest?.id || "";
+  setActiveScreen("editor");
 }
 
 /**
- * Close editor modal
+ * Close editor and return to management
  */
 export function closeEditorModal() {
-  if (!dom.editorModal) {
-    return;
-  }
-  dom.editorModal.classList.remove("is-open");
-  dom.editorModal.setAttribute("aria-hidden", "true");
+  setActiveScreen("management");
 }
 
 /**

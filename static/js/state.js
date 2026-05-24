@@ -148,7 +148,7 @@ export const dom = {
   editorResetButton: document.getElementById("reset-editor"),
   editorStatus: document.getElementById("editor-status"),
   editorPanel: document.getElementById("editor-panel"),
-  editorPanelHome: document.querySelector(".editor-column--form"),
+  editorPanelHome: document.querySelector(".editor-screen-form"),
   editorObjectType: document.getElementById("editor-object-type"),
   editorObjectId: document.getElementById("editor-object-id"),
   editorObjectImageFields: document.getElementById(
@@ -188,6 +188,7 @@ export const dom = {
   screenTesting: document.getElementById("screen-testing"),
   screenStats: document.getElementById("screen-stats"),
   screenProfile: document.getElementById("screen-profile"),
+  screenEditor: document.getElementById("screen-editor"),
   // Profile elements
   profileBackButton: document.getElementById("profile-back"),
   profileAvatarImage: document.getElementById("profile-avatar-image"),

@@ -555,25 +555,9 @@ export function syncEditorPanelLocation() {
   if (!dom.editorPanel) {
     return;
   }
-  if (editorMobileQuery.matches) {
-    if (state.activeEditorCard) {
-      const expand = state.activeEditorCard.querySelector(
-        ".editor-card-expand"
-      );
-      if (expand) {
-        expand.appendChild(dom.editorPanel);
-      }
-      dom.editorPanel.classList.remove("is-hidden");
-    } else {
-      dom.editorPanel.classList.add("is-hidden");
-    }
-  } else {
-    dom.editorPanel.classList.remove("is-hidden");
-    ensureEditorPanelInHome();
-    if (state.activeEditorCard) {
-      state.activeEditorCard.classList.remove("is-expanded");
-    }
-  }
+  // Full-screen editor: panel always lives in .editor-screen-form
+  dom.editorPanel.classList.remove("is-hidden");
+  ensureEditorPanelInHome();
 }
 
 export function resetEditorForm() {

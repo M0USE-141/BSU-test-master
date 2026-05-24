@@ -467,10 +467,20 @@ export function initializeManagementScreenEvents() {
     },
   });
 
-  dom.editorModal?.addEventListener("click", (event) => {
-    if (event.target === dom.editorModal) {
-      closeEditorModal();
-    }
+  // Editor screen: back button → management
+  document.getElementById("editor-back-btn")?.addEventListener("click", () => {
+    closeEditorModal();
+  });
+
+  // Editor screen: kebab menu toggle
+  const editorActionsBtn = document.getElementById("editor-actions-btn");
+  const editorActionsMenu = document.getElementById("editor-actions-menu");
+  editorActionsBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    editorActionsMenu?.classList.toggle("is-hidden");
+  });
+  document.addEventListener("click", () => {
+    editorActionsMenu?.classList.add("is-hidden");
   });
 
   dom.editorAddOption?.addEventListener("click", () => {
