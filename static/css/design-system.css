@@ -54,8 +54,8 @@
   border-color: var(--danger);
 }
 .btn--danger:hover:not(:disabled) {
-  background: var(--danger-strong, #b91c1c);
-  border-color: var(--danger-strong, #b91c1c);
+  background: var(--danger-strong);
+  border-color: var(--danger-strong);
 }
 .btn--danger-ghost {
   background: transparent;
@@ -365,7 +365,7 @@
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
-  padding: var(--s-3) var(--s-3);
+  padding: var(--s-3);
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -439,7 +439,7 @@
   box-shadow: var(--shadow-3);
   padding: 0.25rem;
   min-width: 160px;
-  z-index: var(--z-modal);
+  z-index: var(--z-dropdown);
   display: flex;
   flex-direction: column;
 }

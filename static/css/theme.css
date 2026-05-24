@@ -61,7 +61,8 @@
   /* Z-layers */
   --z-header: 50;
   --z-mobile-nav: 60;
-  --z-modal: 100;
+  --z-dropdown: 100;
+  --z-modal: 1000;
 
   /* ── Legacy aliases (keep for backward compat with components.css/layout.css) ── */
   --card: var(--surface-1);
@@ -71,13 +72,13 @@
   --neutral: var(--surface-3);
   --neutral-soft: var(--surface-2);
   --neutral-strong: var(--border-strong);
-  --success-strong: var(--primary-strong);
+  --success-strong: #15803d;
   --success-soft-strong: var(--primary-soft-strong);
   --danger-strong: #b91c1c;
-  --warning-soft: #fef9c3;
 }
 
-[data-theme="dark"] {
+:root[data-theme="dark"] {
+  /* Font, spacing, radius, shadow, z-index tokens intentionally inherited from :root */
   color-scheme: dark;
 
   --bg: #0a0a0a;
@@ -110,8 +111,7 @@
   --neutral: var(--surface-3);
   --neutral-soft: var(--surface-2);
   --neutral-strong: var(--border-strong);
-  --success-strong: var(--primary-strong);
+  --success-strong: #4ade80;
   --success-soft-strong: var(--primary-soft-strong);
   --danger-strong: #ef4444;
-  --warning-soft: rgba(251,191,36,0.14);
 }
