@@ -3,10 +3,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.orm import Session as DBSession, joinedload
 
 from api.models.db.attempt import Attempt, AttemptAnswer, AttemptStatus
+from api.models.db.question_performance import QuestionPerformance
 
 
 def get_or_create_attempt(
@@ -226,6 +227,10 @@ def finish_attempt(
 
     db.commit()
     db.refresh(attempt)
+
+    # Upsert per-question performance aggregates
+    upsert_question_performance(db, attempt)
+
     return attempt
 
 
@@ -347,6 +352,90 @@ def get_attempt_answers(db: DBSession, attempt_id: str) -> list[AttemptAnswer]:
             .order_by(AttemptAnswer.question_index)
         ).scalars().all()
     )
+
+
+def upsert_question_performance(db: DBSession, attempt: Attempt) -> None:
+    """
+    Upsert QuestionPerformance rows after attempt finalization.
+
+    Uses INSERT OR IGNORE + UPDATE pattern for SQLite compatibility.
+    Handles NULL user_id (anonymous) by using IS NULL comparison in the
+    UPDATE WHERE clause, since SQLite does not consider NULL == NULL in
+    unique constraints.
+    """
+    from datetime import datetime, timezone as tz
+    now = datetime.now(tz.utc)
+
+    answers = db.execute(
+        select(AttemptAnswer).where(AttemptAnswer.attempt_id == attempt.id)
+    ).scalars().all()
+
+    for answer in answers:
+        if answer.is_skipped or answer.answer_index is None:
+            continue
+
+        is_correct_int = 1 if answer.is_correct else 0
+        dur = answer.duration_ms or 0
+
+        # INSERT OR IGNORE creates the row if it doesn't exist yet
+        # We use a sentinel for the unique constraint: NULL user_id is stored as-is
+        # but the UPDATE uses IS NULL comparison to target the right row
+        db.execute(
+            text(
+                "INSERT OR IGNORE INTO question_performance "
+                "(test_id, user_id, question_id, correct_count, total_count, "
+                "total_duration_ms, last_seen_at) "
+                "VALUES (:test_id, :user_id, :qid, 0, 0, 0, NULL)"
+            ),
+            {
+                "test_id": attempt.test_id,
+                "user_id": attempt.user_id,
+                "qid": answer.question_id,
+            }
+        )
+
+        # UPDATE the matching row. For NULL user_id we use IS NULL comparison.
+        if attempt.user_id is None:
+            db.execute(
+                text(
+                    "UPDATE question_performance SET "
+                    "correct_count = correct_count + :correct, "
+                    "total_count = total_count + 1, "
+                    "total_duration_ms = total_duration_ms + :dur, "
+                    "last_seen_at = :now "
+                    "WHERE test_id = :test_id AND question_id = :qid "
+                    "AND user_id IS NULL"
+                ),
+                {
+                    "correct": is_correct_int,
+                    "dur": dur,
+                    "now": now.isoformat(),
+                    "test_id": attempt.test_id,
+                    "qid": answer.question_id,
+                }
+            )
+        else:
+            db.execute(
+                text(
+                    "UPDATE question_performance SET "
+                    "correct_count = correct_count + :correct, "
+                    "total_count = total_count + 1, "
+                    "total_duration_ms = total_duration_ms + :dur, "
+                    "last_seen_at = :now "
+                    "WHERE test_id = :test_id AND question_id = :qid "
+                    "AND user_id = :user_id"
+                ),
+                {
+                    "correct": is_correct_int,
+                    "dur": dur,
+                    "now": now.isoformat(),
+                    "test_id": attempt.test_id,
+                    "qid": answer.question_id,
+                    "user_id": attempt.user_id,
+                }
+            )
+
+    db.commit()
 
 
 def delete_attempt(db: DBSession, attempt_id: str) -> bool:
