@@ -14,6 +14,12 @@ from api.services.stats_service import (
     get_attempts_list,
     get_aggregate_stats,
     get_test_owner_stats,
+    get_weak_questions,
+    get_streak,
+    get_owner_kpis,
+    get_owner_question_difficulty,
+    get_score_distribution,
+    get_activity_by_week,
 )
 from api.utils import validate_id, validate_test_exists
 
@@ -166,3 +172,44 @@ def get_test_statistics(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/tests/{test_id}/weak-questions")
+def list_weak_questions(
+    test_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
+) -> dict[str, Any]:
+    """Personal weak questions (correct rate < 60%) for authenticated user."""
+    test_id = validate_id("testId", test_id)
+    validate_test_exists(test_id)
+    return {"questions": get_weak_questions(db, test_id, current_user.id)}
+
+
+@router.get("/stats/streak")
+def get_user_streak(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
+) -> dict[str, Any]:
+    """Current consecutive-day streak for logged-in user."""
+    return {"streak": get_streak(db, current_user.id)}
+
+
+@router.get("/tests/{test_id}/owner-analytics")
+def get_owner_analytics(
+    test_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
+) -> dict[str, Any]:
+    """Full owner analytics: KPIs, question difficulty, score distribution, activity."""
+    test_id = validate_id("testId", test_id)
+    validate_test_exists(test_id)
+    if not access_service.can_edit_test(db, test_id, current_user):
+        raise HTTPException(status_code=403, detail="Only owner can view analytics")
+
+    return {
+        "kpis": get_owner_kpis(db, test_id),
+        "questionDifficulty": get_owner_question_difficulty(db, test_id),
+        "scoreDistribution": get_score_distribution(db, test_id),
+        "activityByWeek": get_activity_by_week(db, test_id),
+    }
