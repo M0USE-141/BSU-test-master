@@ -34,6 +34,9 @@ import {
 
 const TESTING_PANELS = ["settings", "results", "questions"];
 
+// Media query for responsive layout switching
+const mobileMediaQuery = window.matchMedia("(max-width: 767px)");
+
 /**
  * Update question count label
  */
@@ -158,6 +161,294 @@ export function shuffle(items) {
 }
 
 /**
+ * Open pretest modal for the given test
+ */
+export function openPretestModal(test) {
+  state.currentTest = test;
+  if (!dom.pretestModal) return;
+
+  if (dom.pretestModalTitle) dom.pretestModalTitle.textContent = test.title || test.id;
+
+  const maxQ = test.questions?.length ?? 20;
+  if (dom.pretestQuestionCount) {
+    dom.pretestQuestionCount.textContent = String(maxQ);
+    dom.pretestQuestionCount.dataset.max = String(maxQ);
+  }
+
+  dom.pretestModal.classList.remove("is-hidden");
+}
+
+/**
+ * Close pretest modal
+ */
+export function closePretestModal() {
+  dom.pretestModal?.classList.add("is-hidden");
+}
+
+/**
+ * Open mobile bottom sheet
+ */
+function openMobileSheet() {
+  dom.mobileBottomSheet?.classList.remove("is-hidden");
+  dom.mobileSheetBackdrop?.classList.remove("is-hidden");
+}
+
+/**
+ * Close mobile bottom sheet
+ */
+function closeMobileSheet() {
+  dom.mobileBottomSheet?.classList.add("is-hidden");
+  dom.mobileSheetBackdrop?.classList.add("is-hidden");
+}
+
+/**
+ * Navigate to a specific question by index
+ */
+function navigateToQuestion(idx) {
+  if (!state.session) return;
+  closeMobileSheet();
+  updateQuestionTiming(state.session, state.session.questions[idx]?.questionId ?? null);
+  state.session.currentIndex = Math.max(0, Math.min(idx, state.session.questions.length - 1));
+  renderQuestion();
+  renderSidebarGrids();
+}
+
+/**
+ * Render question grid in sidebar and mobile strip/sheet
+ */
+function renderSidebarGrids() {
+  if (!state.session) return;
+
+  const { questions, currentIndex, answers, answerStatus } = state.session;
+  const total = questions.length;
+
+  // Update sidebar test title
+  if (dom.sidebarTestTitle) {
+    dom.sidebarTestTitle.textContent = state.currentTest?.title || "";
+  }
+
+  // Update question label
+  const qLabel = t("questionProgress", {
+    current: String(currentIndex + 1),
+    total: String(total),
+  });
+  if (dom.sidebarQuestionLabel) dom.sidebarQuestionLabel.textContent = qLabel;
+  if (dom.mobileProgressLabel) dom.mobileProgressLabel.textContent = `${currentIndex + 1} / ${total}`;
+
+  // Update progress bars
+  const pct = total ? ((currentIndex + 1) / total) * 100 : 0;
+  if (dom.sidebarProgressBar) dom.sidebarProgressBar.style.width = `${pct}%`;
+  if (dom.mobileProgressBar) dom.mobileProgressBar.style.width = `${pct}%`;
+
+  // Build question squares — answerStatus stores "correct", "incorrect", "unanswered" strings
+  function makeSquare(entry, idx) {
+    const isCurrent = idx === currentIndex;
+    const answerIdx = answers.get(entry.questionId);
+    const answered = answerIdx !== undefined && answerIdx !== -1;
+    const status = answerStatus.get(entry.questionId); // "correct" / "incorrect" / "unanswered" / undefined
+
+    let bg = "var(--border, #e2e8f0)";
+    let textColor = "#94a3b8";
+    let outline = "";
+
+    if (isCurrent) {
+      bg = "#1e293b";
+      textColor = "white";
+      outline = "outline:2px solid var(--primary,#059669);";
+    } else if (answered && status === "correct") {
+      bg = "#059669";
+      textColor = "white";
+    } else if (answered && status === "incorrect") {
+      bg = "#fecaca";
+      textColor = "#991b1b";
+    } else if (answered) {
+      // answered but status unknown or "unanswered" (show_answers=false or no correct index)
+      bg = "#94a3b8";
+      textColor = "white";
+    }
+
+    const sq = document.createElement("button");
+    sq.type = "button";
+    sq.style.cssText = `aspect-ratio:1;background:${bg};border-radius:4px;
+      display:flex;align-items:center;justify-content:center;
+      font-size:0.6875rem;font-weight:700;color:${textColor};
+      border:none;cursor:pointer;padding:0;min-width:0;${outline}`;
+    sq.textContent = String(idx + 1);
+    sq.setAttribute("aria-label", `Вопрос ${idx + 1}`);
+    const capturedIdx = idx;
+    sq.addEventListener("click", () => navigateToQuestion(capturedIdx));
+    return sq;
+  }
+
+  // Sidebar grid (all questions)
+  if (dom.sidebarQuestionGrid) {
+    dom.sidebarQuestionGrid.innerHTML = "";
+    questions.forEach((q, idx) => dom.sidebarQuestionGrid.appendChild(makeSquare(q, idx)));
+  }
+
+  // Mobile strip (first 8)
+  if (dom.mobileStripGrid) {
+    dom.mobileStripGrid.innerHTML = "";
+    questions.slice(0, 8).forEach((q, idx) => {
+      const sq = makeSquare(q, idx);
+      sq.style.width = "22px";
+      sq.style.height = "22px";
+      sq.style.minWidth = "22px";
+      dom.mobileStripGrid.appendChild(sq);
+    });
+  }
+
+  // Mobile sheet grid (all)
+  if (dom.mobileSheetGrid) {
+    dom.mobileSheetGrid.innerHTML = "";
+    questions.forEach((q, idx) => dom.mobileSheetGrid.appendChild(makeSquare(q, idx)));
+  }
+}
+
+/**
+ * Apply responsive layout: show sidebar on desktop, mobile controls on mobile
+ */
+function applyMobileLayout() {
+  const isMobile = mobileMediaQuery.matches;
+
+  if (dom.testSidebar) {
+    dom.testSidebar.style.display = isMobile ? "none" : "flex";
+  }
+  if (dom.mobileTopBar) {
+    dom.mobileTopBar.style.display = isMobile ? "flex" : "none";
+  }
+  if (dom.mobileBottomStrip) {
+    dom.mobileBottomStrip.style.display = isMobile ? "" : "none";
+  }
+}
+
+/**
+ * Wire pretest modal toggle switches, stepper, cancel, and start buttons.
+ * Called once from initializeTestingScreenEvents().
+ */
+function initPretestModal() {
+  function wireToggle(btn) {
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      const isOn = btn.dataset.checked === "true";
+      btn.dataset.checked = String(!isOn);
+      btn.classList.toggle("is-on", !isOn);
+      btn.setAttribute("aria-pressed", String(!isOn));
+    });
+  }
+  wireToggle(dom.pretestRandomQuestions);
+  wireToggle(dom.pretestRandomOptions);
+  wireToggle(dom.pretestOnlyUnanswered);
+  wireToggle(dom.pretestShowAnswers);
+
+  // Stepper — decrement
+  dom.pretestQuestionCountMinus?.addEventListener("click", () => {
+    const el = dom.pretestQuestionCount;
+    if (!el) return;
+    const v = Number.parseInt(el.textContent, 10);
+    if (v > 1) el.textContent = String(v - 1);
+  });
+
+  // Stepper — increment
+  dom.pretestQuestionCountPlus?.addEventListener("click", () => {
+    const el = dom.pretestQuestionCount;
+    if (!el) return;
+    const v = Number.parseInt(el.textContent, 10);
+    const max = Number.parseInt(el.dataset.max || "999", 10);
+    if (v < max) el.textContent = String(v + 1);
+  });
+
+  // Cancel
+  dom.pretestCancelBtn?.addEventListener("click", () => {
+    closePretestModal();
+    state.currentTest = null;
+  });
+
+  // Start — trigger existing startTest flow
+  dom.pretestStartBtn?.addEventListener("click", () => {
+    closePretestModal();
+    import("../rendering.js").then(({ setActiveScreen }) => {
+      setActiveScreen("testing");
+      startTest();
+    }).catch((err) => console.error("[testing] start failed:", err));
+  });
+}
+
+/**
+ * Wire mobile sheet interactions (chevron, backdrop, swipe-down, finish, stop)
+ */
+function initMobileControls() {
+  // Chevron tap opens sheet
+  dom.mobileStripChevron?.addEventListener("click", openMobileSheet);
+
+  // Backdrop tap closes sheet
+  dom.mobileSheetBackdrop?.addEventListener("click", closeMobileSheet);
+
+  // Swipe down on sheet to close
+  let touchStartY = 0;
+  dom.mobileBottomSheet?.addEventListener("touchstart", (e) => {
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  dom.mobileBottomSheet?.addEventListener("touchend", (e) => {
+    if (e.changedTouches[0].clientY - touchStartY > 60) closeMobileSheet();
+  });
+
+  // Sheet finish button
+  dom.mobileSheetFinishBtn?.addEventListener("click", () => {
+    closeMobileSheet();
+    finishTest();
+  });
+
+  // Stop button (mobile top bar) — abandon and return to management
+  dom.mobileStopBtn?.addEventListener("click", () => {
+    if (state.session && !state.session.finished) {
+      finalizeActiveQuestionTiming(state.session);
+      trackAttemptAbandoned(state.session);
+    }
+    import("../rendering.js").then(({ setActiveScreen }) => setActiveScreen("management"));
+  });
+}
+
+/**
+ * Wire left/right swipe on question card for question navigation
+ */
+function initSwipeNavigation() {
+  const card = document.querySelector(".question-card");
+  if (!card) return;
+
+  let startX = 0;
+  let startY = 0;
+
+  card.addEventListener("touchstart", (e) => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+
+  card.addEventListener("touchend", (e) => {
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    // Only trigger if horizontal motion clearly dominates
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return;
+    if (dx < 0) {
+      dom.nextQuestionButton?.click();
+    } else {
+      dom.prevQuestionButton?.click();
+    }
+  });
+}
+
+/**
+ * Wire sidebar finish and settings buttons
+ */
+function initializeSidebarControls() {
+  dom.sidebarFinishBtn?.addEventListener("click", () => finishTest());
+
+  dom.sidebarSettingsBtn?.addEventListener("click", () => {
+    if (state.currentTest) openPretestModal(state.currentTest);
+  });
+}
+
+/**
  * Finish test and calculate results
  */
 export function finishTest() {
@@ -207,6 +498,7 @@ export function finishTest() {
 
   renderResultSummary({ correct, total, answered, percent });
   renderQuestion();
+  renderSidebarGrids();
   updateTestingPanelsStatus();
   setActiveTestingPanel("results");
 }
@@ -227,6 +519,10 @@ export function startTest() {
   updateTestingPanelsStatus();
   setActiveTestingPanel("questions");
 
+  if (dom.sidebarTestTitle) {
+    dom.sidebarTestTitle.textContent = state.currentTest?.title || "";
+  }
+
   if (!state.session.questions.length) {
     dom.questionContainer.textContent = t("noQuestionsForTesting");
     dom.optionsContainer.textContent = "";
@@ -239,6 +535,8 @@ export function startTest() {
   }
 
   renderQuestion();
+  renderSidebarGrids();
+  applyMobileLayout();
 }
 
 /**
@@ -268,6 +566,7 @@ export function initializeTestingScreenEvents() {
     );
     state.session.currentIndex = Math.max(0, state.session.currentIndex - 1);
     renderQuestion();
+    renderSidebarGrids();
   });
 
   dom.nextQuestionButton?.addEventListener("click", () => {
@@ -308,6 +607,7 @@ export function initializeTestingScreenEvents() {
       state.session.currentIndex + 1
     );
     renderQuestion();
+    renderSidebarGrids();
   });
 
   dom.finishTestButton?.addEventListener("click", () => {
@@ -326,4 +626,11 @@ export function initializeTestingScreenEvents() {
     setActiveScreen("management");
     dom.optionsContainer.classList.add("is-hidden");
   });
+
+  // New UI init
+  initPretestModal();
+  initMobileControls();
+  initSwipeNavigation();
+  initializeSidebarControls();
+  mobileMediaQuery.addEventListener("change", applyMobileLayout);
 }
