@@ -262,18 +262,9 @@
             <div class="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
               <p class="text-xs text-gray-500 dark:text-gray-400 mb-1.5" data-i18n="languageLabel">Язык</p>
               <div class="flex gap-1">
-                <button id="dropdown-lang-ru" type="button" data-active="true"
-                  class="flex-1 py-1 text-xs font-semibold rounded-md border border-gray-200
-                         dark:border-gray-700 data-[active=true]:bg-emerald-600 data-[active=true]:text-white
-                         data-[active=true]:border-emerald-600 transition-colors">RU</button>
-                <button id="dropdown-lang-en" type="button" data-active="false"
-                  class="flex-1 py-1 text-xs font-semibold rounded-md border border-gray-200
-                         dark:border-gray-700 data-[active=true]:bg-emerald-600 data-[active=true]:text-white
-                         data-[active=true]:border-emerald-600 transition-colors">EN</button>
-                <button id="dropdown-lang-uz" type="button" data-active="false"
-                  class="flex-1 py-1 text-xs font-semibold rounded-md border border-gray-200
-                         dark:border-gray-700 data-[active=true]:bg-emerald-600 data-[active=true]:text-white
-                         data-[active=true]:border-emerald-600 transition-colors">UZ</button>
+                <button id="dropdown-lang-ru" type="button" class="dropdown-lang-btn">RU</button>
+                <button id="dropdown-lang-en" type="button" class="dropdown-lang-btn">EN</button>
+                <button id="dropdown-lang-uz" type="button" class="dropdown-lang-btn">UZ</button>
               </div>
             </div>
             <button id="dropdown-profile-link" type="button"
@@ -841,7 +832,9 @@
               <div class="card" style="padding:1rem;margin-bottom:1rem;">
                 <h3 style="margin:0 0 0.75rem;font-size:0.875rem;font-weight:600;"
                   data-i18n="progressChartTitle">Точность по попыткам</h3>
-                <canvas id="stats-progress-chart" height="80"></canvas>
+                <div style="position:relative;height:220px;">
+                  <canvas id="stats-progress-chart"></canvas>
+                </div>
               </div>
               <div class="card" style="padding:1rem;">
                 <h3 style="margin:0 0 0.75rem;font-size:0.875rem;font-weight:600;"
@@ -866,7 +859,9 @@
               <div class="card" style="padding:1rem;margin-bottom:1rem;">
                 <h3 style="margin:0 0 0.75rem;font-size:0.875rem;font-weight:600;"
                   data-i18n="scoreDistTitle">Распределение баллов</h3>
-                <canvas id="stats-owner-distribution" height="80"></canvas>
+                <div style="position:relative;height:200px;">
+                  <canvas id="stats-owner-distribution"></canvas>
+                </div>
               </div>
               <div class="card" style="padding:1rem;margin-bottom:1rem;">
                 <h3 style="margin:0 0 0.75rem;font-size:0.875rem;font-weight:600;"

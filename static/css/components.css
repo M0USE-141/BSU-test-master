@@ -2121,3 +2121,22 @@ button.danger:hover {
   color: var(--primary, #059669);
   border-bottom-color: var(--primary, #059669);
 }
+
+/* ── Profile dropdown language buttons ──────────────────── */
+.dropdown-lang-btn {
+  flex: 1;
+  padding: 0.25rem 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.dropdown-lang-btn.is-active {
+  background: var(--primary, #059669);
+  color: #fff;
+  border-color: var(--primary, #059669);
+}

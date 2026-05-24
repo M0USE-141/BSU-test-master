@@ -2,7 +2,7 @@
  * Header avatar dropdown — open/close, language switcher, profile/logout routing.
  */
 import { dom, state } from "../state.js";
-import { applyLocale } from "../utils/locale.js";
+import { applyLocale, getStoredLocale } from "../utils/locale.js";
 
 /**
  * Initialize the header dropdown. Call once on app startup.
@@ -61,6 +61,9 @@ export function initHeaderDropdown() {
     e.preventDefault();
     import("../rendering.js").then((m) => m.setActiveScreen("stats"));
   });
+
+  // Highlight active language button on page load
+  updateLangButtons(getStoredLocale() || "ru");
 }
 
 /**
@@ -82,7 +85,9 @@ export function updateDropdownUser(user) {
 export function updateLangButtons(activeLocale) {
   ["ru", "en", "uz"].forEach((loc) => {
     const btn = document.getElementById(`dropdown-lang-${loc}`);
-    if (btn) btn.dataset.active = String(loc === activeLocale);
+    if (!btn) return;
+    btn.classList.toggle("is-active", loc === activeLocale);
+    btn.removeAttribute("data-active");
   });
 }
 
