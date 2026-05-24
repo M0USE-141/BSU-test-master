@@ -218,6 +218,22 @@
     </header>
 
     <!-- ═══════════════════════════════════════════════════════════
+         MOBILE NAV DRAWER (slides in from left on mobile)
+         ═══════════════════════════════════════════════════════════ -->
+    <nav id="mobile-nav" class="mobile-nav" aria-label="Мобильная навигация" aria-hidden="true">
+      <div class="mobile-nav__header">
+        <span class="hdr-logo">TestMaster</span>
+        <button id="mobile-nav-close" type="button" class="icon-btn"
+          aria-label="Закрыть меню" data-i18n-aria-label="mobileMenuClose">
+          <svg aria-hidden="true"><use href="/static/icons.svg#x-mark"/></svg>
+        </button>
+      </div>
+      <button id="mobile-nav-tests" type="button" class="mobile-nav__item" data-i18n="navTests">Тесты</button>
+      <button id="mobile-nav-stats" type="button" class="mobile-nav__item" data-i18n="navStats">Статистика</button>
+    </nav>
+    <div id="mobile-nav-backdrop" class="mobile-nav-backdrop" aria-hidden="true"></div>
+
+    <!-- ═══════════════════════════════════════════════════════════
          MAIN — offset for fixed header
          ═══════════════════════════════════════════════════════════ -->
     <main style="min-height:100vh;">

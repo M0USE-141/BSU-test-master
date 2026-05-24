@@ -3,6 +3,7 @@
  */
 import { dom, state } from "../state.js";
 import { applyLocale, getStoredLocale } from "../utils/locale.js";
+import { updateMobileNavLinks } from "./mobile-nav.js";
 
 /**
  * Initialize the header dropdown. Call once on app startup.
@@ -101,6 +102,7 @@ export function updateNavLinks(activeScreen) {
   if (dom.navStatsLink) {
     dom.navStatsLink.classList.toggle("is-active", activeScreen === "stats");
   }
+  updateMobileNavLinks(activeScreen);
 }
 
 /**

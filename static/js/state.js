@@ -34,6 +34,9 @@ export const dom = {
   dropdownUserEmail: document.getElementById("dropdown-user-email"),
   navTestsLink: document.getElementById("nav-tests-link"),
   navStatsLink: document.getElementById("nav-stats-link"),
+  mobileNav: document.getElementById("mobile-nav"),
+  mobileNavBackdrop: document.getElementById("mobile-nav-backdrop"),
+  mobileNavToggleBtn: document.getElementById("mobile-nav-toggle"),
   // Management two-panel detail
   testDetailPanel: document.getElementById("test-detail-panel"),
   testDetailTitle: document.getElementById("test-detail-title"),

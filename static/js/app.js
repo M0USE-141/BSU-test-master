@@ -29,6 +29,9 @@ import {
   hideHeaderNav,
 } from "./components/header-dropdown.js";
 
+// Mobile nav drawer
+import { initMobileNav } from "./components/mobile-nav.js";
+
 /**
  * Load app content after successful auth.
  * All screen modules (management, testing, stats, profile) are lazy-loaded here
@@ -110,6 +113,7 @@ async function initialize() {
 
   // Initialize header dropdown (avatar chip, nav links, language switcher)
   initHeaderDropdown();
+  initMobileNav();
 
   // Initialize auth screen events (critical path — always needed)
   console.log("[App] Initializing auth screen events...");

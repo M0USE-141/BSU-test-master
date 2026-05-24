@@ -402,6 +402,7 @@ const translations = {
     settingsButton: "Настройки",
     stopButton: "Стоп",
     mobileMenuOpen: "Открыть меню",
+    mobileMenuClose: "Закрыть меню",
   },
   en: {
     pageTitle: "Word Test Extractor — Web UI",
@@ -799,6 +800,7 @@ const translations = {
     settingsButton: "Settings",
     stopButton: "Stop",
     mobileMenuOpen: "Open menu",
+    mobileMenuClose: "Close menu",
   },
   uz: {
     pageTitle: "Word Test Extractor — Web UI",
@@ -1199,6 +1201,7 @@ const translations = {
     settingsButton: "Sozlamalar",
     stopButton: "To'xtatish",
     mobileMenuOpen: "Menyuni ochish",
+    mobileMenuClose: "Menyuni yopish",
   },
 };
 
