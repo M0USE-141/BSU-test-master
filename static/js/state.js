@@ -22,6 +22,73 @@ export const dom = {
   userAvatarInitials: document.getElementById("user-avatar-initials"),
   profileButton: document.getElementById("profile-button"),
   logoutButton: document.getElementById("logout-button"),
+
+  // Header dropdown and nav links
+  avatarDropdown: document.getElementById("avatar-dropdown"),
+  avatarDropdownLangRu: document.getElementById("dropdown-lang-ru"),
+  avatarDropdownLangEn: document.getElementById("dropdown-lang-en"),
+  avatarDropdownLangUz: document.getElementById("dropdown-lang-uz"),
+  dropdownProfileLink: document.getElementById("dropdown-profile-link"),
+  dropdownLogoutLink: document.getElementById("dropdown-logout-link"),
+  dropdownUserName: document.getElementById("dropdown-user-name"),
+  dropdownUserEmail: document.getElementById("dropdown-user-email"),
+  navTestsLink: document.getElementById("nav-tests-link"),
+  navStatsLink: document.getElementById("nav-stats-link"),
+  // Management two-panel detail
+  testDetailPanel: document.getElementById("test-detail-panel"),
+  testDetailTitle: document.getElementById("test-detail-title"),
+  testDetailKpis: document.getElementById("test-detail-kpis"),
+  testDetailTrend: document.getElementById("test-detail-trend"),
+  testDetailStartBtn: document.getElementById("test-detail-start"),
+  testDetailEditBtn: document.getElementById("test-detail-edit"),
+  testDetailStatsBtn: document.getElementById("test-detail-stats"),
+  // Pre-test modal
+  pretestModal: document.getElementById("pretest-modal"),
+  pretestModalTitle: document.getElementById("pretest-modal-title"),
+  pretestQuestionCount: document.getElementById("pretest-question-count"),
+  pretestQuestionCountMinus: document.getElementById("pretest-count-minus"),
+  pretestQuestionCountPlus: document.getElementById("pretest-count-plus"),
+  pretestRandomQuestions: document.getElementById("pretest-random-questions"),
+  pretestRandomOptions: document.getElementById("pretest-random-options"),
+  pretestOnlyUnanswered: document.getElementById("pretest-only-unanswered"),
+  pretestShowAnswers: document.getElementById("pretest-show-answers"),
+  pretestStartBtn: document.getElementById("pretest-start-btn"),
+  pretestCancelBtn: document.getElementById("pretest-cancel-btn"),
+  // Testing sidebar
+  testSidebar: document.getElementById("test-sidebar"),
+  sidebarTestTitle: document.getElementById("sidebar-test-title"),
+  sidebarQuestionLabel: document.getElementById("sidebar-question-label"),
+  sidebarProgressBar: document.getElementById("sidebar-progress-bar"),
+  sidebarQuestionGrid: document.getElementById("sidebar-question-grid"),
+  sidebarSettingsBtn: document.getElementById("sidebar-settings-btn"),
+  sidebarFinishBtn: document.getElementById("sidebar-finish-btn"),
+  // Mobile testing controls
+  mobileTopBar: document.getElementById("mobile-top-bar"),
+  mobileStopBtn: document.getElementById("mobile-stop-btn"),
+  mobileProgressLabel: document.getElementById("mobile-progress-label"),
+  mobileProgressBar: document.getElementById("mobile-progress-bar"),
+  mobileBottomStrip: document.getElementById("mobile-bottom-strip"),
+  mobileStripGrid: document.getElementById("mobile-strip-grid"),
+  mobileStripChevron: document.getElementById("mobile-strip-chevron"),
+  mobileBottomSheet: document.getElementById("mobile-bottom-sheet"),
+  mobileSheetGrid: document.getElementById("mobile-sheet-grid"),
+  mobileSheetFinishBtn: document.getElementById("mobile-sheet-finish"),
+  mobileSheetBackdrop: document.getElementById("mobile-sheet-backdrop"),
+  testingQuestionArea: document.getElementById("testing-question-area"),
+  // Statistics redesign
+  statsTestSidebar: document.getElementById("stats-test-sidebar"),
+  statsTestSidebarList: document.getElementById("stats-test-sidebar-list"),
+  statsProgressTab: document.getElementById("stats-tab-progress"),
+  statsOwnerTab: document.getElementById("stats-tab-owner"),
+  statsProgressPanel: document.getElementById("stats-panel-progress"),
+  statsOwnerPanel: document.getElementById("stats-panel-owner"),
+  statsProgressKpis: document.getElementById("stats-progress-kpis"),
+  statsProgressChart: document.getElementById("stats-progress-chart"),
+  statsWeakQuestions: document.getElementById("stats-weak-questions"),
+  statsOwnerKpis: document.getElementById("stats-owner-kpis"),
+  statsOwnerDifficultyChart: document.getElementById("stats-owner-difficulty"),
+  statsOwnerDistChart: document.getElementById("stats-owner-distribution"),
+  statsOwnerActivity: document.getElementById("stats-owner-activity"),
   testCardsContainer: document.getElementById("test-cards"),
   testTabs: document.getElementById("test-tabs"),
   questionList: document.getElementById("question-nav"),
@@ -231,7 +298,12 @@ export const state = {
     filterStartDate: null,
     filterEndDate: null,
     total: 0,
-    viewMode: "single", // "single" or "aggregate"
+    viewMode: "single",
+    selectedTestId: null,
+    activeTab: "progress",
+    weakQuestions: [],
+    ownerAnalytics: null,
+    streak: 0,
   },
   activeEditorCard: null,
   activeEditorCardKey: null,
@@ -390,16 +462,30 @@ export function clearLastResult(testId) {
 }
 
 export function getSettings() {
+  // Read from pretest modal toggles (new UI), fall back to old panel inputs
+  const togVal = (el) => el ? el.dataset.checked === "true" : false;
+
+  const qCount = dom.pretestQuestionCount
+    ? Number.parseInt(dom.pretestQuestionCount.textContent || "0", 10) || 0
+    : Number.parseInt(dom.settingQuestionCount?.value || "0", 10) || 0;
+
   return {
-    questionCount:
-      Number.parseInt(dom.settingQuestionCount.value || "0", 10) || 0,
-    randomQuestions: dom.settingRandomQuestions.checked,
-    randomOptions: dom.settingRandomOptions.checked,
-    onlyUnanswered: dom.settingOnlyUnanswered.checked,
-    showAnswersImmediately: dom.settingShowAnswers.checked,
+    questionCount: qCount,
+    randomQuestions: dom.pretestRandomQuestions
+      ? togVal(dom.pretestRandomQuestions)
+      : (dom.settingRandomQuestions?.checked ?? false),
+    randomOptions: dom.pretestRandomOptions
+      ? togVal(dom.pretestRandomOptions)
+      : (dom.settingRandomOptions?.checked ?? false),
+    onlyUnanswered: dom.pretestOnlyUnanswered
+      ? togVal(dom.pretestOnlyUnanswered)
+      : (dom.settingOnlyUnanswered?.checked ?? false),
+    showAnswersImmediately: dom.pretestShowAnswers
+      ? togVal(dom.pretestShowAnswers)
+      : (dom.settingShowAnswers?.checked ?? true),
     maxOptions: Math.max(
       1,
-      Number.parseInt(dom.settingMaxOptions.value || "1", 10) || 1
+      Number.parseInt(dom.settingMaxOptions?.value || "4", 10) || 4
     ),
   };
 }
