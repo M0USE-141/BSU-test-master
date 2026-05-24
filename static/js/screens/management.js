@@ -37,10 +37,12 @@ import {
   syncEditorPanelLocation,
 } from "../editor.js";
 import {
+  renderDetailKpis,
   renderManagementScreen,
   renderQuestionNav,
   renderResultSummary,
   renderTestCards,
+  renderTestListItem,
   renderUploadLogs,
   setActiveScreen,
   updateEditorTestActions,
@@ -101,6 +103,105 @@ export function renderTestCardsWithHandlers(tests, selectedId) {
       await openStatsScreen(testId);
     },
   });
+  // Also render the compact two-panel list view
+  renderTestList(tests, selectedId);
+}
+
+/**
+ * Render the compact left-panel test list.
+ * Replaces the grid-card layout with compact rows.
+ */
+export function renderTestList(tests, activeTestId = null) {
+  const container = dom.testCardsContainer;
+  if (!container) return;
+  container.innerHTML = "";
+  if (!tests || tests.length === 0) {
+    container.innerHTML = '<p class="muted" style="padding:1rem;font-size:0.875rem;">Нет тестов</p>';
+    return;
+  }
+  tests.forEach((test) => {
+    const item = renderTestListItem(test, test.id === activeTestId);
+    item.addEventListener("click", () => showTestDetail(test, tests));
+    container.appendChild(item);
+  });
+}
+
+/**
+ * Show the right detail panel for a selected test.
+ */
+export async function showTestDetail(test, allTests = []) {
+  // Update active row highlight
+  document.querySelectorAll(".test-list-item").forEach((el) => {
+    const active = el.dataset.testId === test.id;
+    el.style.borderLeftColor = active ? "var(--primary,#059669)" : "transparent";
+    el.style.background = active ? "var(--primary-soft,#d1fae5)" : "";
+  });
+
+  // Show panel, hide empty placeholder
+  const detailPanel = dom.testDetailPanel;
+  const emptyEl = document.getElementById("test-detail-empty");
+  if (detailPanel) detailPanel.classList.remove("is-hidden");
+  if (emptyEl) emptyEl.style.display = "none";
+
+  // Title + badge + meta
+  if (dom.testDetailTitle) dom.testDetailTitle.textContent = test.title || test.id;
+
+  const badge = document.getElementById("test-detail-badge");
+  if (badge) {
+    badge.textContent = test.access_level || "";
+    badge.className = `badge badge--${test.access_level || "private"}`;
+  }
+
+  const meta = document.getElementById("test-detail-meta");
+  if (meta) {
+    const parts = [`${test.questions?.length ?? 0} вопросов`];
+    if (test.owner_username && state.currentUser && test.owner_username !== state.currentUser.username) {
+      parts.push(`автор: ${test.owner_username}`);
+    }
+    meta.textContent = parts.join(" · ");
+  }
+
+  // Wire action buttons (clone to remove stale listeners)
+  const startBtn = dom.testDetailStartBtn;
+  const editBtn = dom.testDetailEditBtn;
+  const statsBtn = dom.testDetailStatsBtn;
+
+  if (startBtn) {
+    const newStart = startBtn.cloneNode(true);
+    startBtn.parentNode?.replaceChild(newStart, startBtn);
+    newStart.addEventListener("click", () => {
+      selectTest(test.id).then(() => setActiveScreen("testing"));
+    });
+  }
+  if (editBtn) {
+    const newEdit = editBtn.cloneNode(true);
+    editBtn.parentNode?.replaceChild(newEdit, editBtn);
+    newEdit.addEventListener("click", () => {
+      selectTest(test.id).then(() => {
+        openEditorModal();
+        renderEditorQuestionList({ onDeleteQuestion: handleDeleteQuestion });
+        resetEditorForm();
+      });
+    });
+  }
+  if (statsBtn) {
+    const newStats = statsBtn.cloneNode(true);
+    statsBtn.parentNode?.replaceChild(newStats, statsBtn);
+    newStats.addEventListener("click", async () => {
+      const { openStatsScreen } = await import("./statistics.js");
+      await openStatsScreen(test.id);
+    });
+  }
+
+  // KPIs (placeholder values; will be enriched by stats API in a future task)
+  if (dom.testDetailKpis) {
+    renderDetailKpis(dom.testDetailKpis, {
+      accuracy: null,
+      attempts: 0,
+      avgTime: null,
+      weakCount: 0,
+    });
+  }
 }
 
 /**
@@ -217,6 +318,11 @@ export async function handleDeleteQuestion(questionId) {
 export function initializeManagementScreenEvents() {
   import("../utils/file-upload.js").then(({ updateUploadFileState }) => {
     updateUploadFileState(dom.uploadFileInput?.files?.[0], dom.uploadStatus, dom.uploadFilename);
+  });
+
+  // "Create test" button in the two-panel filter bar
+  document.getElementById("create-test-btn")?.addEventListener("click", () => {
+    openCreateTestModal();
   });
 
   // Tab switching for test collections

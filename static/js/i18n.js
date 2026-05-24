@@ -370,6 +370,11 @@ const translations = {
     score: "Баллы",
     accuracy: "Точность",
     date: "Дата",
+    // Management two-panel
+    selectTestPrompt: "Выберите тест слева",
+    lastAttemptsLabel: "Последние попытки",
+    startButton: "Начать",
+    createTestButton: "+ Создать",
   },
   en: {
     pageTitle: "Word Test Extractor — Web UI",
@@ -735,6 +740,11 @@ const translations = {
     score: "Score",
     accuracy: "Accuracy",
     date: "Date",
+    // Management two-panel
+    selectTestPrompt: "Select a test on the left",
+    lastAttemptsLabel: "Recent attempts",
+    startButton: "Start",
+    createTestButton: "+ Create",
   },
   uz: {
     pageTitle: "Word Test Extractor — Web UI",
@@ -1103,6 +1113,11 @@ const translations = {
     score: "Ball",
     accuracy: "Aniqlik",
     date: "Sana",
+    // Management two-panel
+    selectTestPrompt: "Chap tomondagi testni tanlang",
+    lastAttemptsLabel: "So'nggi urinishlar",
+    startButton: "Boshlash",
+    createTestButton: "+ Yaratish",
   },
 };
 

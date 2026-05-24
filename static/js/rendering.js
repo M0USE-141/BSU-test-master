@@ -1662,6 +1662,87 @@ export function renderStatsView() {
  * Render charts showing aggregate data across all attempts
  * @param {Array} attempts
  */
+/**
+ * Render a compact test list row for the management left panel.
+ */
+export function renderTestListItem(test, isActive = false) {
+  const ACCESS_ICONS = {
+    public: "globe-alt",
+    private: "lock-closed",
+    shared: "users",
+    "owner-only": "lock-closed",
+  };
+  const ACCESS_COLORS = {
+    public: "#059669",
+    private: "#64748b",
+    shared: "#7c3aed",
+    "owner-only": "#64748b",
+  };
+  const accessIcon = ACCESS_ICONS[test.access_level] || "lock-closed";
+  const accessColor = ACCESS_COLORS[test.access_level] || "#64748b";
+
+  const item = document.createElement("div");
+  item.className = "test-list-item";
+  item.dataset.testId = test.id;
+  item.style.cssText = [
+    "display:flex",
+    "align-items:center",
+    "gap:0.625rem",
+    "padding:0.625rem 0.875rem",
+    "cursor:pointer",
+    "border-left:2px solid transparent",
+    "transition:background 0.1s,border-color 0.1s",
+    isActive ? "border-left-color:var(--primary,#059669)" : "",
+    isActive ? "background:var(--primary-soft,#d1fae5)" : "",
+  ].filter(Boolean).join(";");
+
+  const iconWrap = document.createElement("div");
+  iconWrap.style.cssText = `width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:${accessColor}22;`;
+  iconWrap.innerHTML = `<svg style="width:15px;height:15px;color:${accessColor}" aria-hidden="true"><use href="/static/icons.svg#${accessIcon}"/></svg>`;
+
+  const info = document.createElement("div");
+  info.style.cssText = "flex:1;min-width:0;";
+  const title = document.createElement("div");
+  title.style.cssText = "font-size:0.8125rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);";
+  title.textContent = test.title || test.id;
+  const sub = document.createElement("div");
+  sub.style.cssText = "font-size:0.75rem;color:var(--muted);margin-top:1px;";
+  sub.textContent = `${test.questions?.length ?? 0} вопр.`;
+  info.appendChild(title);
+  info.appendChild(sub);
+
+  const lastAccuracy = test.last_accuracy;
+  const acc = document.createElement("div");
+  acc.style.cssText = `font-size:0.8125rem;font-weight:600;flex-shrink:0;color:${typeof lastAccuracy === "number" ? "var(--primary,#059669)" : "var(--muted)"};`;
+  acc.textContent = typeof lastAccuracy === "number" ? `${Math.round(lastAccuracy)}%` : "—";
+
+  item.appendChild(iconWrap);
+  item.appendChild(info);
+  item.appendChild(acc);
+  return item;
+}
+
+/**
+ * Render 4 KPI cards into the detail panel KPI grid.
+ */
+export function renderDetailKpis(container, kpis) {
+  const ms = kpis.avgTime;
+  const timeStr = !ms ? "—" : ms < 60000 ? `${Math.round(ms / 1000)}с` : `${Math.round(ms / 60000)}м`;
+  const cards = [
+    { label: "Точность", value: typeof kpis.accuracy === "number" ? `${Math.round(kpis.accuracy)}%` : "—" },
+    { label: "Попытки", value: kpis.attempts ?? 0 },
+    { label: "Ср. время", value: timeStr },
+    { label: "Слабых вопр.", value: kpis.weakCount ?? 0 },
+  ];
+  container.innerHTML = "";
+  cards.forEach((c) => {
+    const el = document.createElement("div");
+    el.style.cssText = "background:var(--card-muted,#f8fafc);border-radius:10px;padding:0.625rem 0.75rem;";
+    el.innerHTML = `<div style="font-size:0.7rem;color:var(--muted);margin-bottom:0.25rem;">${c.label}</div><div style="font-size:1.125rem;font-weight:700;color:var(--text);">${c.value}</div>`;
+    container.appendChild(el);
+  });
+}
+
 function renderAggregateCharts(attempts) {
   if (!dom.statsChartAttempts || !dom.statsChartTime) return;
   if (!window.Chart) {
