@@ -27,7 +27,6 @@ import {
   updateDropdownUser,
   showHeaderNav,
   hideHeaderNav,
-  updateNavLinks,
 } from "./components/header-dropdown.js";
 
 /**
