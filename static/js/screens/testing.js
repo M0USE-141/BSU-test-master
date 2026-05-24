@@ -37,6 +37,9 @@ const TESTING_PANELS = ["settings", "results", "questions"];
 // Media query for responsive layout switching
 const mobileMediaQuery = window.matchMedia("(max-width: 767px)");
 
+// Guard against re-running one-time initializations
+let _testingEventsInitialized = false;
+
 /**
  * Update question count label
  */
@@ -627,10 +630,13 @@ export function initializeTestingScreenEvents() {
     dom.optionsContainer.classList.add("is-hidden");
   });
 
-  // New UI init
-  initPretestModal();
-  initMobileControls();
-  initSwipeNavigation();
-  initializeSidebarControls();
-  mobileMediaQuery.addEventListener("change", applyMobileLayout);
+  // One-time inits (guarded so re-entry doesn't stack listeners)
+  if (!_testingEventsInitialized) {
+    _testingEventsInitialized = true;
+    initPretestModal();
+    initMobileControls();
+    initSwipeNavigation();
+    initializeSidebarControls();
+    mobileMediaQuery.addEventListener("change", applyMobileLayout);
+  }
 }
