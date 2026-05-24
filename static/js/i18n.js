@@ -401,6 +401,7 @@ const translations = {
     legendWrong: "неверно",
     settingsButton: "Настройки",
     stopButton: "Стоп",
+    mobileMenuOpen: "Открыть меню",
   },
   en: {
     pageTitle: "Word Test Extractor — Web UI",
@@ -797,6 +798,7 @@ const translations = {
     legendWrong: "wrong",
     settingsButton: "Settings",
     stopButton: "Stop",
+    mobileMenuOpen: "Open menu",
   },
   uz: {
     pageTitle: "Word Test Extractor — Web UI",
@@ -1196,6 +1198,7 @@ const translations = {
     legendWrong: "noto'g'ri",
     settingsButton: "Sozlamalar",
     stopButton: "To'xtatish",
+    mobileMenuOpen: "Menyuni ochish",
   },
 };
 

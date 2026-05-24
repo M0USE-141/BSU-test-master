@@ -134,7 +134,7 @@
       <div class="app-header-new__inner">
 
         <!-- Logo -->
-        <span style="color: var(--primary); font-weight: 600; font-size: 0.9375rem; flex-shrink: 0; user-select: none;">TestMaster</span>
+        <span class="hdr-logo">TestMaster</span>
 
         <!-- Nav links (hidden until logged in via JS adding .is-hidden removal) -->
         <nav class="is-hidden" id="header-nav" style="margin-left: 1rem;">
@@ -150,18 +150,19 @@
 
         <div class="flex-1"></div>
 
+        <!-- TODO: wired in Phase 3 -->
         <!-- Hamburger (mobile only) -->
         <button id="mobile-nav-toggle" type="button" class="icon-btn"
           aria-label="Открыть меню" data-i18n-aria-label="mobileMenuOpen">
-          <svg class="w-5 h-5" aria-hidden="true"><use href="/static/icons.svg#bars-3"/></svg>
+          <svg aria-hidden="true"><use href="/static/icons.svg#bars-3"/></svg>
         </button>
 
         <!-- Theme toggle -->
         <button id="theme-toggle" type="button"
           aria-label="Переключить тёмную тему" data-i18n-aria-label="themeToggleLabel"
           class="icon-btn">
-          <svg class="w-5 h-5 theme-icon-sun" aria-hidden="true"><use href="/static/icons.svg#sun"/></svg>
-          <svg class="w-5 h-5 theme-icon-moon" aria-hidden="true"><use href="/static/icons.svg#moon"/></svg>
+          <svg class="theme-icon-sun" aria-hidden="true"><use href="/static/icons.svg#sun"/></svg>
+          <svg class="theme-icon-moon" aria-hidden="true"><use href="/static/icons.svg#moon"/></svg>
         </button>
 
         <!-- Avatar chip with dropdown (shown when logged in) -->
