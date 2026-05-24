@@ -274,8 +274,8 @@ export function updateUserDisplay(user) {
     } else if (user) {
       dom.userAvatarImage.src = "";
       dom.userAvatarImage.classList.add("is-hidden");
-      const name = user.display_name || user.username || "";
-      dom.userAvatarInitials.textContent = getInitials(name);
+      const username = user.username || "";
+      dom.userAvatarInitials.textContent = username.slice(0, 2).toUpperCase() || "?";
     } else {
       dom.userAvatarImage.src = "";
       dom.userAvatarImage.classList.add("is-hidden");

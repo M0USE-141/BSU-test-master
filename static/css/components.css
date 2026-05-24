@@ -2141,6 +2141,110 @@ button.danger:hover {
   border-color: var(--primary, #059669);
 }
 
+/* ── Header bar ──────────────────────────────────────────── */
+.app-header-new {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 50;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid #e5e7eb;
+}
+:root[data-theme="dark"] .app-header-new {
+  background: rgba(3,7,18,0.92);
+  border-bottom-color: #1f2937;
+}
+.app-header-new__inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+/* Theme-icon toggling via data-theme */
+:root:not([data-theme="dark"]) .theme-icon-moon { display: none; }
+:root[data-theme="dark"] .theme-icon-sun { display: none; }
+/* Override min-height on small header controls */
+.hdr-btn {
+  min-height: 36px !important;
+  padding: 0.35rem 0.75rem !important;
+  font-size: 0.85rem !important;
+  border-radius: 8px !important;
+}
+.hdr-icon-btn {
+  min-height: 0 !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 8px;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.hdr-icon-btn:hover {
+  background: #f3f4f6 !important;
+}
+:root[data-theme="dark"] .hdr-icon-btn { color: #9ca3af; }
+:root[data-theme="dark"] .hdr-icon-btn:hover { background: #1f2937 !important; }
+/* Lang select in header */
+.hdr-select {
+  font-size: 0.85rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  background: white;
+  color: #374151;
+  cursor: pointer;
+  appearance: none;
+}
+:root[data-theme="dark"] .hdr-select {
+  background: #111827;
+  border-color: #374151;
+  color: #d1d5db;
+}
+/* Header menu extras */
+.menu__user-info {
+  padding: 0.5rem 0.625rem 0.375rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.25rem;
+}
+.menu__user-info p {
+  margin: 0;
+  line-height: 1.4;
+}
+.menu__user-info p:first-child {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.menu__user-info p:last-child {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.menu__lang {
+  padding: 0.375rem 0.625rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.25rem;
+  display: flex;
+  gap: 0.25rem;
+}
+/* Mobile hamburger — hidden by default, shown on mobile */
+#mobile-nav-toggle { display: none; }
+@media (max-width: 767px) {
+  #mobile-nav-toggle { display: inline-flex; }
+}
+
 /* ── Editor screen ───────────────────────────────────────── */
 .editor-screen-header {
   display: flex;

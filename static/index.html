@@ -29,80 +29,8 @@
       };
     </script>
 
-    <!-- Small CSS bridge: header layout + theme-icon switching + screen base -->
+    <!-- Small CSS bridge: screen base only — header CSS moved to components.css -->
     <style>
-      /* Fixed header reset — overrides old .app-header gradient */
-      .app-header-new {
-        position: fixed;
-        top: 0; left: 0; right: 0;
-        z-index: 50;
-        height: 56px;
-        display: flex;
-        align-items: center;
-        background: rgba(255,255,255,0.92);
-        backdrop-filter: blur(8px);
-        border-bottom: 1px solid #e5e7eb;
-      }
-      :root[data-theme="dark"] .app-header-new {
-        background: rgba(3,7,18,0.92);
-        border-bottom-color: #1f2937;
-      }
-      .app-header-new__inner {
-        max-width: 1280px;
-        margin: 0 auto;
-        width: 100%;
-        padding: 0 1rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-      }
-      /* Theme-icon toggling via data-theme */
-      :root:not([data-theme="dark"]) .theme-icon-moon { display: none; }
-      :root[data-theme="dark"] .theme-icon-sun { display: none; }
-      /* Override min-height on small header controls */
-      .hdr-btn {
-        min-height: 36px !important;
-        padding: 0.35rem 0.75rem !important;
-        font-size: 0.85rem !important;
-        border-radius: 8px !important;
-      }
-      .hdr-icon-btn {
-        min-height: 0 !important;
-        min-width: 0 !important;
-        padding: 0 !important;
-        width: 36px;
-        height: 36px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: transparent !important;
-        border: none !important;
-        border-radius: 8px;
-        color: #6b7280;
-        cursor: pointer;
-        transition: background 0.15s;
-      }
-      .hdr-icon-btn:hover {
-        background: #f3f4f6 !important;
-      }
-      :root[data-theme="dark"] .hdr-icon-btn { color: #9ca3af; }
-      :root[data-theme="dark"] .hdr-icon-btn:hover { background: #1f2937 !important; }
-      /* Lang select in header */
-      .hdr-select {
-        font-size: 0.85rem;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 0.35rem 0.5rem;
-        background: white;
-        color: #374151;
-        cursor: pointer;
-        appearance: none;
-      }
-      :root[data-theme="dark"] .hdr-select {
-        background: #111827;
-        border-color: #374151;
-        color: #d1d5db;
-      }
       /* Push page content below the fixed 56px header */
       body { padding-top: 56px; }
       /* Screen base: override layout.css display:grid → block.
@@ -206,31 +134,32 @@
       <div class="app-header-new__inner">
 
         <!-- Logo -->
-        <div class="flex items-center gap-1.5 font-bold text-emerald-600 text-[15px] shrink-0 select-none">
-          <svg class="w-5 h-5 shrink-0" aria-hidden="true"><use href="/static/icons.svg#home"/></svg>
-          <span>TestMaster</span>
-        </div>
+        <span style="color: var(--primary); font-weight: 600; font-size: 0.9375rem; flex-shrink: 0; user-select: none;">TestMaster</span>
 
         <!-- Nav links (hidden until logged in via JS adding .is-hidden removal) -->
-        <nav class="hidden sm:flex items-center gap-1 ml-4 is-hidden" id="header-nav">
-          <a id="nav-tests-link" href="#" role="button"
-            class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors
-                   text-gray-600 dark:text-gray-300 hover:text-emerald-600
-                   data-[active=true]:text-emerald-600 data-[active=true]:border-b-2 data-[active=true]:border-emerald-500"
-            data-i18n="navTests">Тесты</a>
-          <a id="nav-stats-link" href="#" role="button"
-            class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors
-                   text-gray-600 dark:text-gray-300 hover:text-emerald-600
-                   data-[active=true]:text-emerald-600 data-[active=true]:border-b-2 data-[active=true]:border-emerald-500"
-            data-i18n="navStats">Статистика</a>
+        <nav class="is-hidden" id="header-nav" style="margin-left: 1rem;">
+          <div class="underline-tabs" style="border-bottom: none; gap: 0;">
+            <a id="nav-tests-link" href="#" role="button"
+              class="underline-tabs__tab"
+              data-i18n="navTests">Тесты</a>
+            <a id="nav-stats-link" href="#" role="button"
+              class="underline-tabs__tab"
+              data-i18n="navStats">Статистика</a>
+          </div>
         </nav>
 
         <div class="flex-1"></div>
 
+        <!-- Hamburger (mobile only) -->
+        <button id="mobile-nav-toggle" type="button" class="icon-btn"
+          aria-label="Открыть меню" data-i18n-aria-label="mobileMenuOpen">
+          <svg class="w-5 h-5" aria-hidden="true"><use href="/static/icons.svg#bars-3"/></svg>
+        </button>
+
         <!-- Theme toggle -->
         <button id="theme-toggle" type="button"
           aria-label="Переключить тёмную тему" data-i18n-aria-label="themeToggleLabel"
-          class="hdr-icon-btn">
+          class="icon-btn">
           <svg class="w-5 h-5 theme-icon-sun" aria-hidden="true"><use href="/static/icons.svg#sun"/></svg>
           <svg class="w-5 h-5 theme-icon-moon" aria-hidden="true"><use href="/static/icons.svg#moon"/></svg>
         </button>
@@ -253,32 +182,23 @@
           </button>
 
           <!-- Dropdown -->
-          <div id="avatar-dropdown"
-            class="is-hidden absolute right-0 top-full mt-1.5 w-56 rounded-xl border border-gray-200
-                   dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg z-50 py-1.5">
-            <div class="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
-              <p id="dropdown-user-name" class="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate"></p>
-              <p id="dropdown-user-email" class="text-xs text-gray-500 dark:text-gray-400 truncate"></p>
+          <div id="avatar-dropdown" class="menu is-hidden" style="position:absolute;right:0;top:calc(100% + 6px);width:220px;">
+            <div class="menu__user-info">
+              <p id="dropdown-user-name"></p>
+              <p id="dropdown-user-email"></p>
             </div>
-            <div class="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1.5" data-i18n="languageLabel">Язык</p>
-              <div class="flex gap-1">
-                <button id="dropdown-lang-ru" type="button" class="dropdown-lang-btn">RU</button>
-                <button id="dropdown-lang-en" type="button" class="dropdown-lang-btn">EN</button>
-                <button id="dropdown-lang-uz" type="button" class="dropdown-lang-btn">UZ</button>
-              </div>
+            <div class="menu__lang">
+              <button id="dropdown-lang-ru" type="button" class="dropdown-lang-btn">RU</button>
+              <button id="dropdown-lang-en" type="button" class="dropdown-lang-btn">EN</button>
+              <button id="dropdown-lang-uz" type="button" class="dropdown-lang-btn">UZ</button>
             </div>
-            <button id="dropdown-profile-link" type="button"
-              class="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700
-                     dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-              <svg class="w-4 h-4 shrink-0" aria-hidden="true"><use href="/static/icons.svg#user-circle"/></svg>
+            <button id="dropdown-profile-link" type="button" class="menu__item">
+              <svg aria-hidden="true"><use href="/static/icons.svg#user-circle"/></svg>
               <span data-i18n="profileButton">Профиль</span>
             </button>
-            <div class="my-1 border-t border-gray-100 dark:border-gray-800"></div>
-            <button id="dropdown-logout-link" type="button"
-              class="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600
-                     hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
-              <svg class="w-4 h-4 shrink-0" aria-hidden="true"><use href="/static/icons.svg#arrow-right-start-on-rectangle"/></svg>
+            <hr class="menu__divider">
+            <button id="dropdown-logout-link" type="button" class="menu__item menu__item--danger">
+              <svg aria-hidden="true"><use href="/static/icons.svg#arrow-right-start-on-rectangle"/></svg>
               <span data-i18n="logoutButton">Выйти</span>
             </button>
           </div>

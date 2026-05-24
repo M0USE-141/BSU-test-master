@@ -96,10 +96,10 @@ export function updateLangButtons(activeLocale) {
  */
 export function updateNavLinks(activeScreen) {
   if (dom.navTestsLink) {
-    dom.navTestsLink.dataset.active = String(activeScreen === "management");
+    dom.navTestsLink.classList.toggle("is-active", activeScreen === "management");
   }
   if (dom.navStatsLink) {
-    dom.navStatsLink.dataset.active = String(activeScreen === "stats");
+    dom.navStatsLink.classList.toggle("is-active", activeScreen === "stats");
   }
 }
 
