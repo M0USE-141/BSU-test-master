@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
-from sqlalchemy import ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from api.database import Base
@@ -66,6 +66,11 @@ class Attempt(Base):
 
     # Settings snapshot (stored as JSON string)
     settings_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_attempts_test_status_started", "test_id", "status", "started_at"),
+        Index("ix_attempts_status_started", "status", "started_at"),
+    )
 
     # Relationships
     user: Mapped["User | None"] = relationship("User", foreign_keys=[user_id])
@@ -123,6 +128,7 @@ class AttemptAnswer(Base):
     is_correct: Mapped[bool | None] = mapped_column(nullable=True)
     is_skipped: Mapped[bool] = mapped_column(default=False, nullable=False)
     duration_ms: Mapped[int] = mapped_column(default=0, nullable=False)
+    canonical_answer_index: Mapped[int | None] = mapped_column(nullable=True)
     answered_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
