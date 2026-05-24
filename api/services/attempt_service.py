@@ -137,6 +137,7 @@ def record_answer(
     is_correct: bool | None,
     duration_ms: int = 0,
     is_skipped: bool = False,
+    canonical_answer_index: int | None = None,
 ) -> AttemptAnswer:
     """
     Record or update an answer for a question in an attempt.
@@ -161,6 +162,7 @@ def record_answer(
 
     # Update answer data
     answer.answer_index = answer_index
+    answer.canonical_answer_index = canonical_answer_index
     answer.is_correct = is_correct
     answer.is_skipped = is_skipped
     answer.duration_ms = duration_ms

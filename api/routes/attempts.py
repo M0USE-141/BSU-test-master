@@ -37,6 +37,7 @@ class RecordAnswerRequest(BaseModel):
     clientId: str = Field(..., min_length=1)
     questionId: int
     answerIndex: int | None = None
+    canonicalAnswerIndex: int | None = None
     isCorrect: bool | None = None
     durationMs: int = 0
     isSkipped: bool = False
@@ -120,15 +121,20 @@ def record_attempt_answer(
             attempt_id=attempt_id,
             question_id=payload.questionId,
             answer_index=payload.answerIndex,
+            canonical_answer_index=payload.canonicalAnswerIndex,
             is_correct=payload.isCorrect,
             duration_ms=payload.durationMs,
         )
+
+    # Security: hide isCorrect when show_answers is off — prevents probing all options
+    show_answers = attempt.settings.get("showAnswersImmediately", True)
+    is_correct_response = answer.is_correct if show_answers else None
 
     return {
         "status": "recorded",
         "attemptId": attempt_id,
         "questionId": answer.question_id,
-        "isCorrect": answer.is_correct,
+        "isCorrect": is_correct_response,
     }
 
 
