@@ -325,39 +325,7 @@ select {
   font-size: 0.9rem;
 }
 
-/* Test Collection Tabs */
-.test-tabs {
-  display: flex;
-  gap: 0.25rem;
-  margin-bottom: 1rem;
-  padding: 0.25rem;
-  background: var(--card-muted);
-  border-radius: 10px;
-  overflow-x: auto;
-}
-
-.test-tab {
-  padding: 0.5rem 1rem;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 0.9rem;
-  font-weight: 500;
-  border-radius: 8px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.2s ease, color 0.2s ease;
-}
-
-.test-tab:hover {
-  background: var(--card);
-  color: var(--text);
-}
-
-.test-tab.is-active {
-  background: var(--primary);
-  color: white;
-}
+/* Test Collection Tabs — legacy removed; now uses .pill-tabs from design-system.css */
 
 /* Access Legend */
 .access-legend {
