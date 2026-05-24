@@ -314,6 +314,7 @@ def get_weak_questions(
             QuestionPerformance.test_id == test_id,
             QuestionPerformance.user_id == user_id,
             QuestionPerformance.total_count > 0,
+            QuestionPerformance.correct_count * 1.0 / QuestionPerformance.total_count < threshold,
         )
         .order_by(
             (QuestionPerformance.correct_count * 1.0 / QuestionPerformance.total_count).asc()
@@ -323,15 +324,14 @@ def get_weak_questions(
 
     result = []
     for row in rows:
-        rate = row.correct_count / row.total_count if row.total_count > 0 else 0.0
-        if rate < threshold:
-            result.append({
-                "questionId": row.question_id,
-                "correctCount": row.correct_count,
-                "totalCount": row.total_count,
-                "accuracyRate": round(rate * 100, 1),
-                "avgDurationMs": row.total_duration_ms // row.total_count if row.total_count else 0,
-            })
+        rate = row.correct_count / row.total_count
+        result.append({
+            "questionId": row.question_id,
+            "correctCount": row.correct_count,
+            "totalCount": row.total_count,
+            "accuracyRate": round(rate * 100, 1),
+            "avgDurationMs": row.total_duration_ms // row.total_count,
+        })
     return result
 
 
