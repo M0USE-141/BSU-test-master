@@ -507,28 +507,32 @@
               <div style="display:flex;align-items:center;justify-content:space-between;">
                 <span style="font-size:0.875rem;" data-i18n="randomQuestionsLabel">Перемешать вопросы</span>
                 <button id="pretest-random-questions" type="button" data-checked="false"
-                  class="toggle-switch" aria-pressed="false">
+                  class="toggle-switch" aria-pressed="false"
+                  data-i18n-aria-label="randomQuestionsLabel">
                   <span class="toggle-switch__thumb"></span>
                 </button>
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between;">
                 <span style="font-size:0.875rem;" data-i18n="randomOptionsLabel">Перемешать варианты</span>
                 <button id="pretest-random-options" type="button" data-checked="false"
-                  class="toggle-switch" aria-pressed="false">
+                  class="toggle-switch" aria-pressed="false"
+                  data-i18n-aria-label="randomOptionsLabel">
                   <span class="toggle-switch__thumb"></span>
                 </button>
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between;">
                 <span style="font-size:0.875rem;" data-i18n="onlyUnansweredLabel">Только непройденные</span>
                 <button id="pretest-only-unanswered" type="button" data-checked="false"
-                  class="toggle-switch" aria-pressed="false">
+                  class="toggle-switch" aria-pressed="false"
+                  data-i18n-aria-label="onlyUnansweredLabel">
                   <span class="toggle-switch__thumb"></span>
                 </button>
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between;">
                 <span style="font-size:0.875rem;" data-i18n="showAnswersLabel">Показывать ответы</span>
                 <button id="pretest-show-answers" type="button" data-checked="true"
-                  class="toggle-switch is-on" aria-pressed="true">
+                  class="toggle-switch is-on" aria-pressed="true"
+                  data-i18n-aria-label="showAnswersLabel">
                   <span class="toggle-switch__thumb"></span>
                 </button>
               </div>
@@ -583,11 +587,11 @@
               <!-- Legend -->
               <div style="display:flex;gap:0.75rem;font-size:0.7rem;color:var(--muted);">
                 <span style="display:flex;align-items:center;gap:3px;">
-                  <span style="width:8px;height:8px;background:#059669;border-radius:2px;display:inline-block;"></span>
+                  <span style="width:8px;height:8px;background:var(--primary,#059669);border-radius:2px;display:inline-block;"></span>
                   <span data-i18n="legendCorrect">верно</span>
                 </span>
                 <span style="display:flex;align-items:center;gap:3px;">
-                  <span style="width:8px;height:8px;background:#fecaca;border-radius:2px;display:inline-block;"></span>
+                  <span style="width:8px;height:8px;background:#ef4444;border-radius:2px;display:inline-block;"></span>
                   <span data-i18n="legendWrong">неверно</span>
                 </span>
               </div>
@@ -663,7 +667,9 @@
               <!-- First ~8 colored squares -->
             </div>
             <button id="mobile-strip-chevron" type="button"
-              style="padding:4px;color:var(--muted);background:none;border:none;cursor:pointer;">
+              style="padding:4px;color:var(--muted);background:none;border:none;cursor:pointer;"
+              data-i18n-aria-label="openBottomSheetLabel"
+              aria-label="Открыть навигацию">
               <svg style="width:20px;height:20px;" aria-hidden="true">
                 <use href="/static/icons.svg#chevron-up"/>
               </svg>
