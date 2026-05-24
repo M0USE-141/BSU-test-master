@@ -6,6 +6,7 @@
 import { fetchTests } from "./api.js";
 import { defaultLocale } from "./i18n.js";
 import { renderAuthScreen, renderManagementScreen } from "./rendering.js";
+// rendering.js is on the critical path (renderAuthScreen needed for unauthenticated users);
 import { initTelemetry } from "./telemetry.js";
 import { dom, state } from "./state.js";
 
@@ -13,32 +14,52 @@ import { dom, state } from "./state.js";
 import { applyLocale, getStoredLocale } from "./utils/locale.js";
 import { setupThemeToggle, getStoredTheme, applyThemePreference } from "./utils/theme.js";
 
-// Import screen modules
-import {
-  initializeManagementScreenEvents,
-  renderTestCardsWithHandlers,
-  selectTest,
-} from "./screens/management.js";
-import {
-  initializeTestingScreenEvents,
-  setActiveTestingPanel,
-  updateTestingPanelsStatus,
-} from "./screens/testing.js";
-import { initializeStatsScreenEvents } from "./screens/statistics.js";
+// Auth screen is critical path — keep static
 import {
   initializeAuthScreenEvents,
   checkAuthOnLoad,
   updateUserDisplay,
 } from "./screens/auth.js";
+
+// Header dropdown component
 import {
-  initializeProfileScreenEvents,
-  navigateToProfile,
-} from "./screens/profile.js";
+  initHeaderDropdown,
+  updateDropdownUser,
+  showHeaderNav,
+  hideHeaderNav,
+  updateNavLinks,
+} from "./components/header-dropdown.js";
 
 /**
  * Load app content after successful auth.
+ * All screen modules (management, testing, stats, profile) are lazy-loaded here
+ * so unauthenticated users on the auth screen don't pay for them.
  */
 async function loadAppContent() {
+  // Lazy-load all post-auth screen modules in parallel
+  const [
+    { initializeManagementScreenEvents, renderTestCardsWithHandlers, selectTest },
+    { initializeTestingScreenEvents, setActiveTestingPanel, updateTestingPanelsStatus },
+    { initializeStatsScreenEvents },
+    { initializeProfileScreenEvents, navigateToProfile },
+  ] = await Promise.all([
+    import("./screens/management.js"),
+    import("./screens/testing.js"),
+    import("./screens/statistics.js"),
+    import("./screens/profile.js"),
+  ]);
+
+  // Wire up profile navigation (was previously in initialize())
+  dom.profileButton?.removeEventListener("click", window._profileClickHandler);
+  window._profileClickHandler = () => navigateToProfile();
+  dom.profileButton?.addEventListener("click", window._profileClickHandler);
+
+  // Initialize screen event listeners
+  initializeManagementScreenEvents();
+  initializeTestingScreenEvents();
+  initializeStatsScreenEvents();
+  initializeProfileScreenEvents();
+
   // Render management screen
   renderManagementScreen();
   updateTestingPanelsStatus();
@@ -89,19 +110,13 @@ async function initialize() {
   // Initialize telemetry
   initTelemetry();
 
-  // Initialize screen event listeners
+  // Initialize header dropdown (avatar chip, nav links, language switcher)
+  initHeaderDropdown();
+
+  // Initialize auth screen events (critical path — always needed)
   console.log("[App] Initializing auth screen events...");
   initializeAuthScreenEvents();
-  initializeManagementScreenEvents();
-  initializeTestingScreenEvents();
-  initializeStatsScreenEvents();
-  initializeProfileScreenEvents();
   console.log("[App] Screen events initialized");
-
-  // Profile button handler
-  dom.profileButton?.addEventListener("click", () => {
-    navigateToProfile();
-  });
 
   // Listen for profile updates to refresh user display
   window.addEventListener("profileUpdated", (event) => {
@@ -122,6 +137,11 @@ async function initialize() {
     applyLocale(event.target.value, state, dom);
   });
 
+  // Hide header nav on logout (proxy the hidden legacy logout button)
+  dom.logoutButton?.addEventListener("click", () => {
+    hideHeaderNav();
+  });
+
   // Check authentication status
   console.log("[App] Checking auth...");
   try {
@@ -132,6 +152,8 @@ async function initialize() {
       // User is authenticated, load app content
       state.currentUser = user;
       updateUserDisplay(user);
+      updateDropdownUser(user);
+      showHeaderNav();
       await loadAppContent();
     } else {
       // User is not authenticated, show auth screen
@@ -152,6 +174,8 @@ async function initialize() {
  */
 window.onAuthSuccess = async function (user) {
   state.currentUser = user;
+  updateDropdownUser(user);
+  showHeaderNav();
   await loadAppContent();
 };
 

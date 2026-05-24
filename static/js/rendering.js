@@ -25,8 +25,49 @@ let mathJaxScheduled = false;
 let lastQuestionNavSession = null;
 let questionNavRenderToken = 0;
 
+// ── Lazy-load helpers ────────────────────────────────────────────────────────
+let _mathJaxPromise = null;
+function ensureMathJax() {
+  if (_mathJaxPromise) return _mathJaxPromise;
+  if (window.MathJax?.typesetPromise) {
+    _mathJaxPromise = Promise.resolve();
+    return _mathJaxPromise;
+  }
+  _mathJaxPromise = new Promise((resolve) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js";
+    s.async = true;
+    s.onload = resolve;
+    s.onerror = resolve; // degrade gracefully — math won't render but page won't break
+    document.head.appendChild(s);
+  });
+  return _mathJaxPromise;
+}
+
+let _chartJsPromise = null;
+export function ensureChartJs() {
+  if (_chartJsPromise) return _chartJsPromise;
+  if (window.Chart) {
+    _chartJsPromise = Promise.resolve();
+    return _chartJsPromise;
+  }
+  _chartJsPromise = new Promise((resolve) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js";
+    s.async = true;
+    s.onload = resolve;
+    s.onerror = () => { _chartJsPromise = null; resolve(); }; // allow retry on next call
+    document.head.appendChild(s);
+  });
+  return _chartJsPromise;
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 function queueMathJaxTypeset(container) {
-  if (!container || !window.MathJax?.typesetPromise) {
+  if (!container) return;
+  // Trigger lazy-load of MathJax the first time a formula needs rendering
+  if (!window.MathJax?.typesetPromise) {
+    ensureMathJax().then(() => queueMathJaxTypeset(container));
     return;
   }
   mathJaxQueue.add(container);
@@ -278,6 +319,8 @@ export function setActiveScreen(screen) {
     return;
   }
   state.uiState.activeScreen = screen;
+  // Update nav link active states in header
+  import("./components/header-dropdown.js").then((m) => m.updateNavLinks(screen));
   if (screen === "auth") {
     renderAuthScreen();
   } else if (screen === "testing") {
@@ -1509,6 +1552,7 @@ function renderStatsCharts(selectedAttempt) {
     return;
   }
   if (!window.Chart) {
+    ensureChartJs().then(() => renderStatsCharts(selectedAttempt));
     return;
   }
 
@@ -1620,6 +1664,10 @@ export function renderStatsView() {
  */
 function renderAggregateCharts(attempts) {
   if (!dom.statsChartAttempts || !dom.statsChartTime) return;
+  if (!window.Chart) {
+    ensureChartJs().then(() => renderAggregateCharts(attempts));
+    return;
+  }
 
   if (!attempts.length) {
     statsAttemptsChart?.destroy();

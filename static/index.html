@@ -3,485 +3,595 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title data-i18n="pageTitle">Word Test Extractor — Web UI</title>
+    <title data-i18n="pageTitle">TestMaster</title>
+
+    <!-- Existing CSS — keeps component logic, modal behaviour, editor styles -->
     <link rel="stylesheet" href="/static/css/base.css" />
     <link rel="stylesheet" href="/static/css/layout.css" />
     <link rel="stylesheet" href="/static/css/components.css" />
     <link rel="stylesheet" href="/static/css/editor.css" />
     <link rel="stylesheet" href="/static/css/theme.css" />
-    <script
-      src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
-      defer
-    ></script>
-    <script
-      src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
-      defer
-    ></script>
+
+    <!-- Tailwind CDN v3 (Play CDN — no build step) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: ["selector", "[data-theme=\"dark\"]"],
+        corePlugins: { preflight: false },
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["system-ui", "-apple-system", "Segoe UI", "Roboto", "Arial", "sans-serif"],
+            },
+          },
+        },
+      };
+    </script>
+
+    <!-- Small CSS bridge: header layout + theme-icon switching + screen base -->
+    <style>
+      /* Fixed header reset — overrides old .app-header gradient */
+      .app-header-new {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        z-index: 50;
+        height: 56px;
+        display: flex;
+        align-items: center;
+        background: rgba(255,255,255,0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid #e5e7eb;
+      }
+      :root[data-theme="dark"] .app-header-new {
+        background: rgba(3,7,18,0.92);
+        border-bottom-color: #1f2937;
+      }
+      .app-header-new__inner {
+        max-width: 1280px;
+        margin: 0 auto;
+        width: 100%;
+        padding: 0 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      /* Theme-icon toggling via data-theme */
+      :root:not([data-theme="dark"]) .theme-icon-moon { display: none; }
+      :root[data-theme="dark"] .theme-icon-sun { display: none; }
+      /* Override min-height on small header controls */
+      .hdr-btn {
+        min-height: 36px !important;
+        padding: 0.35rem 0.75rem !important;
+        font-size: 0.85rem !important;
+        border-radius: 8px !important;
+      }
+      .hdr-icon-btn {
+        min-height: 0 !important;
+        min-width: 0 !important;
+        padding: 0 !important;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent !important;
+        border: none !important;
+        border-radius: 8px;
+        color: #6b7280;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .hdr-icon-btn:hover {
+        background: #f3f4f6 !important;
+      }
+      :root[data-theme="dark"] .hdr-icon-btn { color: #9ca3af; }
+      :root[data-theme="dark"] .hdr-icon-btn:hover { background: #1f2937 !important; }
+      /* Lang select in header */
+      .hdr-select {
+        font-size: 0.85rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 0.35rem 0.5rem;
+        background: white;
+        color: #374151;
+        cursor: pointer;
+        appearance: none;
+      }
+      :root[data-theme="dark"] .hdr-select {
+        background: #111827;
+        border-color: #374151;
+        color: #d1d5db;
+      }
+      /* Push page content below the fixed 56px header */
+      body { padding-top: 56px; }
+      /* Screen base: override layout.css display:grid → block.
+         No !important here so .is-hidden { display:none !important } still wins. */
+      .app-screen {
+        display: block;
+      }
+      /* Auth screen layout — flex centering WITHOUT !important so is-hidden still hides it */
+      #screen-auth {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: calc(100vh - 56px);
+        padding: 1.5rem;
+      }
+      /* Auth tabs redesign */
+      .auth-tab {
+        flex: 1;
+        padding: 0.65rem 0;
+        background: transparent !important;
+        border: none !important;
+        border-bottom: 2px solid transparent;
+        border-radius: 0 !important;
+        color: #6b7280;
+        font-weight: 600;
+        font-size: 0.9rem;
+        min-height: 0 !important;
+        cursor: pointer;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      .auth-tab:hover { background: transparent !important; color: #111827; }
+      :root[data-theme="dark"] .auth-tab:hover { color: #f9fafb; }
+      .auth-tab.is-active {
+        color: var(--primary) !important;
+        border-bottom-color: var(--primary) !important;
+        background: transparent !important;
+      }
+      /* Test tabs — pill style */
+      .test-tab.is-active {
+        background: white !important;
+        color: var(--primary) !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      }
+      :root[data-theme="dark"] .test-tab.is-active {
+        background: #1f2937 !important;
+      }
+      .test-tab {
+        background: transparent !important;
+        color: #6b7280 !important;
+        border-radius: 8px !important;
+        padding: 0.4rem 1rem !important;
+        font-size: 0.85rem !important;
+        font-weight: 500 !important;
+        min-height: 0 !important;
+        border: none !important;
+        transition: background 0.15s, color 0.15s;
+      }
+      .test-tab:hover { color: #111827 !important; background: rgba(255,255,255,0.6) !important; }
+      :root[data-theme="dark"] .test-tab:hover { color: #f9fafb !important; }
+      /* Stats view tabs */
+      .stats-view-tab {
+        background: transparent !important;
+        color: #6b7280 !important;
+        border-radius: 8px !important;
+        padding: 0.4rem 1rem !important;
+        font-size: 0.85rem !important;
+        min-height: 0 !important;
+        border: none !important;
+        font-weight: 500 !important;
+        flex: 1;
+      }
+      .stats-view-tab.is-active {
+        background: white !important;
+        color: var(--primary) !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      }
+      :root[data-theme="dark"] .stats-view-tab.is-active { background: #1f2937 !important; }
+      /* Profile avatar: ensure only one shows */
+      #profile-avatar-image:not(.is-hidden) ~ #profile-avatar-placeholder { display: none; }
+      /* User chip flex */
+      #user-chip:not(.is-hidden) { display: flex; }
+    </style>
+
+    <!-- modulepreload — reduces waterfall on first load -->
+    <link rel="modulepreload" href="/static/js/app.js" />
+    <link rel="modulepreload" href="/static/js/state.js" />
+    <link rel="modulepreload" href="/static/js/i18n.js" />
+    <link rel="modulepreload" href="/static/js/rendering.js" />
+
+    <!-- MathJax + Chart.js loaded on demand — see ensureMathJax()/ensureChartJs() in rendering.js -->
+
     <script type="module" src="/static/js/app.js"></script>
   </head>
-  <body>
-    <header class="app-header">
-      <div class="app-header__content">
-        <div>
-          <h1 data-i18n="headerTitle">Web-интерфейс тестирования</h1>
-          <p>
-            <span data-i18n="headerSubtitle">
-              Импортируйте тест, настройте параметры и проходите вопросы прямо в
-              браузере.
-            </span>
-          </p>
+
+  <body class="antialiased">
+
+    <!-- ═══════════════════════════════════════════════════════════
+         HEADER — fixed minimal bar (Linear/Vercel style)
+         ═══════════════════════════════════════════════════════════ -->
+    <header class="app-header-new">
+      <div class="app-header-new__inner">
+
+        <!-- Logo -->
+        <div class="flex items-center gap-1.5 font-bold text-emerald-600 text-[15px] shrink-0 select-none">
+          <svg class="w-5 h-5 shrink-0" aria-hidden="true"><use href="/static/icons.svg#home"/></svg>
+          <span>TestMaster</span>
         </div>
-        <div class="app-header__controls">
-          <div class="user-controls">
-            <div id="user-chip" class="user-chip is-hidden">
-              <div class="user-avatar" aria-hidden="true">
-                <img
-                  id="user-avatar-image"
-                  src=""
-                  alt=""
-                  class="user-avatar__image is-hidden"
-                />
-                <span id="user-avatar-initials"></span>
-              </div>
-              <span id="user-display" class="user-display"></span>
+
+        <!-- Nav links (hidden until logged in via JS adding .is-hidden removal) -->
+        <nav class="hidden sm:flex items-center gap-1 ml-4 is-hidden" id="header-nav">
+          <a id="nav-tests-link" href="#" role="button"
+            class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors
+                   text-gray-600 dark:text-gray-300 hover:text-emerald-600
+                   data-[active=true]:text-emerald-600 data-[active=true]:border-b-2 data-[active=true]:border-emerald-500"
+            data-i18n="navTests">Тесты</a>
+          <a id="nav-stats-link" href="#" role="button"
+            class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors
+                   text-gray-600 dark:text-gray-300 hover:text-emerald-600
+                   data-[active=true]:text-emerald-600 data-[active=true]:border-b-2 data-[active=true]:border-emerald-500"
+            data-i18n="navStats">Статистика</a>
+        </nav>
+
+        <div class="flex-1"></div>
+
+        <!-- Theme toggle -->
+        <button id="theme-toggle" type="button"
+          aria-label="Переключить тёмную тему" data-i18n-aria-label="themeToggleLabel"
+          class="hdr-icon-btn">
+          <svg class="w-5 h-5 theme-icon-sun" aria-hidden="true"><use href="/static/icons.svg#sun"/></svg>
+          <svg class="w-5 h-5 theme-icon-moon" aria-hidden="true"><use href="/static/icons.svg#moon"/></svg>
+        </button>
+
+        <!-- Avatar chip with dropdown (shown when logged in) -->
+        <div class="relative is-hidden" id="user-chip">
+          <button type="button" id="avatar-chip-btn"
+            class="flex items-center gap-2 px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700
+                   text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800
+                   cursor-pointer select-none transition-colors">
+            <div class="relative shrink-0 w-7 h-7">
+              <img id="user-avatar-image" src="" alt=""
+                class="is-hidden absolute inset-0 w-7 h-7 rounded-full object-cover" />
+              <span id="user-avatar-initials"
+                class="flex w-7 h-7 rounded-full bg-emerald-600 text-white text-[11px] font-bold
+                       items-center justify-center leading-none"></span>
             </div>
-            <button id="profile-button" type="button" class="ghost is-hidden" data-i18n="profileButton">
-              Профиль
+            <span id="user-display" class="font-medium hidden sm:block max-w-[120px] truncate"></span>
+            <svg class="w-4 h-4 text-gray-400 shrink-0" aria-hidden="true"><use href="/static/icons.svg#chevron-down"/></svg>
+          </button>
+
+          <!-- Dropdown -->
+          <div id="avatar-dropdown"
+            class="is-hidden absolute right-0 top-full mt-1.5 w-56 rounded-xl border border-gray-200
+                   dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg z-50 py-1.5">
+            <div class="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+              <p id="dropdown-user-name" class="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate"></p>
+              <p id="dropdown-user-email" class="text-xs text-gray-500 dark:text-gray-400 truncate"></p>
+            </div>
+            <div class="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1.5" data-i18n="languageLabel">Язык</p>
+              <div class="flex gap-1">
+                <button id="dropdown-lang-ru" type="button" data-active="true"
+                  class="flex-1 py-1 text-xs font-semibold rounded-md border border-gray-200
+                         dark:border-gray-700 data-[active=true]:bg-emerald-600 data-[active=true]:text-white
+                         data-[active=true]:border-emerald-600 transition-colors">RU</button>
+                <button id="dropdown-lang-en" type="button" data-active="false"
+                  class="flex-1 py-1 text-xs font-semibold rounded-md border border-gray-200
+                         dark:border-gray-700 data-[active=true]:bg-emerald-600 data-[active=true]:text-white
+                         data-[active=true]:border-emerald-600 transition-colors">EN</button>
+                <button id="dropdown-lang-uz" type="button" data-active="false"
+                  class="flex-1 py-1 text-xs font-semibold rounded-md border border-gray-200
+                         dark:border-gray-700 data-[active=true]:bg-emerald-600 data-[active=true]:text-white
+                         data-[active=true]:border-emerald-600 transition-colors">UZ</button>
+              </div>
+            </div>
+            <button id="dropdown-profile-link" type="button"
+              class="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700
+                     dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+              <svg class="w-4 h-4 shrink-0" aria-hidden="true"><use href="/static/icons.svg#user-circle"/></svg>
+              <span data-i18n="profileButton">Профиль</span>
             </button>
-            <button id="logout-button" type="button" class="ghost is-hidden" data-i18n="logoutButton">
-              Выйти
+            <div class="my-1 border-t border-gray-100 dark:border-gray-800"></div>
+            <button id="dropdown-logout-link" type="button"
+              class="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600
+                     hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
+              <svg class="w-4 h-4 shrink-0" aria-hidden="true"><use href="/static/icons.svg#arrow-right-start-on-rectangle"/></svg>
+              <span data-i18n="logoutButton">Выйти</span>
             </button>
           </div>
-          <div class="language-select">
-            <label for="lang-select" data-i18n="languageLabel">Язык</label>
-            <select id="lang-select">
-              <option value="ru" data-i18n="languageRu">🇷🇺 Русский</option>
-              <option value="en" data-i18n="languageEn">🇬🇧 English</option>
-              <option value="uz" data-i18n="languageUz">🇺🇿 O'zbek</option>
-            </select>
-          </div>
-          <label class="theme-toggle" for="theme-toggle">
-            <span class="theme-toggle__label">🌞 / 🌙</span>
-            <input
-              id="theme-toggle"
-              class="theme-toggle__input"
-              type="checkbox"
-              role="switch"
-              aria-label="Переключить тёмную тему"
-              data-i18n-aria-label="themeToggleLabel"
-            />
-            <span class="theme-toggle__slider" aria-hidden="true"></span>
-          </label>
         </div>
+
+        <!-- Hidden legacy elements: keep IDs so existing JS refs don't throw -->
+        <button id="profile-button" type="button" class="is-hidden" style="display:none!important" aria-hidden="true"></button>
+        <button id="logout-button" type="button" class="is-hidden" style="display:none!important" aria-hidden="true"></button>
+        <select id="lang-select" class="is-hidden" style="display:none!important" aria-hidden="true">
+          <option value="ru">RU</option>
+          <option value="en">EN</option>
+          <option value="uz">UZ</option>
+        </select>
+
       </div>
     </header>
 
-    <main class="app">
+    <!-- ═══════════════════════════════════════════════════════════
+         MAIN — offset for fixed header
+         ═══════════════════════════════════════════════════════════ -->
+    <main style="min-height:100vh;">
+
+      <!-- ─── AUTH SCREEN ──────────────────────────────────────── -->
       <section id="screen-auth" class="app-screen is-active">
-        <div class="auth-container">
-          <div class="auth-card card">
-            <div class="auth-header">
-              <h2 data-i18n="authTitle">Авторизация</h2>
-              <p class="muted" data-i18n="authSubtitle">
-                Войдите в систему или создайте новый аккаунт
-              </p>
+
+        <div style="width:100%; max-width:440px;">
+
+          <!-- Brand mark -->
+          <div class="text-center" style="margin-bottom:2rem;">
+            <div style="width:52px;height:52px;background:var(--primary);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;box-shadow:0 8px 24px rgba(5,150,105,0.3);">
+              <svg style="width:28px;height:28px;color:white;" aria-hidden="true"><use href="/static/icons.svg#home"/></svg>
             </div>
-            <div class="auth-tabs">
-              <button id="auth-login-tab" type="button" class="auth-tab is-active" data-i18n="loginTab">
-                Вход
-              </button>
-              <button id="auth-register-tab" type="button" class="auth-tab" data-i18n="registerTab">
-                Регистрация
-              </button>
+            <h2 style="margin:0;font-size:1.5rem;font-weight:700;" data-i18n="authTitle">Авторизация</h2>
+            <p class="muted" style="margin:0.4rem 0 0;" data-i18n="authSubtitle">Войдите в систему или создайте новый аккаунт</p>
+          </div>
+
+          <div class="card">
+            <!-- Tab switcher -->
+            <div class="auth-tabs" style="display:flex;border-bottom:1px solid var(--border);margin:-0.25rem -0.25rem 1.25rem;">
+              <button id="auth-login-tab" type="button" class="auth-tab is-active" data-i18n="loginTab">Вход</button>
+              <button id="auth-register-tab" type="button" class="auth-tab" data-i18n="registerTab">Регистрация</button>
             </div>
-            <div id="auth-status" class="auth-status is-hidden"></div>
-            <form id="auth-login-form" class="auth-form">
-              <label class="auth-field">
-                <span data-i18n="usernameLabel">Имя пользователя</span>
-                <input
-                  id="auth-login-username"
-                  type="text"
-                  placeholder="Введите имя пользователя"
-                  data-i18n-placeholder="usernamePlaceholder"
+
+            <!-- Status banner -->
+            <div id="auth-status" class="auth-status is-hidden" style="margin-bottom:1rem;padding:0.6rem 0.85rem;border-radius:10px;font-size:0.875rem;font-weight:500;"></div>
+
+            <!-- Login form -->
+            <form id="auth-login-form" class="auth-form" style="display:flex;flex-direction:column;gap:1rem;">
+              <label class="auth-field" style="display:flex;flex-direction:column;gap:0.4rem;">
+                <span style="font-size:0.875rem;font-weight:600;" data-i18n="usernameLabel">Имя пользователя</span>
+                <input id="auth-login-username" type="text"
+                  placeholder="Введите имя пользователя" data-i18n-placeholder="usernamePlaceholder"
                   required
-                />
+                  style="padding:0.6rem 0.85rem;border-radius:10px;border:1px solid var(--border);background:var(--card-muted);color:var(--text);font-size:0.9rem;outline:none;transition:border-color 0.15s,box-shadow 0.15s;"
+                  onfocus="this.style.borderColor='var(--primary)';this.style.boxShadow='0 0 0 3px var(--primary-soft)'"
+                  onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'" />
               </label>
-              <label class="auth-field">
-                <span data-i18n="passwordLabel">Пароль</span>
-                <input
-                  id="auth-login-password"
-                  type="password"
-                  placeholder="Введите пароль"
-                  data-i18n-placeholder="passwordPlaceholder"
+              <label class="auth-field" style="display:flex;flex-direction:column;gap:0.4rem;">
+                <span style="font-size:0.875rem;font-weight:600;" data-i18n="passwordLabel">Пароль</span>
+                <input id="auth-login-password" type="password"
+                  placeholder="Введите пароль" data-i18n-placeholder="passwordPlaceholder"
                   required
-                />
+                  style="padding:0.6rem 0.85rem;border-radius:10px;border:1px solid var(--border);background:var(--card-muted);color:var(--text);font-size:0.9rem;outline:none;transition:border-color 0.15s,box-shadow 0.15s;"
+                  onfocus="this.style.borderColor='var(--primary)';this.style.boxShadow='0 0 0 3px var(--primary-soft)'"
+                  onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'" />
               </label>
-              <button id="auth-login-button" type="submit" class="primary" data-i18n="loginButton">
-                Войти
-              </button>
+              <button id="auth-login-button" type="submit" class="primary" data-i18n="loginButton">Войти</button>
             </form>
-            <form id="auth-register-form" class="auth-form is-hidden">
-              <label class="auth-field">
-                <span data-i18n="usernameLabel">Имя пользователя</span>
-                <input
-                  id="auth-register-username"
-                  type="text"
-                  placeholder="Введите имя пользователя"
-                  data-i18n-placeholder="usernamePlaceholder"
-                  required
-                  minlength="3"
-                  maxlength="50"
-                />
+
+            <!-- Register form -->
+            <form id="auth-register-form" class="auth-form is-hidden" style="display:flex;flex-direction:column;gap:1rem;">
+              <label class="auth-field" style="display:flex;flex-direction:column;gap:0.4rem;">
+                <span style="font-size:0.875rem;font-weight:600;" data-i18n="usernameLabel">Имя пользователя</span>
+                <input id="auth-register-username" type="text"
+                  placeholder="Введите имя пользователя" data-i18n-placeholder="usernamePlaceholder"
+                  required minlength="3" maxlength="50"
+                  style="padding:0.6rem 0.85rem;border-radius:10px;border:1px solid var(--border);background:var(--card-muted);color:var(--text);font-size:0.9rem;outline:none;transition:border-color 0.15s,box-shadow 0.15s;"
+                  onfocus="this.style.borderColor='var(--primary)';this.style.boxShadow='0 0 0 3px var(--primary-soft)'"
+                  onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'" />
               </label>
-              <label class="auth-field">
-                <span data-i18n="emailLabel">Email</span>
-                <input
-                  id="auth-register-email"
-                  type="email"
-                  placeholder="Введите email"
-                  data-i18n-placeholder="emailPlaceholder"
+              <label class="auth-field" style="display:flex;flex-direction:column;gap:0.4rem;">
+                <span style="font-size:0.875rem;font-weight:600;" data-i18n="emailLabel">Email</span>
+                <input id="auth-register-email" type="email"
+                  placeholder="Введите email" data-i18n-placeholder="emailPlaceholder"
                   required
-                />
+                  style="padding:0.6rem 0.85rem;border-radius:10px;border:1px solid var(--border);background:var(--card-muted);color:var(--text);font-size:0.9rem;outline:none;transition:border-color 0.15s,box-shadow 0.15s;"
+                  onfocus="this.style.borderColor='var(--primary)';this.style.boxShadow='0 0 0 3px var(--primary-soft)'"
+                  onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'" />
               </label>
-              <label class="auth-field">
-                <span data-i18n="passwordLabel">Пароль</span>
-                <input
-                  id="auth-register-password"
-                  type="password"
-                  placeholder="Введите пароль"
-                  data-i18n-placeholder="passwordPlaceholder"
+              <label class="auth-field" style="display:flex;flex-direction:column;gap:0.4rem;">
+                <span style="font-size:0.875rem;font-weight:600;" data-i18n="passwordLabel">Пароль</span>
+                <input id="auth-register-password" type="password"
+                  placeholder="Введите пароль" data-i18n-placeholder="passwordPlaceholder"
+                  required minlength="6" maxlength="100"
+                  style="padding:0.6rem 0.85rem;border-radius:10px;border:1px solid var(--border);background:var(--card-muted);color:var(--text);font-size:0.9rem;outline:none;transition:border-color 0.15s,box-shadow 0.15s;"
+                  onfocus="this.style.borderColor='var(--primary)';this.style.boxShadow='0 0 0 3px var(--primary-soft)'"
+                  onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'" />
+              </label>
+              <label class="auth-field" style="display:flex;flex-direction:column;gap:0.4rem;">
+                <span style="font-size:0.875rem;font-weight:600;" data-i18n="confirmPasswordLabel">Подтвердите пароль</span>
+                <input id="auth-register-confirm-password" type="password"
+                  placeholder="Введите пароль ещё раз" data-i18n-placeholder="confirmPasswordPlaceholder"
                   required
-                  minlength="6"
-                  maxlength="100"
-                />
+                  style="padding:0.6rem 0.85rem;border-radius:10px;border:1px solid var(--border);background:var(--card-muted);color:var(--text);font-size:0.9rem;outline:none;transition:border-color 0.15s,box-shadow 0.15s;"
+                  onfocus="this.style.borderColor='var(--primary)';this.style.boxShadow='0 0 0 3px var(--primary-soft)'"
+                  onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'" />
               </label>
-              <label class="auth-field">
-                <span data-i18n="confirmPasswordLabel">Подтвердите пароль</span>
-                <input
-                  id="auth-register-confirm-password"
-                  type="password"
-                  placeholder="Введите пароль ещё раз"
-                  data-i18n-placeholder="confirmPasswordPlaceholder"
-                  required
-                />
-              </label>
-              <button id="auth-register-button" type="submit" class="primary" data-i18n="registerButton">
-                Зарегистрироваться
-              </button>
+              <button id="auth-register-button" type="submit" class="primary" data-i18n="registerButton">Зарегистрироваться</button>
             </form>
           </div>
         </div>
       </section>
 
+      <!-- ─── MANAGEMENT SCREEN ─────────────────────────────────── -->
       <section id="screen-management" class="app-screen is-hidden">
-        <section class="panel panel--management">
-          <div class="card card--collections">
-            <h2 data-i18n="collectionsTitle">Коллекции тестов</h2>
-            <div class="test-tabs" id="test-tabs">
-              <button type="button" class="test-tab is-active" data-filter="" data-i18n="tabAllTests">Все</button>
-              <button type="button" class="test-tab" data-filter="my" data-i18n="tabMyTests">Мои</button>
-              <button type="button" class="test-tab" data-filter="shared" data-i18n="tabSharedTests">Доступные</button>
-              <button type="button" class="test-tab" data-filter="public" data-i18n="tabPublicTests">Публичные</button>
-            </div>
-            <div class="access-legend">
-              <span class="access-legend__item" title="">
-                <span class="access-legend__icon">🔒</span>
+        <div style="max-width:1280px;margin:0 auto;padding:2rem 1.25rem 3rem;">
+
+          <!-- Page header row -->
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1.25rem;flex-wrap:wrap;">
+            <h2 style="margin:0;font-size:1.25rem;font-weight:700;" data-i18n="collectionsTitle">Коллекции тестов</h2>
+            <!-- Access legend with Heroicons -->
+            <div class="access-legend" style="font-size:0.8rem;">
+              <span class="access-legend__item">
+                <svg class="access-legend__icon" style="width:14px;height:14px;" aria-hidden="true"><use href="/static/icons.svg#lock-closed"/></svg>
                 <span class="access-legend__label" data-i18n="accessPrivate">Приватный</span>
               </span>
               <span class="access-legend__item">
-                <span class="access-legend__icon">👥</span>
+                <svg class="access-legend__icon" style="width:14px;height:14px;" aria-hidden="true"><use href="/static/icons.svg#users"/></svg>
                 <span class="access-legend__label" data-i18n="accessShared">Доступен избранным</span>
               </span>
               <span class="access-legend__item">
-                <span class="access-legend__icon">🌐</span>
+                <svg class="access-legend__icon" style="width:14px;height:14px;" aria-hidden="true"><use href="/static/icons.svg#globe-alt"/></svg>
                 <span class="access-legend__label" data-i18n="accessPublic">Публичный</span>
               </span>
             </div>
-            <div class="controls">
-              <div id="test-cards" class="test-collections">
-                <button type="button" class="test-card test-card--new">
-                  <strong data-i18n="newCollectionTitle">Новая коллекция</strong>
-                  <span class="muted"
-                    data-i18n="newCollectionHint"
-                    >Создайте пустой тест и заполните его вручную.</span
-                  >
-                </button>
-                <button type="button" class="test-card test-card--import">
-                  <strong data-i18n="importTestTitle">Импорт теста</strong>
-                  <span class="muted"
-                    data-i18n="importTestHint"
-                    >Добавьте новую коллекцию из Word-файла.</span
-                  >
-                </button>
-              </div>
-            </div>
           </div>
-        </section>
+
+          <!-- Filter pill-tabs -->
+          <div class="test-tabs" id="test-tabs" style="margin-bottom:1.5rem;width:fit-content;">
+            <button type="button" class="test-tab is-active" data-filter="" data-i18n="tabAllTests">Все</button>
+            <button type="button" class="test-tab" data-filter="my" data-i18n="tabMyTests">Мои</button>
+            <button type="button" class="test-tab" data-filter="shared" data-i18n="tabSharedTests">Доступные</button>
+            <button type="button" class="test-tab" data-filter="public" data-i18n="tabPublicTests">Публичные</button>
+          </div>
+
+          <!-- Test cards (populated by rendering.js) -->
+          <div class="controls">
+            <div id="test-cards" class="test-collections"></div>
+          </div>
+        </div>
       </section>
 
+      <!-- ─── TESTING SCREEN ────────────────────────────────────── -->
       <section id="screen-testing" class="app-screen is-hidden">
-        <section class="panel panel--testing">
-          <div id="panel-settings" class="card panel-card is-open" data-panel="settings">
-            <div class="panel-card__header">
-              <button
-                id="panel-settings-toggle"
-                class="panel-card__toggle"
-                type="button"
-                aria-expanded="true"
-              >
-                <div>
-                  <h2 data-i18n="testSettingsTitle">Настройки теста</h2>
-                </div>
-              </button>
-              <div class="panel-card__actions">
-                <button id="exit-test" type="button" class="ghost">
-                  <span data-i18n="exitButton">Выйти</span>
-                </button>
-                <button id="finish-test" type="button" class="danger">
-                  <span data-i18n="finishTestButton">Завершить тест</span>
-                </button>
-              </div>
-            </div>
-            <div class="panel-card__content">
-              <div class="settings-grid">
-                <div class="settings-item">
-                  <label for="setting-question-count">
-                    <span data-i18n="questionCountLabel">
-                      Количество вопросов (0 = все)
-                    </span>
-                  </label>
-                  <input
-                    type="number"
-                    id="setting-question-count"
-                    min="0"
-                    value="0"
-                  />
-                </div>
-
-                <div class="settings-item">
-                  <label for="setting-max-options">
-                    <span data-i18n="maxOptionsLabel">Макс. вариантов ответа</span>
-                  </label>
-                  <input
-                    type="number"
-                    id="setting-max-options"
-                    min="1"
-                    value="4"
-                  />
-                </div>
-
-                <label
-                  class="checkbox-row settings-item settings-item--checkbox"
-                  for="setting-random-questions"
-                >
-                  <input type="checkbox" id="setting-random-questions" />
-                  <span data-i18n="randomQuestionsLabel">
-                    Случайный порядок вопросов
-                  </span>
-                </label>
-                <label
-                  class="checkbox-row settings-item settings-item--checkbox"
-                  for="setting-random-options"
-                >
-                  <input type="checkbox" id="setting-random-options" />
-                  <span data-i18n="randomOptionsLabel">
-                    Случайный порядок вариантов ответов
-                  </span>
-                </label>
-                <label
-                  class="checkbox-row settings-item settings-item--checkbox"
-                  for="setting-only-unanswered"
-                >
-                  <input type="checkbox" id="setting-only-unanswered" />
-                  <span data-i18n="onlyUnansweredLabel">
-                    Только нерешённые вопросы
-                  </span>
-                </label>
-                <label
-                  class="checkbox-row settings-item settings-item--checkbox"
-                  for="setting-show-answers"
-                >
-                  <input type="checkbox" id="setting-show-answers" checked />
-                  <span data-i18n="showAnswersLabel">
-                    Показывать правильный ответ сразу
-                  </span>
-                </label>
-              </div>
-              <button
-                id="start-test"
-                class="primary"
-                type="button"
-                data-i18n="startTestButton"
-              >
-                Начать тестирование
-              </button>
-            </div>
-          </div>
-
-          <div id="panel-results" class="card panel-card" data-panel="results">
-            <div class="panel-card__header">
-              <button
-                id="panel-results-toggle"
-                class="panel-card__toggle"
-                type="button"
-                aria-expanded="false"
-              >
-                <div>
-                  <h2 data-i18n="resultsTitle">Результаты</h2>
-                </div>
-              </button>
-            </div>
-            <div class="panel-card__content">
-              <p id="result-summary" data-i18n="noCompletedAttempts">
-                Ещё нет завершённых попыток.
-              </p>
-              <ul id="result-details" class="result-details"></ul>
-              <p class="hint" id="progress-hint"></p>
-            </div>
-          </div>
-
-          <div id="panel-questions" class="card panel-card" data-panel="questions">
-            <div class="panel-card__header">
-              <button
-                id="panel-questions-toggle"
-                class="panel-card__toggle"
-                type="button"
-                aria-expanded="false"
-              >
-                <div>
-                  <h2 data-i18n="questionsPanelTitle">Вопросы</h2>
-                  <p id="question-count" class="muted"></p>
-                </div>
-              </button>
-            </div>
-            <div class="panel-card__content">
-              <div class="card question-card">
-                <div class="question-card__header">
+        <div style="max-width:1280px;margin:0 auto;padding:1.5rem 1.25rem 3rem;">
+          <section class="panel panel--testing">
+            <div id="panel-settings" class="card panel-card is-open" data-panel="settings">
+              <div class="panel-card__header">
+                <button id="panel-settings-toggle" class="panel-card__toggle" type="button" aria-expanded="true">
                   <div>
-                    <h2 id="question-progress" data-i18n="questionProgressZero">
-                      Вопрос 0 из 0
-                    </h2>
-                    <p id="question-status" class="muted"></p>
+                    <h2 data-i18n="testSettingsTitle">Настройки теста</h2>
                   </div>
-                  <div class="question-actions">
-                    <button id="prev-question" type="button" data-i18n="prevButton">
-                      Назад
-                    </button>
-                    <button id="next-question" type="button" data-i18n="nextButton">
-                      Дальше
-                    </button>
-                  </div>
+                </button>
+                <div class="panel-card__actions">
+                  <button id="exit-test" type="button" class="ghost">
+                    <span data-i18n="exitButton">Выйти</span>
+                  </button>
+                  <button id="finish-test" type="button" class="danger">
+                    <span data-i18n="finishTestButton">Завершить тест</span>
+                  </button>
                 </div>
-                <div id="question-container"></div>
               </div>
-              <div id="options-container" class="card is-hidden"></div>
-
-              <div class="card">
-                <h3 data-i18n="questionNavTitle">Навигация по вопросам</h3>
-                <div id="question-nav" class="question-nav"></div>
+              <div class="panel-card__content">
+                <div class="settings-grid">
+                  <div class="settings-item">
+                    <label for="setting-question-count">
+                      <span data-i18n="questionCountLabel">Количество вопросов (0 = все)</span>
+                    </label>
+                    <input type="number" id="setting-question-count" min="0" value="0" />
+                  </div>
+                  <div class="settings-item">
+                    <label for="setting-max-options">
+                      <span data-i18n="maxOptionsLabel">Макс. вариантов ответа</span>
+                    </label>
+                    <input type="number" id="setting-max-options" min="1" value="4" />
+                  </div>
+                  <label class="checkbox-row settings-item settings-item--checkbox" for="setting-random-questions">
+                    <input type="checkbox" id="setting-random-questions" />
+                    <span data-i18n="randomQuestionsLabel">Случайный порядок вопросов</span>
+                  </label>
+                  <label class="checkbox-row settings-item settings-item--checkbox" for="setting-random-options">
+                    <input type="checkbox" id="setting-random-options" />
+                    <span data-i18n="randomOptionsLabel">Случайный порядок вариантов ответов</span>
+                  </label>
+                  <label class="checkbox-row settings-item settings-item--checkbox" for="setting-only-unanswered">
+                    <input type="checkbox" id="setting-only-unanswered" />
+                    <span data-i18n="onlyUnansweredLabel">Только нерешённые вопросы</span>
+                  </label>
+                  <label class="checkbox-row settings-item settings-item--checkbox" for="setting-show-answers">
+                    <input type="checkbox" id="setting-show-answers" checked />
+                    <span data-i18n="showAnswersLabel">Показывать правильный ответ сразу</span>
+                  </label>
+                </div>
+                <button id="start-test" class="primary" type="button" data-i18n="startTestButton">Начать тестирование</button>
               </div>
             </div>
-          </div>
-        </section>
+
+            <div id="panel-results" class="card panel-card" data-panel="results">
+              <div class="panel-card__header">
+                <button id="panel-results-toggle" class="panel-card__toggle" type="button" aria-expanded="false">
+                  <div><h2 data-i18n="resultsTitle">Результаты</h2></div>
+                </button>
+              </div>
+              <div class="panel-card__content">
+                <p id="result-summary" data-i18n="noCompletedAttempts">Ещё нет завершённых попыток.</p>
+                <ul id="result-details" class="result-details"></ul>
+                <p class="hint" id="progress-hint"></p>
+              </div>
+            </div>
+
+            <div id="panel-questions" class="card panel-card" data-panel="questions">
+              <div class="panel-card__header">
+                <button id="panel-questions-toggle" class="panel-card__toggle" type="button" aria-expanded="false">
+                  <div>
+                    <h2 data-i18n="questionsPanelTitle">Вопросы</h2>
+                    <p id="question-count" class="muted"></p>
+                  </div>
+                </button>
+              </div>
+              <div class="panel-card__content">
+                <div class="card question-card">
+                  <div class="question-card__header">
+                    <div>
+                      <h2 id="question-progress" data-i18n="questionProgressZero">Вопрос 0 из 0</h2>
+                      <p id="question-status" class="muted"></p>
+                    </div>
+                    <div class="question-actions">
+                      <button id="prev-question" type="button" data-i18n="prevButton">Назад</button>
+                      <button id="next-question" type="button" data-i18n="nextButton">Дальше</button>
+                    </div>
+                  </div>
+                  <div id="question-container"></div>
+                </div>
+                <div id="options-container" class="card is-hidden"></div>
+                <div class="card">
+                  <h3 data-i18n="questionNavTitle">Навигация по вопросам</h3>
+                  <div id="question-nav" class="question-nav"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
       </section>
 
+      <!-- ─── PROFILE SCREEN ────────────────────────────────────── -->
       <section id="screen-profile" class="app-screen is-hidden">
-        <section class="panel panel--profile">
+        <div style="max-width:680px;margin:0 auto;padding:2rem 1.25rem 3rem;">
           <div class="card profile-card">
-            <div class="profile-header">
+            <div class="profile-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1.5rem;">
               <div>
                 <h2 data-i18n="profileTitle">Профиль</h2>
-                <p class="muted" data-i18n="profileSubtitle">
-                  Управление профилем и настройки аккаунта.
-                </p>
+                <p class="muted" data-i18n="profileSubtitle">Управление профилем и настройки аккаунта.</p>
               </div>
-              <button
-                id="profile-back"
-                type="button"
-                class="ghost"
-                data-i18n="profileBackButton"
-              >
-                К тестам
-              </button>
+              <button id="profile-back" type="button" class="ghost" data-i18n="profileBackButton">К тестам</button>
             </div>
 
             <div class="profile-content">
               <div class="profile-avatar-section">
-                <div class="profile-avatar">
-                  <img
-                    id="profile-avatar-image"
-                    src=""
-                    alt=""
-                    class="profile-avatar__image"
-                  />
-                  <div id="profile-avatar-placeholder" class="profile-avatar__placeholder">
-                    <span id="profile-avatar-initials"></span>
+                <div class="profile-avatar" style="position:relative;width:96px;height:96px;flex-shrink:0;">
+                  <img id="profile-avatar-image" src="" alt="" class="profile-avatar__image"
+                    style="width:96px;height:96px;border-radius:50%;object-fit:cover;border:3px solid var(--border);" />
+                  <div id="profile-avatar-placeholder" class="profile-avatar__placeholder"
+                    style="width:96px;height:96px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;border:3px solid var(--border);">
+                    <span id="profile-avatar-initials" style="font-size:2rem;font-weight:700;color:white;"></span>
                   </div>
                 </div>
                 <div class="profile-avatar-actions">
-                  <label class="profile-avatar-upload" for="profile-avatar-input">
-                    <span data-i18n="profileAvatarUpload">Загрузить аватар</span>
-                  </label>
-                  <input
-                    type="file"
-                    id="profile-avatar-input"
-                    class="profile-avatar-input"
-                    accept=".png,.jpg,.jpeg,.gif"
-                  />
-                  <button
-                    id="profile-avatar-delete"
-                    type="button"
-                    class="ghost danger-text"
-                    data-i18n="profileAvatarDelete"
-                  >
-                    Удалить
-                  </button>
+                  <label class="profile-avatar-upload" for="profile-avatar-input" data-i18n="profileAvatarUpload">Загрузить аватар</label>
+                  <input type="file" id="profile-avatar-input" class="profile-avatar-input" accept=".png,.jpg,.jpeg,.gif" />
+                  <button id="profile-avatar-delete" type="button" class="ghost danger-text" data-i18n="profileAvatarDelete">Удалить</button>
                 </div>
-                <p class="hint" data-i18n="profileAvatarHint">
-                  PNG, JPG или GIF. Максимум 2 МБ.
-                </p>
+                <p class="hint" data-i18n="profileAvatarHint">PNG, JPG или GIF. Максимум 2 МБ.</p>
               </div>
 
               <div class="profile-fields">
                 <div class="profile-field">
-                  <label for="profile-display-name" data-i18n="profileDisplayNameLabel">
-                    Отображаемое имя
-                  </label>
+                  <label for="profile-display-name" data-i18n="profileDisplayNameLabel">Отображаемое имя</label>
                   <div class="profile-field-row">
-                    <input
-                      type="text"
-                      id="profile-display-name"
-                      placeholder="Введите отображаемое имя"
-                      data-i18n-placeholder="profileDisplayNamePlaceholder"
-                      maxlength="100"
-                    />
-                    <button
-                      id="profile-display-name-save"
-                      type="button"
-                      data-i18n="profileSaveButton"
-                    >
-                      Сохранить
-                    </button>
+                    <input type="text" id="profile-display-name"
+                      placeholder="Введите отображаемое имя" data-i18n-placeholder="profileDisplayNamePlaceholder"
+                      maxlength="100" />
+                    <button id="profile-display-name-save" type="button" data-i18n="profileSaveButton">Сохранить</button>
                   </div>
                 </div>
-
                 <div class="profile-info">
                   <div class="profile-info-item">
-                    <span class="profile-info-label" data-i18n="profileUsernameLabel">
-                      Имя пользователя
-                    </span>
+                    <span class="profile-info-label" data-i18n="profileUsernameLabel">Имя пользователя</span>
                     <span id="profile-username" class="profile-info-value"></span>
                   </div>
                   <div class="profile-info-item">
-                    <span class="profile-info-label" data-i18n="profileEmailLabel">
-                      Email
-                    </span>
+                    <span class="profile-info-label" data-i18n="profileEmailLabel">Email</span>
                     <span id="profile-email" class="profile-info-value"></span>
                   </div>
                   <div class="profile-info-item">
-                    <span class="profile-info-label" data-i18n="profileCreatedAtLabel">
-                      Дата регистрации
-                    </span>
+                    <span class="profile-info-label" data-i18n="profileCreatedAtLabel">Дата регистрации</span>
                     <span id="profile-created-at" class="profile-info-value"></span>
                   </div>
                 </div>
@@ -490,429 +600,202 @@
 
             <div id="profile-status" class="profile-status is-hidden"></div>
           </div>
-        </section>
+        </div>
       </section>
 
+      <!-- ─── STATS SCREEN ──────────────────────────────────────── -->
       <section id="screen-stats" class="app-screen is-hidden">
-        <section class="panel panel--stats-sidebar">
-          <div class="card stats-card">
-            <div class="stats-header">
-              <div>
-                <h2 data-i18n="statsTitle">Статистика</h2>
-                <p class="muted" data-i18n="statsSubtitle">
-                  Аналитика по вашим попыткам прохождения тестов.
-                </p>
-              </div>
-              <button
-                id="stats-back"
-                type="button"
-                class="ghost"
-                data-i18n="statsBackButton"
-              >
-                К тестам
-              </button>
-            </div>
-            <div class="stats-filters">
-              <label class="stats-filter">
-                <span data-i18n="statsFilterTest">Тест</span>
-                <select id="stats-filter-test">
-                  <option value="" data-i18n="statsFilterAllTests">Все тесты</option>
-                </select>
-              </label>
-              <label class="stats-filter">
-                <span data-i18n="statsFilterStartDate">С даты</span>
-                <input type="date" id="stats-filter-start-date" />
-              </label>
-              <label class="stats-filter">
-                <span data-i18n="statsFilterEndDate">По дату</span>
-                <input type="date" id="stats-filter-end-date" />
-              </label>
-              <button
-                id="stats-filter-reset"
-                type="button"
-                class="ghost"
-                data-i18n="statsFilterReset"
-              >
-                Сбросить
-              </button>
-            </div>
-            <div class="stats-view-tabs">
-              <button
-                id="stats-view-single"
-                type="button"
-                class="stats-view-tab is-active"
-                data-i18n="statsViewSingle"
-              >
-                Попытка
-              </button>
-              <button
-                id="stats-view-aggregate"
-                type="button"
-                class="stats-view-tab"
-                data-i18n="statsViewAggregate"
-              >
-                Все попытки
-              </button>
-            </div>
-            <div id="stats-single-controls" class="stats-controls">
-              <label class="stats-control">
-                <span data-i18n="statsAttemptLabel">Попытка</span>
-                <select id="stats-attempt-select"></select>
-              </label>
-              <button
-                id="stats-refresh"
-                type="button"
-                class="secondary"
-                data-i18n="statsRefreshButton"
-              >
-                Обновить
-              </button>
-            </div>
-            <div id="stats-empty" class="stats-empty is-hidden">
-              <strong data-i18n="statsEmptyTitle">
-                Пока нет попыток.
-              </strong>
-              <p class="muted" data-i18n="statsEmptyBody">
-                Пройдите тестирование, чтобы здесь появилась аналитика.
-              </p>
-              <button
-                id="stats-start-test"
-                type="button"
-                class="primary"
-                data-i18n="statsEmptyCta"
-              >
-                Пройдите тест
-              </button>
-            </div>
-          </div>
+        <div style="max-width:1280px;margin:0 auto;padding:1.5rem 1.25rem 3rem;display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:1.5rem;align-items:start;">
 
-          <div class="card">
-            <h3 data-i18n="statsAttemptListTitle">Список попыток</h3>
-            <ul id="stats-attempt-list" class="stats-attempts"></ul>
-          </div>
-        </section>
-
-        <section class="panel panel--stats-main">
-          <div id="stats-kpi-grid" class="stats-kpi-grid"></div>
-
-          <div class="stats-charts">
-            <div class="card chart-card">
-              <div class="chart-header">
-                <h3 data-i18n="statsChartAttemptsTitle">
-                  Динамика точности
-                </h3>
-                <p class="muted" data-i18n="statsChartAttemptsSubtitle">
-                  По завершённым попыткам.
-                </p>
-              </div>
-              <div class="chart-area">
-                <canvas id="stats-chart-attempts"></canvas>
-              </div>
-            </div>
-
-            <div class="card chart-card">
-              <div class="chart-header">
-                <h3 data-i18n="statsChartTimeTitle">
-                  Темп прохождения
-                </h3>
-                <p class="muted" data-i18n="statsChartTimeSubtitle">
-                  Среднее время на вопрос.
-                </p>
-              </div>
-              <div class="chart-area">
-                <canvas id="stats-chart-time"></canvas>
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="stats-section-header">
-              <h3 data-i18n="statsQuestionsTitle">Лента вопросов</h3>
-              <p class="muted" data-i18n="statsQuestionsSubtitle">
-                Детализация по выбранной попытке.
-              </p>
-            </div>
-            <div class="stats-questions-layout">
-              <div id="stats-question-stream" class="stats-question-stream"></div>
-              <div id="stats-question-preview" class="stats-question-preview is-hidden">
-                <div class="stats-question-preview__header">
-                  <h4 id="stats-preview-title" data-i18n="statsPreviewTitle">Предпросмотр вопроса</h4>
-                  <button id="stats-preview-close" type="button" class="ghost" aria-label="Close">×</button>
+          <!-- Sidebar -->
+          <section class="panel panel--stats-sidebar">
+            <div class="card stats-card">
+              <div class="stats-header">
+                <div>
+                  <h2 data-i18n="statsTitle">Статистика</h2>
+                  <p class="muted" data-i18n="statsSubtitle">Аналитика по вашим попыткам прохождения тестов.</p>
                 </div>
-                <div id="stats-preview-content" class="stats-question-preview__content"></div>
+                <button id="stats-back" type="button" class="ghost" data-i18n="statsBackButton">К тестам</button>
+              </div>
+              <div class="stats-filters">
+                <label class="stats-filter">
+                  <span data-i18n="statsFilterTest">Тест</span>
+                  <select id="stats-filter-test">
+                    <option value="" data-i18n="statsFilterAllTests">Все тесты</option>
+                  </select>
+                </label>
+                <label class="stats-filter">
+                  <span data-i18n="statsFilterStartDate">С даты</span>
+                  <input type="date" id="stats-filter-start-date" />
+                </label>
+                <label class="stats-filter">
+                  <span data-i18n="statsFilterEndDate">По дату</span>
+                  <input type="date" id="stats-filter-end-date" />
+                </label>
+                <button id="stats-filter-reset" type="button" class="ghost" data-i18n="statsFilterReset">Сбросить</button>
+              </div>
+              <div class="stats-view-tabs" style="display:flex;gap:0.25rem;padding:0.25rem;background:var(--card-muted);border-radius:10px;">
+                <button id="stats-view-single" type="button" class="stats-view-tab is-active" data-i18n="statsViewSingle">Попытка</button>
+                <button id="stats-view-aggregate" type="button" class="stats-view-tab" data-i18n="statsViewAggregate">Все попытки</button>
+              </div>
+              <div id="stats-single-controls" class="stats-controls">
+                <label class="stats-control">
+                  <span data-i18n="statsAttemptLabel">Попытка</span>
+                  <select id="stats-attempt-select"></select>
+                </label>
+                <button id="stats-refresh" type="button" class="secondary" data-i18n="statsRefreshButton">Обновить</button>
+              </div>
+              <div id="stats-empty" class="stats-empty is-hidden">
+                <strong data-i18n="statsEmptyTitle">Пока нет попыток.</strong>
+                <p class="muted" data-i18n="statsEmptyBody">Пройдите тестирование, чтобы здесь появилась аналитика.</p>
+                <button id="stats-start-test" type="button" class="primary" data-i18n="statsEmptyCta">Пройдите тест</button>
               </div>
             </div>
-          </div>
-        </section>
-      </section>
-    </main>
+            <div class="card">
+              <h3 data-i18n="statsAttemptListTitle">Список попыток</h3>
+              <ul id="stats-attempt-list" class="stats-attempts"></ul>
+            </div>
+          </section>
 
+          <!-- Main content -->
+          <section class="panel panel--stats-main">
+            <div id="stats-kpi-grid" class="stats-kpi-grid"></div>
+            <div class="stats-charts">
+              <div class="card chart-card">
+                <div class="chart-header">
+                  <h3 data-i18n="statsChartAttemptsTitle">Динамика точности</h3>
+                  <p class="muted" data-i18n="statsChartAttemptsSubtitle">По завершённым попыткам.</p>
+                </div>
+                <div class="chart-area"><canvas id="stats-chart-attempts"></canvas></div>
+              </div>
+              <div class="card chart-card">
+                <div class="chart-header">
+                  <h3 data-i18n="statsChartTimeTitle">Темп прохождения</h3>
+                  <p class="muted" data-i18n="statsChartTimeSubtitle">Среднее время на вопрос.</p>
+                </div>
+                <div class="chart-area"><canvas id="stats-chart-time"></canvas></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="stats-section-header">
+                <h3 data-i18n="statsQuestionsTitle">Лента вопросов</h3>
+                <p class="muted" data-i18n="statsQuestionsSubtitle">Детализация по выбранной попытке.</p>
+              </div>
+              <div class="stats-questions-layout">
+                <div id="stats-question-stream" class="stats-question-stream"></div>
+                <div id="stats-question-preview" class="stats-question-preview is-hidden">
+                  <div class="stats-question-preview__header">
+                    <h4 id="stats-preview-title" data-i18n="statsPreviewTitle">Предпросмотр вопроса</h4>
+                    <button id="stats-preview-close" type="button" class="ghost" aria-label="Close">×</button>
+                  </div>
+                  <div id="stats-preview-content" class="stats-question-preview__content"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+    </main><!-- /main -->
+
+
+    <!-- ═══════════════════════════════════════════════════════════
+         MODALS (structure unchanged — CSS handles visibility)
+         ═══════════════════════════════════════════════════════════ -->
+
+    <!-- Editor modal -->
     <div id="editor-modal" class="modal" aria-hidden="true">
       <div class="modal-content">
         <div class="modal-header">
           <div>
             <h2 data-i18n="editorTitle">Редактор вопросов</h2>
-            <p class="muted" id="editor-status" data-i18n="editorSubtitle">
-              Выберите вопрос из списка или создайте новый.
-            </p>
+            <p class="muted" id="editor-status" data-i18n="editorSubtitle">Выберите вопрос из списка или создайте новый.</p>
           </div>
           <div class="modal-actions">
-            <button
-              id="editor-change-requests"
-              type="button"
-              class="secondary is-hidden"
-              data-i18n="changeRequestsButton"
-            >
-              Предложения
-            </button>
-            <button
-              id="editor-access-settings"
-              type="button"
-              class="secondary"
-              data-i18n="accessSettingsButton"
-            >
-              Настройки доступа
-            </button>
-            <button
-              id="editor-test-stats"
-              type="button"
-              class="secondary"
-              data-i18n="testStatisticsButton"
-            >
-              Статистика теста
-            </button>
-            <button
-              id="editor-rename-test"
-              type="button"
-              class="secondary"
-              data-i18n="renameTestButton"
-            >
-              Переименовать тест
-            </button>
-            <button
-              id="editor-delete-test"
-              type="button"
-              class="danger"
-              data-i18n="deleteTestButton"
-            >
-              Удалить тест
-            </button>
-            <button
-              id="close-editor"
-              type="button"
-              class="ghost"
-              data-i18n="closeButton"
-            >
-              Закрыть
-            </button>
+            <button id="editor-change-requests" type="button" class="secondary is-hidden" data-i18n="changeRequestsButton">Предложения</button>
+            <button id="editor-access-settings" type="button" class="secondary" data-i18n="accessSettingsButton">Настройки доступа</button>
+            <button id="editor-test-stats" type="button" class="secondary" data-i18n="testStatisticsButton">Статистика теста</button>
+            <button id="editor-rename-test" type="button" class="secondary" data-i18n="renameTestButton">Переименовать тест</button>
+            <button id="editor-delete-test" type="button" class="danger" data-i18n="deleteTestButton">Удалить тест</button>
+            <button id="close-editor" type="button" class="ghost" data-i18n="closeButton">Закрыть</button>
           </div>
         </div>
-
         <div class="modal-grid">
           <div class="modal-panel editor-column editor-column--list">
             <h3 data-i18n="editorQuestionListTitle">Список вопросов</h3>
             <div id="editor-question-list" class="editor-list"></div>
           </div>
-
           <div class="modal-panel editor-column editor-column--form">
             <div id="editor-panel" class="editor-panel editor-panel--form">
-              <h3 id="editor-form-title" data-i18n="editorFormTitleNew">
-                Новый вопрос
-              </h3>
+              <h3 id="editor-form-title" data-i18n="editorFormTitleNew">Новый вопрос</h3>
               <form id="editor-form" class="editor-form">
                 <label class="editor-field">
                   <span data-i18n="editorQuestionTextLabel">Текст вопроса</span>
                   <textarea id="editor-question-text" rows="4"></textarea>
-                  <p class="hint">
-                    <span data-i18n="editorInlineHint">
-                      Вставляйте объекты через {{image:ID}} и {{formula:ID}}
-                    </span>
-                  </p>
+                  <p class="hint"><span data-i18n="editorInlineHint">Вставляйте объекты через {{image:ID}} и {{formula:ID}}</span></p>
                 </label>
-
                 <div class="editor-options">
                   <div class="editor-options-header">
                     <h4 data-i18n="editorOptionsTitle">Варианты ответов</h4>
-                    <button
-                      id="add-option"
-                      type="button"
-                      class="ghost"
-                      data-i18n="editorAddOptionButton"
-                    >
-                      Добавить вариант
-                    </button>
+                    <button id="add-option" type="button" class="ghost" data-i18n="editorAddOptionButton">Добавить вариант</button>
                   </div>
-                  <p class="hint">
-                    <span data-i18n="editorInlineHint">
-                      Вставляйте объекты через {{image:ID}} и {{formula:ID}}
-                    </span>
-                  </p>
-                  <div
-                    id="editor-options-list"
-                    class="editor-options-list"
-                  ></div>
+                  <p class="hint"><span data-i18n="editorInlineHint">Вставляйте объекты через {{image:ID}} и {{formula:ID}}</span></p>
+                  <div id="editor-options-list" class="editor-options-list"></div>
                 </div>
-
                 <div class="editor-actions">
-                  <button id="save-question" type="submit" data-i18n="editorSaveButton">
-                    Сохранить
-                  </button>
-                  <button
-                    id="reset-editor"
-                    type="button"
-                    class="ghost"
-                    data-i18n="editorResetButton"
-                  >
-                    Очистить форму
-                  </button>
+                  <button id="save-question" type="submit" data-i18n="editorSaveButton">Сохранить</button>
+                  <button id="reset-editor" type="button" class="ghost" data-i18n="editorResetButton">Очистить форму</button>
                 </div>
               </form>
-
               <div class="editor-objects-panel">
                 <h4 data-i18n="editorObjectsTitle">Объекты вопроса</h4>
-                <p class="muted" data-i18n="editorObjectsHint">
-                  Изображения и формулы в тексте вопроса или вариантов ответов.
-                </p>
+                <p class="muted" data-i18n="editorObjectsHint">Изображения и формулы в тексте вопроса или вариантов ответов.</p>
                 <div class="editor-object-toggles">
-                  <button
-                    id="toggle-editor-objects"
-                    type="button"
-                    class="editor-object-toggle"
-                    data-i18n="editorObjectsToggleShow"
-                  >
-                    Показать объекты
-                  </button>
-                  <button
-                    id="toggle-editor-object-upload"
-                    type="button"
-                    class="editor-object-toggle"
-                    data-i18n="editorObjectUploadToggleShow"
-                  >
-                    Добавить объект
-                  </button>
+                  <button id="toggle-editor-objects" type="button" class="editor-object-toggle" data-i18n="editorObjectsToggleShow">Показать объекты</button>
+                  <button id="toggle-editor-object-upload" type="button" class="editor-object-toggle" data-i18n="editorObjectUploadToggleShow">Добавить объект</button>
                 </div>
-                <div
-                  id="editor-object-upload-section"
-                  class="editor-object-section editor-object-upload is-hidden"
-                >
+                <div id="editor-object-upload-section" class="editor-object-section editor-object-upload is-hidden">
                   <div class="editor-object-upload__header">
-                    <strong data-i18n="editorObjectUploadTitle">
-                      Добавить объект
-                    </strong>
-                    <p class="muted" data-i18n="editorObjectUploadHint">
-                      Сначала загрузите объект, затем используйте его ID в
-                      тексте.
-                    </p>
+                    <strong data-i18n="editorObjectUploadTitle">Добавить объект</strong>
+                    <p class="muted" data-i18n="editorObjectUploadHint">Сначала загрузите объект, затем используйте его ID в тексте.</p>
                   </div>
                   <label class="editor-field">
                     <span data-i18n="editorObjectTypeLabel">Тип объекта</span>
                     <select id="editor-object-type">
-                      <option value="image" data-i18n="editorObjectTypeImage">
-                        Изображение
-                      </option>
-                      <option
-                        value="formula"
-                        data-i18n="editorObjectTypeFormula"
-                      >
-                        Формула (XML)
-                      </option>
+                      <option value="image" data-i18n="editorObjectTypeImage">Изображение</option>
+                      <option value="formula" data-i18n="editorObjectTypeFormula">Формула (XML)</option>
                     </select>
                   </label>
                   <label class="editor-field">
                     <span data-i18n="editorObjectIdLabel">ID объекта</span>
-                    <input
-                      id="editor-object-id"
-                      type="text"
-                      placeholder="Например, img-1"
-                      data-i18n-placeholder="editorObjectIdPlaceholder"
-                    />
+                    <input id="editor-object-id" type="text" placeholder="Например, img-1" data-i18n-placeholder="editorObjectIdPlaceholder" />
                   </label>
                   <div id="editor-object-image-fields" class="editor-field">
-                    <span data-i18n="editorObjectImageFileLabel">
-                      Файл изображения (png, jpg, wmf, emf)
-                    </span>
-                    <label
-                      class="editor-object-dropzone"
-                      for="editor-object-image-file"
-                    >
-                      <span class="editor-object-dropzone__title">
-                        <span data-i18n="editorObjectImageDropTitle">
-                          Перетащите файл изображения сюда
-                        </span>
-                      </span>
-                      <span class="editor-object-dropzone__hint">
-                        <span data-i18n="editorObjectDropHint">
-                          или выберите на устройстве
-                        </span>
-                      </span>
-                      <span class="editor-object-dropzone__action">
-                        <span data-i18n="editorObjectDropAction">
-                          Выбрать файл
-                        </span>
-                      </span>
+                    <span data-i18n="editorObjectImageFileLabel">Файл изображения (png, jpg, wmf, emf)</span>
+                    <label class="editor-object-dropzone" for="editor-object-image-file">
+                      <span class="editor-object-dropzone__title"><span data-i18n="editorObjectImageDropTitle">Перетащите файл изображения сюда</span></span>
+                      <span class="editor-object-dropzone__hint"><span data-i18n="editorObjectDropHint">или выберите на устройстве</span></span>
+                      <span class="editor-object-dropzone__action"><span data-i18n="editorObjectDropAction">Выбрать файл</span></span>
                     </label>
-                    <input
-                      id="editor-object-image-file"
-                      type="file"
-                      class="editor-object-input"
-                    />
+                    <input id="editor-object-image-file" type="file" class="editor-object-input" />
                   </div>
                   <div id="editor-object-formula-fields" class="editor-field is-hidden">
                     <span data-i18n="editorObjectFormulaLabel">XML формулы</span>
-                    <textarea
-                      id="editor-object-formula-text"
-                      rows="4"
-                      placeholder="<math>...</math>"
-                      data-i18n-placeholder="editorObjectFormulaPlaceholder"
-                    ></textarea>
-                    <span class="muted" data-i18n="editorObjectFormulaFileHint">
-                      или импортируйте XML файл
-                    </span>
-                    <label
-                      class="editor-object-dropzone"
-                      for="editor-object-formula-file"
-                    >
-                      <span class="editor-object-dropzone__title">
-                        <span data-i18n="editorObjectFormulaDropTitle">
-                          Перетащите XML файл сюда
-                        </span>
-                      </span>
-                      <span class="editor-object-dropzone__hint">
-                        <span data-i18n="editorObjectDropHint">
-                          или выберите на устройстве
-                        </span>
-                      </span>
-                      <span class="editor-object-dropzone__action">
-                        <span data-i18n="editorObjectDropAction">
-                          Выбрать файл
-                        </span>
-                      </span>
+                    <textarea id="editor-object-formula-text" rows="4" placeholder="<math>...</math>" data-i18n-placeholder="editorObjectFormulaPlaceholder"></textarea>
+                    <span class="muted" data-i18n="editorObjectFormulaFileHint">или импортируйте XML файл</span>
+                    <label class="editor-object-dropzone" for="editor-object-formula-file">
+                      <span class="editor-object-dropzone__title"><span data-i18n="editorObjectFormulaDropTitle">Перетащите XML файл сюда</span></span>
+                      <span class="editor-object-dropzone__hint"><span data-i18n="editorObjectDropHint">или выберите на устройстве</span></span>
+                      <span class="editor-object-dropzone__action"><span data-i18n="editorObjectDropAction">Выбрать файл</span></span>
                     </label>
-                    <input
-                      id="editor-object-formula-file"
-                      type="file"
-                      accept=".xml"
-                      class="editor-object-input"
-                    />
+                    <input id="editor-object-formula-file" type="file" accept=".xml" class="editor-object-input" />
                   </div>
-                  <button
-                    id="editor-add-object"
-                    type="button"
-                    class="secondary"
-                    data-i18n="editorAddObjectButton"
-                  >
-                    Добавить объект
-                  </button>
+                  <button id="editor-add-object" type="button" class="secondary" data-i18n="editorAddObjectButton">Добавить объект</button>
                   <p id="editor-object-status" class="muted"></p>
                 </div>
-                <div
-                  id="editor-object-list-section"
-                  class="editor-object-section is-hidden"
-                >
+                <div id="editor-object-list-section" class="editor-object-section is-hidden">
                   <div id="editor-objects" class="object-list">
-                    <p class="muted" data-i18n="editorObjectSelectQuestion">
-                      Выберите вопрос, чтобы увидеть объекты.
-                    </p>
+                    <p class="muted" data-i18n="editorObjectSelectQuestion">Выберите вопрос, чтобы увидеть объекты.</p>
                   </div>
                 </div>
               </div>
@@ -922,24 +805,16 @@
       </div>
     </div>
 
+    <!-- Import modal -->
     <div id="import-modal" class="modal" aria-hidden="true">
       <div class="modal-content">
         <div class="modal-header">
           <div>
             <h2 data-i18n="importTitle">Импорт тестов</h2>
-            <p class="muted" data-i18n="importSubtitle">
-              Загрузите Word-файл и получите новую коллекцию.
-            </p>
+            <p class="muted" data-i18n="importSubtitle">Загрузите Word-файл и получите новую коллекцию.</p>
           </div>
           <div class="modal-actions">
-            <button
-              id="close-import"
-              type="button"
-              class="ghost"
-              data-i18n="closeButton"
-            >
-              Закрыть
-            </button>
+            <button id="close-import" type="button" class="ghost" data-i18n="closeButton">Закрыть</button>
           </div>
         </div>
         <form id="upload-form" class="upload-form">
@@ -948,65 +823,34 @@
               <div class="upload-dropzone__icon" aria-hidden="true">⭳</div>
               <div class="upload-dropzone__content">
                 <p data-i18n="uploadDropTitle">Перетащите Word-файл сюда</p>
-                <p class="muted" data-i18n="uploadDropHint">
-                  или выберите вручную на устройстве
-                </p>
+                <p class="muted" data-i18n="uploadDropHint">или выберите вручную на устройстве</p>
               </div>
             </div>
             <div id="upload-file-name" class="upload-file-name is-empty">
-              <span
-                class="upload-file-name__label"
-                data-i18n="uploadSelectedFileLabel"
-              >
-                Выбранный файл
-              </span>
-              <span
-                class="upload-file-name__value"
-                data-i18n="uploadNoFileSelected"
-              >
-                Файл не выбран
-              </span>
+              <span class="upload-file-name__label" data-i18n="uploadSelectedFileLabel">Выбранный файл</span>
+              <span class="upload-file-name__value" data-i18n="uploadNoFileSelected">Файл не выбран</span>
             </div>
             <div class="upload-dropzone__actions">
               <label class="upload-select-button" for="upload-file">
                 <span data-i18n="uploadSelectFileButton">Выбрать файл</span>
               </label>
-              <button
-                id="upload-clear-file"
-                type="button"
-                class="upload-clear-button"
-                disabled
-              >
+              <button id="upload-clear-file" type="button" class="upload-clear-button" disabled>
                 <span data-i18n="uploadClearButton">Очистить</span>
               </button>
-              <span class="upload-hint" data-i18n="uploadDocxHint">
-                Только .docx
-              </span>
+              <span class="upload-hint" data-i18n="uploadDocxHint">Только .docx</span>
             </div>
-            <input
-              type="file"
-              id="upload-file"
-              class="upload-input"
-              accept=".docx"
-              required
-            />
+            <input type="file" id="upload-file" class="upload-input" accept=".docx" required />
           </div>
           <div class="upload-actions">
             <label class="upload-field" for="upload-symbol">
-              <span data-i18n="uploadSymbolLabel">
-                Маркер правильного ответа
-              </span>
+              <span data-i18n="uploadSymbolLabel">Маркер правильного ответа</span>
               <input type="text" id="upload-symbol" name="symbol" />
             </label>
             <label class="upload-checkbox" for="upload-log-small-tables">
               <input type="checkbox" id="upload-log-small-tables" />
-              <span data-i18n="uploadLogSmallTables">
-                Логировать таблицы &lt; 3 строк
-              </span>
+              <span data-i18n="uploadLogSmallTables">Логировать таблицы &lt; 3 строк</span>
             </label>
-            <button type="submit" data-i18n="importSubmitButton">
-              Импортировать
-            </button>
+            <button type="submit" data-i18n="importSubmitButton">Импортировать</button>
           </div>
         </form>
         <div class="upload-logs-panel">
@@ -1016,36 +860,24 @@
       </div>
     </div>
 
+    <!-- Create test modal -->
     <div id="create-test-modal" class="modal" aria-hidden="true">
-      <div class="modal-content">
+      <div class="modal-content modal-content--small">
         <div class="modal-header">
           <div>
             <h2 data-i18n="createTestTitle">Новая коллекция</h2>
-            <p class="muted" data-i18n="createTestSubtitle">
-              Задайте название и начните создавать вопросы.
-            </p>
+            <p class="muted" data-i18n="createTestSubtitle">Задайте название и начните создавать вопросы.</p>
           </div>
           <div class="modal-actions">
-            <button
-              id="close-create-test"
-              type="button"
-              class="ghost"
-              data-i18n="closeButton"
-            >
-              Закрыть
-            </button>
+            <button id="close-create-test" type="button" class="ghost" data-i18n="closeButton">Закрыть</button>
           </div>
         </div>
         <form id="create-test-form" class="create-test-form">
           <label class="upload-field" for="create-test-title">
             <span data-i18n="collectionNameLabel">Название коллекции</span>
-            <input
-              type="text"
-              id="create-test-title"
-              placeholder="Например, Алгебра — базовый уровень"
-              data-i18n-placeholder="collectionNamePlaceholder"
-              required
-            />
+            <input type="text" id="create-test-title"
+              placeholder="Например, Алгебра — базовый уровень" data-i18n-placeholder="collectionNamePlaceholder"
+              required />
           </label>
           <label class="upload-field" for="create-test-access">
             <span data-i18n="accessLevelLabel">Уровень доступа</span>
@@ -1056,22 +888,15 @@
             </select>
           </label>
           <div class="create-test-actions">
-            <button type="submit" data-i18n="createCollectionButton">
-              Создать коллекцию
-            </button>
-            <button
-              id="cancel-create-test"
-              type="button"
-              class="secondary"
-              data-i18n="cancelButton"
-            >
-              Отмена
-            </button>
+            <button type="submit" data-i18n="createCollectionButton">Создать коллекцию</button>
+            <button id="cancel-create-test" type="button" class="secondary" data-i18n="cancelButton">Отмена</button>
           </div>
           <p id="create-test-status" class="muted"></p>
         </form>
       </div>
     </div>
+
+    <!-- Access settings modal -->
     <div id="access-settings-modal" class="modal" aria-hidden="true">
       <div class="modal-content modal-content--small">
         <div class="modal-header">
@@ -1080,14 +905,7 @@
             <p class="muted" id="access-settings-test-name"></p>
           </div>
           <div class="modal-actions">
-            <button
-              id="close-access-settings"
-              type="button"
-              class="ghost"
-              data-i18n="closeButton"
-            >
-              Закрыть
-            </button>
+            <button id="close-access-settings" type="button" class="ghost" data-i18n="closeButton">Закрыть</button>
           </div>
         </div>
         <div class="access-settings-content">
@@ -1105,19 +923,8 @@
           <div id="shares-section" class="shares-section">
             <h3 data-i18n="sharesTitle">Приглашённые пользователи</h3>
             <div class="shares-add">
-              <input
-                type="text"
-                id="share-username-input"
-                placeholder="Имя пользователя"
-                data-i18n-placeholder="shareUsernamePlaceholder"
-              />
-              <button
-                id="add-share-button"
-                type="button"
-                data-i18n="addShareButton"
-              >
-                Добавить
-              </button>
+              <input type="text" id="share-username-input" placeholder="Имя пользователя" data-i18n-placeholder="shareUsernamePlaceholder" />
+              <button id="add-share-button" type="button" data-i18n="addShareButton">Добавить</button>
             </div>
             <p id="share-status" class="muted"></p>
             <ul id="shares-list" class="shares-list">
@@ -1128,6 +935,7 @@
       </div>
     </div>
 
+    <!-- Change requests modal -->
     <div id="change-requests-modal" class="modal" aria-hidden="true">
       <div class="modal-content modal-content--medium">
         <div class="modal-header">
@@ -1136,22 +944,8 @@
             <p class="muted" id="change-requests-test-name"></p>
           </div>
           <div class="modal-actions">
-            <button
-              id="change-requests-refresh"
-              type="button"
-              class="secondary"
-              data-i18n="statsRefreshButton"
-            >
-              Обновить
-            </button>
-            <button
-              id="close-change-requests"
-              type="button"
-              class="ghost"
-              data-i18n="closeButton"
-            >
-              Закрыть
-            </button>
+            <button id="change-requests-refresh" type="button" class="secondary" data-i18n="statsRefreshButton">Обновить</button>
+            <button id="close-change-requests" type="button" class="ghost" data-i18n="closeButton">Закрыть</button>
           </div>
         </div>
         <div class="change-requests-content">
@@ -1162,6 +956,7 @@
       </div>
     </div>
 
+    <!-- Test stats modal -->
     <dialog id="test-stats-modal" class="modal">
       <div class="modal-content modal-content--medium">
         <div class="modal-header">
@@ -1169,13 +964,7 @@
             <h2 id="test-stats-title" data-i18n="testStatisticsTitle">Статистика теста</h2>
           </div>
           <div class="modal-actions">
-            <button
-              type="button"
-              class="ghost modal__close"
-              data-i18n="closeButton"
-            >
-              Закрыть
-            </button>
+            <button type="button" class="ghost modal__close" data-i18n="closeButton">Закрыть</button>
           </div>
         </div>
         <div class="test-stats-content">
@@ -1184,5 +973,6 @@
         </div>
       </div>
     </dialog>
+
   </body>
 </html>
