@@ -46,28 +46,6 @@
         min-height: calc(100vh - 56px);
         padding: 1.5rem;
       }
-      /* Auth tabs redesign */
-      .auth-tab {
-        flex: 1;
-        padding: 0.65rem 0;
-        background: transparent !important;
-        border: none !important;
-        border-bottom: 2px solid transparent;
-        border-radius: 0 !important;
-        color: #6b7280;
-        font-weight: 600;
-        font-size: 0.9rem;
-        min-height: 0 !important;
-        cursor: pointer;
-        transition: color 0.15s, border-color 0.15s;
-      }
-      .auth-tab:hover { background: transparent !important; color: #111827; }
-      :root[data-theme="dark"] .auth-tab:hover { color: #f9fafb; }
-      .auth-tab.is-active {
-        color: var(--primary) !important;
-        border-bottom-color: var(--primary) !important;
-        background: transparent !important;
-      }
       /* Test tabs — pill style */
       .test-tab.is-active {
         background: white !important;
@@ -240,92 +218,69 @@
 
       <!-- ─── AUTH SCREEN ──────────────────────────────────────── -->
       <section id="screen-auth" class="app-screen is-active">
+        <div class="auth-card">
 
-        <div style="width:100%; max-width:440px;">
-
-          <!-- Brand mark -->
-          <div class="text-center" style="margin-bottom:2rem;">
-            <div style="width:52px;height:52px;background:var(--primary);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;box-shadow:0 8px 24px rgba(5,150,105,0.3);">
-              <svg style="width:28px;height:28px;color:white;" aria-hidden="true"><use href="/static/icons.svg#home"/></svg>
-            </div>
-            <h2 style="margin:0;font-size:1.5rem;font-weight:700;" data-i18n="authTitle">Авторизация</h2>
-            <p class="muted" style="margin:0.4rem 0 0;" data-i18n="authSubtitle">Войдите в систему или создайте новый аккаунт</p>
+          <!-- Brand heading -->
+          <div class="auth-card__brand">
+            <h1 class="auth-card__title">TestMaster</h1>
+            <p class="auth-card__subtitle" data-i18n="authSubtitle">Войдите в систему или создайте новый аккаунт</p>
           </div>
 
-          <div class="card">
-            <!-- Tab switcher -->
-            <div class="auth-tabs" style="display:flex;border-bottom:1px solid var(--border);margin:-0.25rem -0.25rem 1.25rem;">
-              <button id="auth-login-tab" type="button" class="auth-tab is-active" data-i18n="loginTab">Вход</button>
-              <button id="auth-register-tab" type="button" class="auth-tab" data-i18n="registerTab">Регистрация</button>
-            </div>
-
-            <!-- Status banner -->
-            <div id="auth-status" class="auth-status is-hidden" style="margin-bottom:1rem;padding:0.6rem 0.85rem;border-radius:10px;font-size:0.875rem;font-weight:500;"></div>
-
-            <!-- Login form -->
-            <form id="auth-login-form" class="auth-form" style="display:flex;flex-direction:column;gap:1rem;">
-              <label class="auth-field" style="display:flex;flex-direction:column;gap:0.4rem;">
-                <span style="font-size:0.875rem;font-weight:600;" data-i18n="usernameLabel">Имя пользователя</span>
-                <input id="auth-login-username" type="text"
-                  placeholder="Введите имя пользователя" data-i18n-placeholder="usernamePlaceholder"
-                  required
-                  style="padding:0.6rem 0.85rem;border-radius:10px;border:1px solid var(--border);background:var(--card-muted);color:var(--text);font-size:0.9rem;outline:none;transition:border-color 0.15s,box-shadow 0.15s;"
-                  onfocus="this.style.borderColor='var(--primary)';this.style.boxShadow='0 0 0 3px var(--primary-soft)'"
-                  onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'" />
-              </label>
-              <label class="auth-field" style="display:flex;flex-direction:column;gap:0.4rem;">
-                <span style="font-size:0.875rem;font-weight:600;" data-i18n="passwordLabel">Пароль</span>
-                <input id="auth-login-password" type="password"
-                  placeholder="Введите пароль" data-i18n-placeholder="passwordPlaceholder"
-                  required
-                  style="padding:0.6rem 0.85rem;border-radius:10px;border:1px solid var(--border);background:var(--card-muted);color:var(--text);font-size:0.9rem;outline:none;transition:border-color 0.15s,box-shadow 0.15s;"
-                  onfocus="this.style.borderColor='var(--primary)';this.style.boxShadow='0 0 0 3px var(--primary-soft)'"
-                  onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'" />
-              </label>
-              <button id="auth-login-button" type="submit" class="primary" data-i18n="loginButton">Войти</button>
-            </form>
-
-            <!-- Register form -->
-            <form id="auth-register-form" class="auth-form is-hidden" style="display:flex;flex-direction:column;gap:1rem;">
-              <label class="auth-field" style="display:flex;flex-direction:column;gap:0.4rem;">
-                <span style="font-size:0.875rem;font-weight:600;" data-i18n="usernameLabel">Имя пользователя</span>
-                <input id="auth-register-username" type="text"
-                  placeholder="Введите имя пользователя" data-i18n-placeholder="usernamePlaceholder"
-                  required minlength="3" maxlength="50"
-                  style="padding:0.6rem 0.85rem;border-radius:10px;border:1px solid var(--border);background:var(--card-muted);color:var(--text);font-size:0.9rem;outline:none;transition:border-color 0.15s,box-shadow 0.15s;"
-                  onfocus="this.style.borderColor='var(--primary)';this.style.boxShadow='0 0 0 3px var(--primary-soft)'"
-                  onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'" />
-              </label>
-              <label class="auth-field" style="display:flex;flex-direction:column;gap:0.4rem;">
-                <span style="font-size:0.875rem;font-weight:600;" data-i18n="emailLabel">Email</span>
-                <input id="auth-register-email" type="email"
-                  placeholder="Введите email" data-i18n-placeholder="emailPlaceholder"
-                  required
-                  style="padding:0.6rem 0.85rem;border-radius:10px;border:1px solid var(--border);background:var(--card-muted);color:var(--text);font-size:0.9rem;outline:none;transition:border-color 0.15s,box-shadow 0.15s;"
-                  onfocus="this.style.borderColor='var(--primary)';this.style.boxShadow='0 0 0 3px var(--primary-soft)'"
-                  onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'" />
-              </label>
-              <label class="auth-field" style="display:flex;flex-direction:column;gap:0.4rem;">
-                <span style="font-size:0.875rem;font-weight:600;" data-i18n="passwordLabel">Пароль</span>
-                <input id="auth-register-password" type="password"
-                  placeholder="Введите пароль" data-i18n-placeholder="passwordPlaceholder"
-                  required minlength="6" maxlength="100"
-                  style="padding:0.6rem 0.85rem;border-radius:10px;border:1px solid var(--border);background:var(--card-muted);color:var(--text);font-size:0.9rem;outline:none;transition:border-color 0.15s,box-shadow 0.15s;"
-                  onfocus="this.style.borderColor='var(--primary)';this.style.boxShadow='0 0 0 3px var(--primary-soft)'"
-                  onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'" />
-              </label>
-              <label class="auth-field" style="display:flex;flex-direction:column;gap:0.4rem;">
-                <span style="font-size:0.875rem;font-weight:600;" data-i18n="confirmPasswordLabel">Подтвердите пароль</span>
-                <input id="auth-register-confirm-password" type="password"
-                  placeholder="Введите пароль ещё раз" data-i18n-placeholder="confirmPasswordPlaceholder"
-                  required
-                  style="padding:0.6rem 0.85rem;border-radius:10px;border:1px solid var(--border);background:var(--card-muted);color:var(--text);font-size:0.9rem;outline:none;transition:border-color 0.15s,box-shadow 0.15s;"
-                  onfocus="this.style.borderColor='var(--primary)';this.style.boxShadow='0 0 0 3px var(--primary-soft)'"
-                  onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'" />
-              </label>
-              <button id="auth-register-button" type="submit" class="primary" data-i18n="registerButton">Зарегистрироваться</button>
-            </form>
+          <!-- Pill tabs -->
+          <div class="pill-tabs auth-tabs" role="tablist">
+            <button id="auth-login-tab" type="button" role="tab" class="pill-tabs__tab is-active" aria-selected="true" data-i18n="loginTab">Вход</button>
+            <button id="auth-register-tab" type="button" role="tab" class="pill-tabs__tab" aria-selected="false" data-i18n="registerTab">Регистрация</button>
           </div>
+
+          <!-- Status banner -->
+          <div id="auth-status" class="auth-status is-hidden"></div>
+
+          <!-- Login form -->
+          <form id="auth-login-form" class="auth-form">
+            <div class="field">
+              <label class="field__label" data-i18n="usernameLabel">Имя пользователя</label>
+              <input id="auth-login-username" type="text" class="input"
+                placeholder="Введите имя пользователя" data-i18n-placeholder="usernamePlaceholder"
+                required autocomplete="username" />
+            </div>
+            <div class="field">
+              <label class="field__label" data-i18n="passwordLabel">Пароль</label>
+              <input id="auth-login-password" type="password" class="input"
+                placeholder="Введите пароль" data-i18n-placeholder="passwordPlaceholder"
+                required autocomplete="current-password" />
+            </div>
+            <button id="auth-login-button" type="submit" class="btn btn--primary btn--full" data-i18n="loginButton">Войти</button>
+          </form>
+
+          <!-- Register form -->
+          <form id="auth-register-form" class="auth-form is-hidden">
+            <div class="field">
+              <label class="field__label" data-i18n="usernameLabel">Имя пользователя</label>
+              <input id="auth-register-username" type="text" class="input"
+                placeholder="Введите имя пользователя" data-i18n-placeholder="usernamePlaceholder"
+                required minlength="3" maxlength="50" autocomplete="username" />
+            </div>
+            <div class="field">
+              <label class="field__label" data-i18n="emailLabel">Email</label>
+              <input id="auth-register-email" type="email" class="input"
+                placeholder="Введите email" data-i18n-placeholder="emailPlaceholder"
+                required autocomplete="email" />
+            </div>
+            <div class="field">
+              <label class="field__label" data-i18n="passwordLabel">Пароль</label>
+              <input id="auth-register-password" type="password" class="input"
+                placeholder="Введите пароль" data-i18n-placeholder="passwordPlaceholder"
+                required minlength="6" maxlength="100" autocomplete="new-password" />
+            </div>
+            <div class="field">
+              <label class="field__label" data-i18n="confirmPasswordLabel">Подтвердите пароль</label>
+              <input id="auth-register-confirm-password" type="password" class="input"
+                placeholder="Введите пароль ещё раз" data-i18n-placeholder="confirmPasswordPlaceholder"
+                required autocomplete="new-password" />
+            </div>
+            <button id="auth-register-button" type="submit" class="btn btn--primary btn--full" data-i18n="registerButton">Зарегистрироваться</button>
+          </form>
+
         </div>
       </section>
 

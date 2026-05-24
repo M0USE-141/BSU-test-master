@@ -6,6 +6,59 @@
   border: 1px solid var(--border);
 }
 
+/* ══════════════════════════════════════════
+   AUTH SCREEN v3
+   ══════════════════════════════════════════ */
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--s-6);
+  box-shadow: var(--shadow-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.auth-card__brand {
+  text-align: center;
+}
+.auth-card__title {
+  font-size: var(--font-display);
+  font-weight: 700;
+  color: var(--primary);
+  margin: 0 0 0.25rem;
+  letter-spacing: -0.02em;
+}
+.auth-card__subtitle {
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+  margin: 0;
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+/* Status banner — .is-error and .is-success states */
+.auth-status {
+  font-size: var(--font-sm);
+  font-weight: 500;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--r-md);
+}
+.auth-status.is-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid var(--danger-soft);
+}
+.auth-status.is-success {
+  background: var(--success-soft);
+  color: var(--success);
+  border: 1px solid var(--success-soft);
+}
+
 .panel-card__header {
   display: flex;
   justify-content: space-between;
