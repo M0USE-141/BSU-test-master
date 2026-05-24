@@ -74,6 +74,35 @@ import { setupDropzone } from "../utils/file-upload.js";
 import { getAuthHeaders } from "../api/auth.js";
 
 /**
+ * Show the info view (KPIs + action row) in the detail panel.
+ */
+function showDetailInfoView() {
+  document.getElementById("test-detail-settings")?.classList.add("is-hidden");
+  document.getElementById("test-detail-action-row")?.classList.remove("is-hidden");
+}
+
+/**
+ * Show the inline settings view in the detail panel.
+ */
+function showDetailSettingsView(test) {
+  // Populate title
+  const titleEl = document.getElementById("test-settings-title");
+  if (titleEl) titleEl.textContent = test.title || test.id;
+
+  // Update stepper max and reset to max
+  const qCount = dom.pretestQuestionCount;
+  const maxQ = test.questions?.length ?? 20;
+  if (qCount) {
+    qCount.textContent = String(maxQ);
+    qCount.dataset.max = String(maxQ);
+  }
+
+  // Show settings, hide action row
+  document.getElementById("test-detail-action-row")?.classList.add("is-hidden");
+  document.getElementById("test-detail-settings")?.classList.remove("is-hidden");
+}
+
+/**
  * Render test cards with event handlers.
  * Uses the compact two-panel list view (renderTestList) only.
  * The old renderTestCards call has been removed to prevent double-rendering
@@ -117,6 +146,9 @@ export async function showTestDetail(test, allTests = []) {
     el.style.background = active ? "var(--primary-soft,#d1fae5)" : "";
   });
 
+  // Ensure info view is shown (reset from any previously-open settings view)
+  showDetailInfoView();
+
   // Show panel, hide empty placeholder
   const detailPanel = dom.testDetailPanel;
   const emptyEl = document.getElementById("test-detail-empty");
@@ -151,10 +183,24 @@ export async function showTestDetail(test, allTests = []) {
   if (startBtn) {
     const newStart = startBtn.cloneNode(true);
     startBtn.parentNode?.replaceChild(newStart, startBtn);
-    newStart.addEventListener("click", () => {
-      selectTest(test.id)
-        .then(() => setActiveScreen("testing"))
-        .catch((err) => console.error("[management] selectTest failed:", err));
+    newStart.addEventListener("click", () => showDetailSettingsView(test));
+  }
+
+  // Wire the "Поехали" (start) button in the inline settings view
+  const settingsStartBtn = document.getElementById("test-settings-start");
+  if (settingsStartBtn) {
+    const newSettingsStart = settingsStartBtn.cloneNode(true);
+    settingsStartBtn.parentNode?.replaceChild(newSettingsStart, settingsStartBtn);
+    newSettingsStart.addEventListener("click", async () => {
+      showDetailInfoView();
+      try {
+        await selectTest(test.id);
+        const { startTest } = await import("./testing.js");
+        setActiveScreen("testing");
+        startTest();
+      } catch (err) {
+        console.error("[management] failed to start test:", err);
+      }
     });
   }
   if (editBtn) {
@@ -315,6 +361,10 @@ export function initializeManagementScreenEvents() {
   document.getElementById("import-test-btn")?.addEventListener("click", () => {
     openImportModal();
   });
+
+  // Back and cancel buttons for inline settings view
+  document.getElementById("test-settings-back")?.addEventListener("click", showDetailInfoView);
+  document.getElementById("test-settings-cancel")?.addEventListener("click", showDetailInfoView);
 
   // Tab switching for test collections
   dom.testTabs?.addEventListener("click", async (event) => {

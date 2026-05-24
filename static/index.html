@@ -454,7 +454,7 @@
               </div>
 
               <!-- Action row -->
-              <div style="display:flex;gap:0.5rem;align-items:center;">
+              <div id="test-detail-action-row" style="display:flex;gap:0.5rem;align-items:center;">
                 <button id="test-detail-start" type="button"
                   class="primary" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;font-size:0.875rem;padding:0.5rem;">
                   <svg style="width:16px;height:16px;" aria-hidden="true"><use href="/static/icons.svg#play"/></svg>
@@ -469,6 +469,65 @@
                   <svg style="width:20px;height:20px;" aria-hidden="true"><use href="/static/icons.svg#chart-bar"/></svg>
                 </button>
               </div>
+
+              <!-- Inline settings view (hidden by default) -->
+              <div id="test-detail-settings" class="is-hidden" style="margin-top:0.75rem;">
+                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
+                  <button id="test-settings-back" type="button" class="ghost"
+                    style="padding:0.25rem 0.5rem;font-size:0.8rem;display:flex;align-items:center;gap:4px;">
+                    <svg style="width:14px;height:14px;" aria-hidden="true"><use href="/static/icons.svg#arrow-left"/></svg>
+                    <span data-i18n="backButton">Назад</span>
+                  </button>
+                  <span id="test-settings-title" style="font-size:0.875rem;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                </div>
+
+                <!-- Question count stepper -->
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.875rem;">
+                  <span style="font-size:0.875rem;" data-i18n="questionCountLabel">Вопросов</span>
+                  <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <button id="pretest-count-minus" type="button" class="ghost"
+                      style="width:28px;height:28px;padding:0;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;">&#8722;</button>
+                    <span id="pretest-question-count" data-max="20"
+                      style="font-size:1rem;font-weight:700;min-width:2.25rem;text-align:center;">20</span>
+                    <button id="pretest-count-plus" type="button" class="ghost"
+                      style="width:28px;height:28px;padding:0;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;">+</button>
+                  </div>
+                </div>
+
+                <!-- Toggle switches -->
+                <div style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1rem;padding-bottom:0.875rem;border-bottom:1px solid var(--border);">
+                  <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-size:0.8125rem;" data-i18n="randomQuestionsLabel">Перемешать вопросы</span>
+                    <button id="pretest-random-questions" type="button" data-checked="false"
+                      class="toggle-switch" aria-pressed="false"><span class="toggle-switch__thumb"></span></button>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-size:0.8125rem;" data-i18n="randomOptionsLabel">Перемешать варианты</span>
+                    <button id="pretest-random-options" type="button" data-checked="false"
+                      class="toggle-switch" aria-pressed="false"><span class="toggle-switch__thumb"></span></button>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-size:0.8125rem;" data-i18n="onlyUnansweredLabel">Только непройденные</span>
+                    <button id="pretest-only-unanswered" type="button" data-checked="false"
+                      class="toggle-switch" aria-pressed="false"><span class="toggle-switch__thumb"></span></button>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-size:0.8125rem;" data-i18n="showAnswersLabel">Показывать ответы</span>
+                    <button id="pretest-show-answers" type="button" data-checked="true"
+                      class="toggle-switch is-on" aria-pressed="true"><span class="toggle-switch__thumb"></span></button>
+                  </div>
+                </div>
+
+                <!-- Action buttons -->
+                <div style="display:flex;gap:0.5rem;">
+                  <button id="test-settings-cancel" type="button" class="ghost" style="flex:1;" data-i18n="cancelButton">Отмена</button>
+                  <button id="test-settings-start" type="button"
+                    class="primary" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;">
+                    <svg style="width:14px;height:14px;" aria-hidden="true"><use href="/static/icons.svg#play"/></svg>
+                    <span data-i18n="startTestButton">Поехали</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
           </div>
@@ -481,7 +540,7 @@
         <!-- Pre-test modal (backdrop + centered card) -->
         <div id="pretest-modal"
           class="is-hidden fixed inset-0 z-50 flex items-center justify-center"
-          style="background:rgba(0,0,0,0.4);backdrop-filter:blur(4px);">
+          style="display:none!important;background:rgba(0,0,0,0.4);backdrop-filter:blur(4px);">
           <div class="card" style="width:100%;max-width:400px;padding:1.5rem;margin:1rem;">
             <h2 id="pretest-modal-title" style="font-size:1.125rem;font-weight:700;margin:0 0 0.25rem;"></h2>
             <p class="muted" style="margin:0 0 1.25rem;font-size:0.875rem;" data-i18n="pretestSubtitle">Настройки теста</p>
