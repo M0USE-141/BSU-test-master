@@ -1,53 +1,117 @@
 :root {
   color-scheme: light;
-  --bg: #f4f6fb;
-  --card: #ffffff;
-  --card-muted: #f8fafc;
-  --card-muted-strong: #f1f5f9;
-  --border: #dfe4ee;
-  --text: #1f2937;
-  --muted: #6b7280;
-  --primary: #2563eb;
-  --primary-strong: #1e40af;
-  --primary-soft: #eef2ff;
-  --primary-soft-strong: #e0e7ff;
-  --success: #22c55e;
-  --success-strong: #047857;
-  --success-soft: #ecfdf5;
-  --success-soft-strong: #d1fae5;
-  --danger: #ef4444;
-  --danger-strong: #b91c1c;
-  --danger-soft: #fee2e2;
-  --warning: #f59e0b;
+
+  /* Surfaces — neutral slate */
+  --bg: #fafafa;
+  --surface-1: #ffffff;
+  --surface-2: #f5f5f5;
+  --surface-3: #ebebeb;
+
+  /* Borders */
+  --border: #e5e5e5;
+  --border-strong: #d4d4d4;
+
+  /* Text */
+  --text: #171717;
+  --text-muted: #525252;
+  --text-subtle: #a3a3a3;
+
+  /* Brand — emerald, sparing use */
+  --primary: #059669;
+  --primary-strong: #047857;
+  --primary-soft: #d1fae5;
+  --primary-soft-strong: #a7f3d0;
+
+  /* Status */
+  --success: #16a34a;
+  --success-soft: #dcfce7;
+  --danger:  #dc2626;
+  --danger-soft:  #fee2e2;
+  --warning: #ca8a04;
   --warning-soft: #fef9c3;
-  --neutral: #e5e7eb;
-  --neutral-soft: #f3f4f6;
-  --neutral-strong: #d1d5db;
+  --info:    #2563eb;
+  --info-soft:    #dbeafe;
+
+  /* Typography scale */
+  --font-display: 1.5rem;
+  --font-h2:      1.125rem;
+  --font-body:    0.875rem;
+  --font-sm:      0.8125rem;
+  --font-xs:      0.75rem;
+
+  /* Spacing (4px base) */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.25rem;
+  --s-6: 1.5rem;
+
+  /* Radii */
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-pill: 999px;
+
+  /* Shadows (soft) */
+  --shadow-1: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-2: 0 2px 6px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.03);
+  --shadow-3: 0 8px 24px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+
+  /* Z-layers */
+  --z-header: 50;
+  --z-mobile-nav: 60;
+  --z-modal: 100;
+
+  /* ── Legacy aliases (keep for backward compat with components.css/layout.css) ── */
+  --card: var(--surface-1);
+  --card-muted: var(--surface-2);
+  --card-muted-strong: var(--surface-3);
+  --muted: var(--text-muted);
+  --neutral: var(--surface-3);
+  --neutral-soft: var(--surface-2);
+  --neutral-strong: var(--border-strong);
+  --success-strong: var(--primary-strong);
+  --success-soft-strong: var(--primary-soft-strong);
+  --danger-strong: #b91c1c;
+  --warning-soft: #fef9c3;
 }
 
-:root[data-theme="dark"] {
+[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0f172a;
-  --card: #111827;
-  --card-muted: #0b1220;
-  --card-muted-strong: #111827;
-  --border: #1f2937;
-  --text: #e2e8f0;
-  --muted: #94a3b8;
-  --primary: #60a5fa;
-  --primary-strong: #2563eb;
-  --primary-soft: #1e293b;
-  --primary-soft-strong: #334155;
-  --success: #4ade80;
-  --success-strong: #22c55e;
-  --success-soft: #064e3b;
-  --success-soft-strong: #065f46;
-  --danger: #f87171;
-  --danger-strong: #dc2626;
-  --danger-soft: #7f1d1d;
+
+  --bg: #0a0a0a;
+  --surface-1: #141414;
+  --surface-2: #1a1a1a;
+  --surface-3: #262626;
+  --border: #262626;
+  --border-strong: #383838;
+  --text: #fafafa;
+  --text-muted: #a3a3a3;
+  --text-subtle: #737373;
+  --primary: #34d399;
+  --primary-strong: #10b981;
+  --primary-soft: rgba(52,211,153,0.12);
+  --primary-soft-strong: rgba(52,211,153,0.22);
+  --success: #22c55e;
+  --success-soft: rgba(34,197,94,0.14);
+  --danger:  #f87171;
+  --danger-soft:  rgba(248,113,113,0.14);
   --warning: #fbbf24;
-  --warning-soft: #713f12;
-  --neutral: #374151;
-  --neutral-soft: #1f2937;
-  --neutral-strong: #374151;
+  --warning-soft: rgba(251,191,36,0.14);
+  --info:    #60a5fa;
+  --info-soft:    rgba(96,165,250,0.14);
+
+  /* Legacy aliases */
+  --card: var(--surface-1);
+  --card-muted: var(--surface-2);
+  --card-muted-strong: var(--surface-3);
+  --muted: var(--text-muted);
+  --neutral: var(--surface-3);
+  --neutral-soft: var(--surface-2);
+  --neutral-strong: var(--border-strong);
+  --success-strong: var(--primary-strong);
+  --success-soft-strong: var(--primary-soft-strong);
+  --danger-strong: #ef4444;
+  --warning-soft: rgba(251,191,36,0.14);
 }
