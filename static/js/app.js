@@ -74,8 +74,7 @@ async function loadAppContent() {
       return;
     }
 
-    renderTestCardsWithHandlers(tests, tests[0].id);
-    await selectTest(tests[0].id);
+    renderTestCardsWithHandlers(tests);
   } catch (error) {
     if (dom.questionContainer) {
       dom.questionContainer.textContent = error.message;

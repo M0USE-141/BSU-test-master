@@ -311,6 +311,11 @@ export function initializeManagementScreenEvents() {
     openCreateTestModal();
   });
 
+  // "Import test" button
+  document.getElementById("import-test-btn")?.addEventListener("click", () => {
+    openImportModal();
+  });
+
   // Tab switching for test collections
   dom.testTabs?.addEventListener("click", async (event) => {
     const tab = event.target.closest(".test-tab");
