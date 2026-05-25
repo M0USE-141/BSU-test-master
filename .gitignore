@@ -1,5 +1,8 @@
 .venv/
 .idea/
+.claude/
+.superpowers/
+.playwright-mcp/
 data/*
 !data/
 !data/.gitkeep
