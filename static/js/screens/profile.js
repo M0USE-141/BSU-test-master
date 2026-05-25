@@ -6,7 +6,7 @@
 import { t } from "../i18n.js";
 import { dom, state } from "../state.js";
 import { setActiveScreen } from "../rendering.js";
-import { logout } from "../api/auth.js";
+import { handleLogout } from "../screens/auth.js";
 import {
   getProfile,
   updateProfile,
@@ -43,10 +43,7 @@ export function initializeProfileScreenEvents() {
   dom.profileAvatarDelete?.addEventListener("click", handleAvatarDelete);
 
   // Logout
-  dom.profileLogout?.addEventListener("click", async () => {
-    await logout();
-    window.location.reload();
-  });
+  dom.profileLogout?.addEventListener("click", handleLogout);
 }
 
 /**
@@ -118,6 +115,7 @@ function updateAvatarDisplay(profile) {
   const hasAvatar = Boolean(profile?.avatar_url);
 
   if (dom.profileAvatarImage) {
+    dom.profileAvatarImage.alt = profile?.display_name || profile?.username || "";
     if (hasAvatar) {
       // Add cache buster to force reload
       dom.profileAvatarImage.src = `${profile.avatar_url}?t=${Date.now()}`;
