@@ -39,35 +39,51 @@ const ROUTES = [
   },
   {
     pattern: '/stats',
-    module: () => import('./screens/desktop/stats.js'),
+    module: () => isMobile()
+      ? import('./screens/mobile/stats.js')
+      : import('./screens/desktop/stats.js'),
   },
   {
     pattern: '/test/:id',
-    module: () => import('./screens/desktop/home.js'),
+    module: () => isMobile()
+      ? import('./screens/mobile/tests.js')
+      : import('./screens/desktop/home.js'),
   },
   {
     pattern: '/test/:id/take',
-    module: () => import('./screens/desktop/taking.js'),
+    module: () => isMobile()
+      ? import('./screens/mobile/taking.js')
+      : import('./screens/desktop/taking.js'),
   },
   {
     pattern: '/test/:id/results/:attemptId',
-    module: () => import('./screens/desktop/results.js'),
+    module: () => isMobile()
+      ? import('./screens/mobile/results.js')
+      : import('./screens/desktop/results.js'),
   },
   {
     pattern: '/profile',
-    module: () => import('./screens/desktop/profile.js'),
+    module: () => isMobile()
+      ? import('./screens/mobile/profile.js')
+      : import('./screens/desktop/profile.js'),
   },
   {
     pattern: '/settings',
-    module: () => import('./screens/desktop/settings.js'),
+    module: () => isMobile()
+      ? import('./screens/mobile/settings.js')
+      : import('./screens/desktop/settings.js'),
   },
   {
     pattern: '/notifications',
-    module: () => import('./screens/desktop/notifications.js'),
+    module: () => isMobile()
+      ? import('./screens/mobile/notifications.js')
+      : import('./screens/desktop/notifications.js'),
   },
   {
     pattern: '/import',
-    module: () => import('./screens/desktop/import.js'),
+    module: () => isMobile()
+      ? import('./screens/mobile/import.js')
+      : import('./screens/desktop/import.js'),
   },
 ];
 
