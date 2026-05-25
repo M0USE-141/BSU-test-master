@@ -200,128 +200,78 @@ export function clearElement(element) {
 }
 
 export function renderAuthScreen() {
+  _hideAllScreens();
   if (dom.screenAuth) {
     dom.screenAuth.classList.remove("is-hidden");
     dom.screenAuth.classList.add("is-active");
   }
-  if (dom.screenManagement) {
-    dom.screenManagement.classList.add("is-hidden");
-    dom.screenManagement.classList.remove("is-active");
-  }
-  if (dom.screenTesting) {
-    dom.screenTesting.classList.add("is-hidden");
-    dom.screenTesting.classList.remove("is-active");
-  }
-  if (dom.screenStats) {
-    dom.screenStats.classList.add("is-hidden");
-    dom.screenStats.classList.remove("is-active");
-  }
-  if (dom.screenProfile) {
-    dom.screenProfile.classList.add("is-hidden");
-    dom.screenProfile.classList.remove("is-active");
-  }
 }
 
 export function renderManagementScreen() {
-  if (dom.screenAuth) {
-    dom.screenAuth.classList.add("is-hidden");
-    dom.screenAuth.classList.remove("is-active");
-  }
+  _hideAllScreens();
   if (dom.screenManagement) {
     dom.screenManagement.classList.remove("is-hidden");
     dom.screenManagement.classList.add("is-active");
   }
-  if (dom.screenTesting) {
-    dom.screenTesting.classList.add("is-hidden");
-    dom.screenTesting.classList.remove("is-active");
-  }
-  if (dom.screenStats) {
-    dom.screenStats.classList.add("is-hidden");
-    dom.screenStats.classList.remove("is-active");
-  }
-  if (dom.screenProfile) {
-    dom.screenProfile.classList.add("is-hidden");
-    dom.screenProfile.classList.remove("is-active");
-  }
 }
 
 export function renderTestingScreen() {
-  if (dom.screenAuth) {
-    dom.screenAuth.classList.add("is-hidden");
-    dom.screenAuth.classList.remove("is-active");
-  }
+  _hideAllScreens();
   if (dom.screenTesting) {
     dom.screenTesting.classList.remove("is-hidden");
     dom.screenTesting.classList.add("is-active");
   }
-  if (dom.screenManagement) {
-    dom.screenManagement.classList.add("is-hidden");
-    dom.screenManagement.classList.remove("is-active");
-  }
-  if (dom.screenStats) {
-    dom.screenStats.classList.add("is-hidden");
-    dom.screenStats.classList.remove("is-active");
-  }
-  if (dom.screenProfile) {
-    dom.screenProfile.classList.add("is-hidden");
-    dom.screenProfile.classList.remove("is-active");
-  }
 }
 
 export function renderStatsScreen() {
-  if (dom.screenAuth) {
-    dom.screenAuth.classList.add("is-hidden");
-    dom.screenAuth.classList.remove("is-active");
-  }
+  _hideAllScreens();
   if (dom.screenStats) {
     dom.screenStats.classList.remove("is-hidden");
     dom.screenStats.classList.add("is-active");
   }
-  if (dom.screenManagement) {
-    dom.screenManagement.classList.add("is-hidden");
-    dom.screenManagement.classList.remove("is-active");
-  }
-  if (dom.screenTesting) {
-    dom.screenTesting.classList.add("is-hidden");
-    dom.screenTesting.classList.remove("is-active");
-  }
-  if (dom.screenProfile) {
-    dom.screenProfile.classList.add("is-hidden");
-    dom.screenProfile.classList.remove("is-active");
-  }
 }
 
 export function renderProfileScreen() {
-  if (dom.screenAuth) {
-    dom.screenAuth.classList.add("is-hidden");
-    dom.screenAuth.classList.remove("is-active");
-  }
+  _hideAllScreens();
   if (dom.screenProfile) {
     dom.screenProfile.classList.remove("is-hidden");
     dom.screenProfile.classList.add("is-active");
   }
-  if (dom.screenManagement) {
-    dom.screenManagement.classList.add("is-hidden");
-    dom.screenManagement.classList.remove("is-active");
-  }
-  if (dom.screenTesting) {
-    dom.screenTesting.classList.add("is-hidden");
-    dom.screenTesting.classList.remove("is-active");
-  }
-  if (dom.screenStats) {
-    dom.screenStats.classList.add("is-hidden");
-    dom.screenStats.classList.remove("is-active");
-  }
 }
 
-export function renderEditorScreen() {
-  [dom.screenAuth, dom.screenManagement, dom.screenTesting, dom.screenStats, dom.screenProfile].forEach((s) => {
+/** Hide every post-auth screen. Used by all render helpers below. */
+function _hideAllScreens() {
+  [
+    dom.screenAuth, dom.screenManagement, dom.screenTesting,
+    dom.screenStats, dom.screenProfile, dom.screenEditor,
+    dom.screenImport, dom.screenChangeRequests,
+  ].forEach((s) => {
     s?.classList.add("is-hidden");
     s?.classList.remove("is-active");
   });
+}
+
+export function renderEditorScreen() {
+  _hideAllScreens();
   if (dom.screenEditor) {
     dom.screenEditor.classList.remove("is-hidden");
     dom.screenEditor.classList.add("is-active");
+  }
+}
+
+export function renderImportScreen() {
+  _hideAllScreens();
+  if (dom.screenImport) {
+    dom.screenImport.classList.remove("is-hidden");
+    dom.screenImport.classList.add("is-active");
+  }
+}
+
+export function renderChangeRequestsScreen() {
+  _hideAllScreens();
+  if (dom.screenChangeRequests) {
+    dom.screenChangeRequests.classList.remove("is-hidden");
+    dom.screenChangeRequests.classList.add("is-active");
   }
 }
 
@@ -342,6 +292,10 @@ export function setActiveScreen(screen) {
     renderProfileScreen();
   } else if (screen === "editor") {
     renderEditorScreen();
+  } else if (screen === "import") {
+    renderImportScreen();
+  } else if (screen === "change-requests") {
+    renderChangeRequestsScreen();
   } else {
     renderManagementScreen();
   }
