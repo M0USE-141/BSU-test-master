@@ -84,6 +84,10 @@ class ChangeRequest(Base):
         Text, nullable=True
     )
 
+    __table_args__ = (
+        sa.Index("ix_change_requests_collection_created", "test_collection_id", "created_at"),
+    )
+
     # Relationships
     test_collection: Mapped["TestCollection"] = relationship(
         "TestCollection", back_populates="change_requests"

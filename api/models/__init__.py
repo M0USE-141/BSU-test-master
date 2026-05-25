@@ -1,9 +1,4 @@
 """Pydantic models."""
-from api.models.attempts import (
-    AttemptEventPayload,
-    AttemptFinalizeRequest,
-    AttemptFinalizeResponse,
-)
 from api.models.auth import (
     MessageResponse,
     RefreshTokenRequest,
@@ -15,9 +10,6 @@ from api.models.auth import (
 from api.models.tests import TestCreate, TestUpdate
 
 __all__ = [
-    "AttemptEventPayload",
-    "AttemptFinalizeRequest",
-    "AttemptFinalizeResponse",
     "MessageResponse",
     "RefreshTokenRequest",
     "TestCreate",
