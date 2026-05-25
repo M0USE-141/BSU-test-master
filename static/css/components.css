@@ -2222,3 +2222,43 @@ button.danger:hover {
     overflow-y: auto;
   }
 }
+
+/* ── Testing screen — question grid squares ─────────────── */
+.qgrid-sq {
+  aspect-ratio: 1;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  min-width: 0;
+  background: var(--border);
+  color: var(--text-muted);
+  transition: opacity 0.1s;
+}
+
+.qgrid-sq--current {
+  background: var(--surface-3);
+  color: var(--text);
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.qgrid-sq--correct {
+  background: var(--primary);
+  color: #fff;
+}
+
+.qgrid-sq--wrong {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.qgrid-sq--answered {
+  background: var(--text-subtle);
+  color: #fff;
+}

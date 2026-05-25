@@ -250,32 +250,20 @@ function renderSidebarGrids() {
     const answered = answerIdx !== undefined && answerIdx !== -1;
     const status = answerStatus.get(entry.questionId); // "correct" / "incorrect" / "unanswered" / undefined
 
-    let bg = "var(--border, #e2e8f0)";
-    let textColor = "#94a3b8";
-    let outline = "";
-
-    if (isCurrent) {
-      bg = "#1e293b";
-      textColor = "white";
-      outline = "outline:2px solid var(--primary,#059669);";
-    } else if (answered && status === "correct") {
-      bg = "#059669";
-      textColor = "white";
-    } else if (answered && status === "incorrect") {
-      bg = "#fecaca";
-      textColor = "#991b1b";
-    } else if (answered) {
-      // answered but status unknown or "unanswered" (show_answers=false or no correct index)
-      bg = "#94a3b8";
-      textColor = "white";
-    }
-
     const sq = document.createElement("button");
     sq.type = "button";
-    sq.style.cssText = `aspect-ratio:1;background:${bg};border-radius:4px;
-      display:flex;align-items:center;justify-content:center;
-      font-size:0.6875rem;font-weight:700;color:${textColor};
-      border:none;cursor:pointer;padding:0;min-width:0;${outline}`;
+    sq.className = "qgrid-sq";
+
+    if (isCurrent) {
+      sq.classList.add("qgrid-sq--current");
+    } else if (answered && status === "correct") {
+      sq.classList.add("qgrid-sq--correct");
+    } else if (answered && status === "incorrect") {
+      sq.classList.add("qgrid-sq--wrong");
+    } else if (answered) {
+      sq.classList.add("qgrid-sq--answered");
+    }
+
     sq.textContent = String(idx + 1);
     sq.setAttribute("aria-label", `Вопрос ${idx + 1}`);
     const capturedIdx = idx;
