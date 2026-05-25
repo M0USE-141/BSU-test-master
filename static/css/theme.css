@@ -1,45 +1,75 @@
+/* ============================================================
+   theme.css — "Warm Paper + Sketchy Handwritten" design system
+   Layer 1: CSS custom property definitions only (no rules)
+   ============================================================ */
+
 :root {
   color-scheme: light;
 
-  /* Surfaces — neutral slate */
-  --bg: #fafafa;
-  --surface-1: #ffffff;
-  --surface-2: #f5f5f5;
-  --surface-3: #ebebeb;
+  /* ── New design system: warm-feel tokens ── */
+  --wf-paper:       #f9f6ef;
+  --wf-ink:         #1c1a18;
+  --wf-ink-mute:    rgba(28,26,24,0.35);
+  --wf-ink-soft:    rgba(28,26,24,0.06);
+  --wf-ink-fade:    rgba(28,26,24,0.55);
+  --wf-accent:      #4f9b6a;
+  --wf-accent-soft: rgba(79,155,106,0.14);
+  --wf-shadow:      3px 3px 0 0 var(--wf-ink);
+  --wf-border:      2px solid var(--wf-ink);
+  --wf-radius:      6px;
+  --wf-pad:         16px;
 
-  /* Borders */
-  --border: #e5e5e5;
-  --border-strong: #d4d4d4;
+  /* ── Legacy bridge: surfaces ── */
+  --bg:               var(--wf-paper);
+  --surface-1:        var(--wf-paper);
+  --surface-2:        color-mix(in srgb, var(--wf-paper) 96%, var(--wf-ink));
+  --surface-3:        color-mix(in srgb, var(--wf-paper) 90%, var(--wf-ink));
 
-  /* Text */
-  --text: #171717;
-  --text-muted: #525252;
-  --text-subtle: #a3a3a3;
+  /* ── Legacy bridge: borders ── */
+  --border:           rgba(28,26,24,0.15);
+  --border-strong:    rgba(28,26,24,0.30);
 
-  /* Brand — emerald, sparing use */
-  --primary: #059669;
-  --primary-strong: #047857;
-  --primary-soft: #d1fae5;
-  --primary-soft-strong: #a7f3d0;
+  /* ── Legacy bridge: text ── */
+  --text:             var(--wf-ink);
+  --text-muted:       var(--wf-ink-fade);
+  --text-subtle:      var(--wf-ink-mute);
 
-  /* Status */
-  --success: #16a34a;
-  --success-soft: #dcfce7;
-  --danger:  #dc2626;
-  --danger-soft:  #fee2e2;
-  --warning: #ca8a04;
-  --warning-soft: #fef9c3;
-  --info:    #2563eb;
-  --info-soft:    #dbeafe;
+  /* ── Legacy bridge: brand / primary ── */
+  --primary:              var(--wf-accent);
+  --primary-strong:       color-mix(in srgb, var(--wf-accent) 80%, black);
+  --primary-soft:         var(--wf-accent-soft);
+  --primary-soft-strong:  rgba(79,155,106,0.28);
 
-  /* Typography scale */
+  /* ── Legacy bridge: status ── */
+  --success:              #4f9b6a;
+  --success-soft:         rgba(79,155,106,0.14);
+  --success-strong:       #3a7a52;
+  --success-soft-strong:  rgba(79,155,106,0.28);
+  --danger:               #c0392b;
+  --danger-soft:          rgba(192,57,43,0.12);
+  --danger-strong:        #a93226;
+  --warning:              #d4802a;
+  --warning-soft:         rgba(212,128,42,0.14);
+  --info:                 #4a78c4;
+  --info-soft:            rgba(74,120,196,0.14);
+
+  /* ── Legacy bridge: card / neutral ── */
+  --card:               var(--wf-paper);
+  --card-muted:         color-mix(in srgb, var(--wf-paper) 95%, var(--wf-ink));
+  --card-muted-strong:  color-mix(in srgb, var(--wf-paper) 88%, var(--wf-ink));
+  --muted:              var(--wf-ink-fade);
+  --neutral:            color-mix(in srgb, var(--wf-paper) 88%, var(--wf-ink));
+  --neutral-soft:       color-mix(in srgb, var(--wf-paper) 94%, var(--wf-ink));
+  --neutral-strong:     rgba(28,26,24,0.25);
+
+  /* ── Typography scale (unchanged) ── */
   --font-display: 1.5rem;
   --font-h2:      1.125rem;
   --font-body:    0.875rem;
   --font-sm:      0.8125rem;
   --font-xs:      0.75rem;
 
-  /* Spacing (4px base) */
+  /* ── Spacing — 4px base (unchanged) ── */
   --s-1: 0.25rem;
   --s-2: 0.5rem;
   --s-3: 0.75rem;
@@ -47,71 +77,80 @@
   --s-5: 1.25rem;
   --s-6: 1.5rem;
 
-  /* Radii */
-  --r-sm: 6px;
-  --r-md: 8px;
-  --r-lg: 12px;
+  /* ── Radii (unchanged) ── */
+  --r-sm:   6px;
+  --r-md:   8px;
+  --r-lg:   12px;
   --r-pill: 999px;
 
-  /* Shadows (soft) */
+  /* ── Shadows (unchanged) ── */
   --shadow-1: 0 1px 2px rgba(0,0,0,0.04);
   --shadow-2: 0 2px 6px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.03);
   --shadow-3: 0 8px 24px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
 
-  /* Z-layers */
-  --z-header: 50;
+  /* ── Z-layers (unchanged) ── */
+  --z-header:     50;
   --z-mobile-nav: 60;
-  --z-dropdown: 100;
-  --z-modal: 1000;
-
-  /* ── Legacy aliases (keep for backward compat with components.css/layout.css) ── */
-  --card: var(--surface-1);
-  --card-muted: var(--surface-2);
-  --card-muted-strong: var(--surface-3);
-  --muted: var(--text-muted);
-  --neutral: var(--surface-3);
-  --neutral-soft: var(--surface-2);
-  --neutral-strong: var(--border-strong);
-  --success-strong: #15803d;
-  --success-soft-strong: var(--primary-soft-strong);
-  --danger-strong: #b91c1c;
+  --z-dropdown:   100;
+  --z-modal:      1000;
 }
 
+/* ============================================================
+   Dark mode overrides
+   ============================================================ */
+
 :root[data-theme="dark"] {
-  /* Font, spacing, radius, shadow, z-index tokens intentionally inherited from :root */
   color-scheme: dark;
 
-  --bg: #0a0a0a;
-  --surface-1: #141414;
-  --surface-2: #1a1a1a;
-  --surface-3: #262626;
-  --border: #262626;
-  --border-strong: #383838;
-  --text: #fafafa;
-  --text-muted: #a3a3a3;
-  --text-subtle: #737373;
-  --primary: #34d399;
-  --primary-strong: #10b981;
-  --primary-soft: rgba(52,211,153,0.12);
-  --primary-soft-strong: rgba(52,211,153,0.22);
-  --success: #22c55e;
-  --success-soft: rgba(34,197,94,0.14);
-  --danger:  #f87171;
-  --danger-soft:  rgba(248,113,113,0.14);
-  --warning: #fbbf24;
-  --warning-soft: rgba(251,191,36,0.14);
-  --info:    #60a5fa;
-  --info-soft:    rgba(96,165,250,0.14);
+  /* ── New design system: warm-feel tokens (dark) ── */
+  --wf-paper:       #1a1714;
+  --wf-ink:         #f3ece0;
+  --wf-ink-mute:    rgba(243,236,224,0.30);
+  --wf-ink-soft:    rgba(243,236,224,0.08);
+  --wf-ink-fade:    rgba(243,236,224,0.55);
+  --wf-accent:      #4f9b6a;
+  --wf-accent-soft: rgba(79,155,106,0.22);
 
-  /* Legacy aliases */
-  --card: var(--surface-1);
-  --card-muted: var(--surface-2);
-  --card-muted-strong: var(--surface-3);
-  --muted: var(--text-muted);
-  --neutral: var(--surface-3);
-  --neutral-soft: var(--surface-2);
-  --neutral-strong: var(--border-strong);
-  --success-strong: #4ade80;
-  --success-soft-strong: var(--primary-soft-strong);
-  --danger-strong: #ef4444;
+  /* ── Legacy bridge: surfaces (dark) ── */
+  --bg:               var(--wf-paper);
+  --surface-1:        var(--wf-paper);
+  --surface-2:        #221f1b;
+  --surface-3:        #2a2620;
+
+  /* ── Legacy bridge: borders (dark) ── */
+  --border:           rgba(243,236,224,0.15);
+  --border-strong:    rgba(243,236,224,0.30);
+
+  /* ── Legacy bridge: text (dark) ── */
+  --text:             var(--wf-ink);
+  --text-muted:       var(--wf-ink-fade);
+  --text-subtle:      var(--wf-ink-mute);
+
+  /* ── Legacy bridge: brand / primary (dark) ── */
+  --primary:              var(--wf-accent);
+  --primary-strong:       color-mix(in srgb, var(--wf-accent) 80%, black);
+  --primary-soft:         var(--wf-accent-soft);
+  --primary-soft-strong:  rgba(79,155,106,0.32);
+
+  /* ── Legacy bridge: status (dark) ── */
+  --success:              #4f9b6a;
+  --success-soft:         rgba(79,155,106,0.18);
+  --success-strong:       #6ab883;
+  --success-soft-strong:  rgba(79,155,106,0.32);
+  --danger:               #e05c4d;
+  --danger-soft:          rgba(224,92,77,0.15);
+  --danger-strong:        #c94535;
+  --warning:              #d4922a;
+  --warning-soft:         rgba(212,146,42,0.15);
+  --info:                 #6b98d4;
+  --info-soft:            rgba(107,152,212,0.15);
+
+  /* ── Legacy bridge: card / neutral (dark) ── */
+  --card:               var(--wf-paper);
+  --card-muted:         #1e1c18;
+  --card-muted-strong:  #221f1b;
+  --muted:              var(--wf-ink-fade);
+  --neutral:            #2a2620;
+  --neutral-soft:       #221f1b;
+  --neutral-strong:     rgba(243,236,224,0.25);
 }
