@@ -26,26 +26,21 @@ export function closeEditorModal() {
 }
 
 /**
- * Open import modal
+ * Open import screen (full-page)
  */
 export function openImportModal() {
-  if (!dom.importModal) {
-    return;
-  }
-  dom.importModal.classList.add("is-open");
-  dom.importModal.setAttribute("aria-hidden", "false");
+  setActiveScreen("import");
 }
 
 /**
- * Close import modal
+ * Close import screen and return to management
  */
 export function closeImportModal() {
-  if (!dom.importModal) {
-    return;
-  }
-  dom.importModal.classList.remove("is-open");
-  dom.importModal.setAttribute("aria-hidden", "true");
+  setActiveScreen("management");
 }
+
+// Wire import screen back button
+document.getElementById("import-screen-back")?.addEventListener("click", closeImportModal);
 
 /**
  * Set create test status message

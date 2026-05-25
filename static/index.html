@@ -954,6 +954,92 @@
 
       </section>
 
+      <!-- ─── IMPORT SCREEN ─────────────────────────────────────── -->
+      <section id="screen-import" class="app-screen is-hidden">
+        <div style="max-width:720px;margin:0 auto;padding:1.5rem 1.25rem 3rem;">
+
+          <!-- Page header -->
+          <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.5rem;">
+            <button id="import-screen-back" type="button" class="btn btn--ghost btn--sm"
+              style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+              <svg style="width:14px;height:14px;" aria-hidden="true"><use href="/static/icons.svg#arrow-left"/></svg>
+              <span data-i18n="navTests">Тесты</span>
+            </button>
+            <h1 style="margin:0;font-size:var(--font-display);font-weight:600;" data-i18n="importTitle">Импорт тестов</h1>
+          </div>
+
+          <div class="card" style="padding:1.25rem;">
+            <p style="font-size:var(--font-sm);color:var(--text-muted);margin:0 0 1rem;" data-i18n="importSubtitle">Загрузите Word-файл и получите новую коллекцию.</p>
+            <form id="upload-form" class="upload-form">
+              <div id="upload-dropzone" class="upload-dropzone is-empty">
+                <div class="upload-dropzone__area">
+                  <div class="upload-dropzone__icon" aria-hidden="true">⭳</div>
+                  <div class="upload-dropzone__content">
+                    <p data-i18n="uploadDropTitle">Перетащите Word-файл сюда</p>
+                    <p class="muted" data-i18n="uploadDropHint">или выберите вручную на устройстве</p>
+                  </div>
+                </div>
+                <div id="upload-file-name" class="upload-file-name is-empty">
+                  <span class="upload-file-name__label" data-i18n="uploadSelectedFileLabel">Выбранный файл</span>
+                  <span class="upload-file-name__value" data-i18n="uploadNoFileSelected">Файл не выбран</span>
+                </div>
+                <div class="upload-dropzone__actions">
+                  <label class="upload-select-button" for="upload-file">
+                    <span data-i18n="uploadSelectFileButton">Выбрать файл</span>
+                  </label>
+                  <button id="upload-clear-file" type="button" class="upload-clear-button" disabled>
+                    <span data-i18n="uploadClearButton">Очистить</span>
+                  </button>
+                  <span class="upload-hint" data-i18n="uploadDocxHint">Только .docx</span>
+                </div>
+                <input type="file" id="upload-file" class="upload-input" accept=".docx" required />
+              </div>
+              <div class="upload-actions">
+                <label class="upload-field" for="upload-symbol">
+                  <span data-i18n="uploadSymbolLabel">Маркер правильного ответа</span>
+                  <input type="text" id="upload-symbol" name="symbol" />
+                </label>
+                <label class="upload-checkbox" for="upload-log-small-tables">
+                  <input type="checkbox" id="upload-log-small-tables" />
+                  <span data-i18n="uploadLogSmallTables">Логировать таблицы &lt; 3 строк</span>
+                </label>
+                <button type="submit" class="btn btn--primary" data-i18n="importSubmitButton">Импортировать</button>
+              </div>
+            </form>
+            <div class="upload-logs-panel" style="margin-top:1rem;">
+              <h3 style="font-size:var(--font-body);font-weight:600;margin:0 0 0.5rem;" data-i18n="importLogsTitle">Логи импорта</h3>
+              <ul id="upload-logs" class="upload-logs"></ul>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ─── CHANGE REQUESTS SCREEN ────────────────────────────── -->
+      <section id="screen-change-requests" class="app-screen is-hidden">
+        <div style="max-width:860px;margin:0 auto;padding:1.5rem 1.25rem 3rem;">
+
+          <!-- Page header -->
+          <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.5rem;flex-wrap:wrap;">
+            <button id="cr-screen-back" type="button" class="btn btn--ghost btn--sm"
+              style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+              <svg style="width:14px;height:14px;" aria-hidden="true"><use href="/static/icons.svg#arrow-left"/></svg>
+              <span data-i18n="backButton">Назад</span>
+            </button>
+            <h1 style="margin:0;font-size:var(--font-display);font-weight:600;flex:1;" data-i18n="changeRequestsTitle">Предложения изменений</h1>
+            <span id="change-requests-test-name" style="font-size:var(--font-sm);color:var(--text-muted);"></span>
+            <button id="change-requests-refresh" type="button" class="btn btn--ghost btn--sm" data-i18n="statsRefreshButton">Обновить</button>
+          </div>
+
+          <div class="change-requests-content">
+            <div id="change-requests-stats" class="cr-stats"></div>
+            <p id="change-requests-status" style="font-size:var(--font-sm);color:var(--text-muted);"></p>
+            <div id="change-requests-list" class="cr-list"></div>
+          </div>
+
+        </div>
+      </section>
+
     </main><!-- /main -->
 
 
@@ -964,60 +1050,8 @@
     <!-- Editor modal stub — content moved to #screen-editor -->
     <div id="editor-modal" class="is-hidden" aria-hidden="true" style="display:none!important;"></div>
 
-    <!-- Import modal -->
-    <div id="import-modal" class="modal" aria-hidden="true">
-      <div class="modal-content">
-        <div class="modal-header">
-          <div>
-            <h2 data-i18n="importTitle">Импорт тестов</h2>
-            <p class="muted" data-i18n="importSubtitle">Загрузите Word-файл и получите новую коллекцию.</p>
-          </div>
-          <div class="modal-actions">
-            <button id="close-import" type="button" class="ghost" data-i18n="closeButton">Закрыть</button>
-          </div>
-        </div>
-        <form id="upload-form" class="upload-form">
-          <div id="upload-dropzone" class="upload-dropzone is-empty">
-            <div class="upload-dropzone__area">
-              <div class="upload-dropzone__icon" aria-hidden="true">⭳</div>
-              <div class="upload-dropzone__content">
-                <p data-i18n="uploadDropTitle">Перетащите Word-файл сюда</p>
-                <p class="muted" data-i18n="uploadDropHint">или выберите вручную на устройстве</p>
-              </div>
-            </div>
-            <div id="upload-file-name" class="upload-file-name is-empty">
-              <span class="upload-file-name__label" data-i18n="uploadSelectedFileLabel">Выбранный файл</span>
-              <span class="upload-file-name__value" data-i18n="uploadNoFileSelected">Файл не выбран</span>
-            </div>
-            <div class="upload-dropzone__actions">
-              <label class="upload-select-button" for="upload-file">
-                <span data-i18n="uploadSelectFileButton">Выбрать файл</span>
-              </label>
-              <button id="upload-clear-file" type="button" class="upload-clear-button" disabled>
-                <span data-i18n="uploadClearButton">Очистить</span>
-              </button>
-              <span class="upload-hint" data-i18n="uploadDocxHint">Только .docx</span>
-            </div>
-            <input type="file" id="upload-file" class="upload-input" accept=".docx" required />
-          </div>
-          <div class="upload-actions">
-            <label class="upload-field" for="upload-symbol">
-              <span data-i18n="uploadSymbolLabel">Маркер правильного ответа</span>
-              <input type="text" id="upload-symbol" name="symbol" />
-            </label>
-            <label class="upload-checkbox" for="upload-log-small-tables">
-              <input type="checkbox" id="upload-log-small-tables" />
-              <span data-i18n="uploadLogSmallTables">Логировать таблицы &lt; 3 строк</span>
-            </label>
-            <button type="submit" data-i18n="importSubmitButton">Импортировать</button>
-          </div>
-        </form>
-        <div class="upload-logs-panel">
-          <h3 data-i18n="importLogsTitle">Логи импорта</h3>
-          <ul id="upload-logs" class="upload-logs"></ul>
-        </div>
-      </div>
-    </div>
+    <!-- Import — content moved to #screen-import -->
+    <div id="import-modal" aria-hidden="true" style="display:none!important;"></div>
 
     <!-- Create test modal -->
     <div id="create-test-modal" class="modal" aria-hidden="true">
@@ -1094,26 +1128,8 @@
       </div>
     </div>
 
-    <!-- Change requests modal -->
-    <div id="change-requests-modal" class="modal" aria-hidden="true">
-      <div class="modal-content modal-content--medium">
-        <div class="modal-header">
-          <div>
-            <h2 data-i18n="changeRequestsTitle">Предложения изменений</h2>
-            <p class="muted" id="change-requests-test-name"></p>
-          </div>
-          <div class="modal-actions">
-            <button id="change-requests-refresh" type="button" class="secondary" data-i18n="statsRefreshButton">Обновить</button>
-            <button id="close-change-requests" type="button" class="ghost" data-i18n="closeButton">Закрыть</button>
-          </div>
-        </div>
-        <div class="change-requests-content">
-          <div id="change-requests-stats" class="cr-stats"></div>
-          <p id="change-requests-status" class="muted"></p>
-          <div id="change-requests-list" class="cr-list"></div>
-        </div>
-      </div>
-    </div>
+    <!-- Change requests — content moved to #screen-change-requests -->
+    <div id="change-requests-modal" aria-hidden="true" style="display:none!important;"></div>
 
     <!-- Test stats modal -->
     <dialog id="test-stats-modal" class="modal">

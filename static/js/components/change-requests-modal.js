@@ -4,7 +4,7 @@
 
 import { dom, state } from "../state.js";
 import { t } from "../i18n.js";
-import { renderBlocks } from "../rendering.js";
+import { renderBlocks, setActiveScreen } from "../rendering.js";
 import {
   fetchChangeRequests,
   fetchChangeRequestStats,
@@ -21,12 +21,10 @@ let currentFilter = null;
  * @param {string} testTitle
  */
 export async function openChangeRequestsModal(testId, testTitle) {
-  if (!dom.changeRequestsModal) return;
-
   currentTestId = testId;
   currentFilter = null;
 
-  // Set test name
+  // Set test name in the screen header
   if (dom.changeRequestsTestName) {
     dom.changeRequestsTestName.textContent = testTitle;
   }
@@ -34,23 +32,19 @@ export async function openChangeRequestsModal(testId, testTitle) {
   // Reset status
   setChangeRequestsStatus("");
 
-  // Show modal
-  dom.changeRequestsModal.classList.add("is-open");
-  dom.changeRequestsModal.setAttribute("aria-hidden", "false");
+  // Navigate to screen
+  setActiveScreen("change-requests");
 
   // Load data
   await refreshChangeRequests();
 }
 
 /**
- * Close change requests modal.
+ * Close change requests screen and return to editor.
  */
 export function closeChangeRequestsModal() {
-  if (!dom.changeRequestsModal) return;
-
-  dom.changeRequestsModal.classList.remove("is-open");
-  dom.changeRequestsModal.setAttribute("aria-hidden", "true");
   currentTestId = null;
+  setActiveScreen("editor");
 }
 
 /**
@@ -511,15 +505,8 @@ function setChangeRequestsStatus(message, isError = false, isSuccess = false) {
  * Initialize change requests modal event listeners.
  */
 export function initializeChangeRequestsModalEvents() {
-  // Close modal
-  dom.closeChangeRequestsButton?.addEventListener("click", closeChangeRequestsModal);
-
-  // Close on backdrop click
-  dom.changeRequestsModal?.addEventListener("click", (event) => {
-    if (event.target === dom.changeRequestsModal) {
-      closeChangeRequestsModal();
-    }
-  });
+  // CR screen back button
+  document.getElementById("cr-screen-back")?.addEventListener("click", closeChangeRequestsModal);
 
   // Refresh button
   dom.changeRequestsRefreshButton?.addEventListener("click", () => {

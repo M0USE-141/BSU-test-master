@@ -193,6 +193,8 @@ export const dom = {
   screenStats: document.getElementById("screen-stats"),
   screenProfile: document.getElementById("screen-profile"),
   screenEditor: document.getElementById("screen-editor"),
+  screenImport: document.getElementById("screen-import"),
+  screenChangeRequests: document.getElementById("screen-change-requests"),
   // Profile elements
   profileBackButton: document.getElementById("profile-back"),
   profileAvatarImage: document.getElementById("profile-avatar-image"),
