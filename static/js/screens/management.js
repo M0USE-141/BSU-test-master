@@ -159,7 +159,7 @@ export async function showTestDetail(test, allTests = []) {
   const badge = document.getElementById("test-detail-badge");
   if (badge) {
     const level = test.access_level || "private";
-    const labels = { public: "Публичный", private: "Приватный", shared: "Общий доступ" };
+    const labels = { public: t("accessPublic"), private: t("accessPrivate"), shared: t("accessShared") };
     badge.textContent = labels[level] || level;
     badge.className = `access-chip access-chip--${level}`;
   }
