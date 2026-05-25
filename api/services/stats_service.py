@@ -452,6 +452,35 @@ def get_score_distribution(db: DBSession, test_id: str) -> list[dict]:
     ]
 
 
+def get_activity_heatmap(db: DBSession, user_id: int, weeks: int = 12) -> dict:
+    """Return daily attempt counts for the last N weeks (for heatmap rendering)."""
+    from datetime import date, timedelta
+
+    total_days = weeks * 7
+    today = date.today()
+    start_date = today - timedelta(days=total_days - 1)
+
+    rows = db.execute(
+        text(
+            "SELECT DATE(finished_at) as day, COUNT(*) as cnt "
+            "FROM attempts "
+            "WHERE user_id = :uid AND status = 'completed' "
+            "  AND finished_at >= :start "
+            "GROUP BY DATE(finished_at)"
+        ),
+        {"uid": user_id, "start": start_date.isoformat()}
+    ).fetchall()
+
+    counts = {r[0]: r[1] for r in rows}
+
+    days = []
+    for i in range(total_days):
+        d = (start_date + timedelta(days=i)).isoformat()
+        days.append({"date": d, "count": counts.get(d, 0)})
+
+    return {"days": days, "weeks": weeks}
+
+
 def get_activity_by_week(db: DBSession, test_id: str, weeks: int = 4) -> list[dict]:
     """Attempt count per ISO week, last N weeks."""
     rows = db.execute(

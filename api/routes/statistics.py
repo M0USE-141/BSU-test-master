@@ -20,6 +20,7 @@ from api.services.stats_service import (
     get_owner_question_difficulty,
     get_score_distribution,
     get_activity_by_week,
+    get_activity_heatmap,
 )
 from api.utils import validate_id, validate_test_exists
 
@@ -172,6 +173,28 @@ def get_test_statistics(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/stats/me/aggregate")
+def get_my_aggregate_stats(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
+    test_id: str | None = Query(None, alias="testId"),
+) -> dict[str, Any]:
+    """Aggregate stats for the authenticated user (no clientId required)."""
+    if test_id:
+        test_id = validate_id("testId", test_id)
+    return get_aggregate_stats(db=db, user_id=current_user.id, test_id=test_id)
+
+
+@router.get("/stats/heatmap")
+def get_heatmap(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
+    weeks: int = Query(12, ge=1, le=52),
+) -> dict[str, Any]:
+    """Activity heatmap: daily completed-attempt counts for the last N weeks."""
+    return get_activity_heatmap(db, current_user.id, weeks)
 
 
 @router.get("/tests/{test_id}/weak-questions")
