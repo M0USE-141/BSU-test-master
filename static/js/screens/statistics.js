@@ -1,11 +1,17 @@
 /**
- * Statistics Screen — two-panel redesign
+ * Statistics Screen — 3-tab redesign (StatsA / StatsB / StatsC)
  *
- * Left panel: test sidebar
- * Right panel: tabbed (progress | owner analytics)
+ * Tab A — "Мой прогресс": KPI strip, sparkline, activity heatmap, weak questions
+ * Tab B — "По тесту":    attempt history list, attempt detail, question difficulty
+ * Tab C — "Аналитика владельца": owner KPIs, score distribution, difficulty, weekly activity
  */
 
-import { apiFetch, fetchAttemptStats } from "../api.js";
+import {
+  apiFetch,
+  fetchAttemptStats,
+  fetchActivityHeatmap,
+  fetchMyAggregate,
+} from "../api.js";
 import { setActiveScreen } from "../rendering.js";
 import { dom, state } from "../state.js";
 import { getClientId } from "../telemetry.js";
@@ -14,7 +20,7 @@ import { t } from "../i18n.js";
 let _tabsInitialized = false;
 
 // ---------------------------------------------------------------------------
-// Chart.js lazy-loader
+// Chart.js lazy-loader (used only for owner distribution bar chart)
 // ---------------------------------------------------------------------------
 
 async function ensureChartJs() {
@@ -29,7 +35,32 @@ async function ensureChartJs() {
 }
 
 // ---------------------------------------------------------------------------
-// KPI card helper (no innerHTML)
+// Format helpers
+// ---------------------------------------------------------------------------
+
+function fmtPct(v) {
+  if (v == null) return "—";
+  return `${Math.round(v)}%`;
+}
+
+function fmtMs(ms) {
+  if (!ms) return "—";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}${t("timeSeconds")}`;
+  return `${Math.round(s / 60)}${t("timeMinutes")}`;
+}
+
+function fmtDate(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  } catch {
+    return iso.slice(0, 10);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// KPI card helper
 // ---------------------------------------------------------------------------
 
 function renderKpiCards(container, kpis) {
@@ -44,30 +75,152 @@ function renderKpiCards(container, kpis) {
     const val = document.createElement("div");
     val.className = "kpi__value";
     val.textContent = String(value ?? "—");
-    card.appendChild(lbl);
-    card.appendChild(val);
+    card.append(lbl, val);
     container.appendChild(card);
   });
 }
 
 // ---------------------------------------------------------------------------
-// Format helpers
+// SVG Sparkline (inline, no Chart.js)
 // ---------------------------------------------------------------------------
 
-function fmtPct(value) {
-  if (value === null || value === undefined) return "—";
-  return `${Math.round(value)}%`;
-}
+function renderSparkline(container, values) {
+  if (!container) return;
+  container.innerHTML = "";
 
-function fmtMs(ms) {
-  if (ms === null || ms === undefined || ms === 0) return "—";
-  const secs = Math.round(ms / 1000);
-  if (secs < 60) return `${secs}${t("timeSeconds")}`;
-  return `${Math.round(secs / 60)}${t("timeMinutes")}`;
+  if (!values || values.length === 0) {
+    const msg = document.createElement("div");
+    msg.style.cssText = "font-size:0.8rem;color:var(--wf-ink-mute);padding:0.5rem 0;";
+    msg.textContent = t("noDataYet") || "Нет данных";
+    container.appendChild(msg);
+    return;
+  }
+
+  const W = 600;
+  const H = 64;
+  const pad = 4;
+  const min = 0;
+  const max = 100;
+
+  const scaleX = (i) => pad + (i / (values.length - 1 || 1)) * (W - pad * 2);
+  const scaleY = (v) => H - pad - ((v - min) / (max - min || 1)) * (H - pad * 2);
+
+  const pts = values.map((v, i) => `${scaleX(i).toFixed(1)},${scaleY(v).toFixed(1)}`).join(" ");
+  const areaBot = `${scaleX(values.length - 1).toFixed(1)},${H - pad} ${scaleX(0).toFixed(1)},${H - pad}`;
+
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.classList.add("stats-sparkline");
+  svg.setAttribute("aria-hidden", "true");
+
+  // Guide lines at 0, 50, 100
+  [0, 50, 100].forEach((pct) => {
+    const y = scaleY(pct).toFixed(1);
+    const line = document.createElementNS(ns, "line");
+    line.setAttribute("x1", pad);
+    line.setAttribute("y1", y);
+    line.setAttribute("x2", W - pad);
+    line.setAttribute("y2", y);
+    line.setAttribute("stroke", "var(--wf-ink-soft)");
+    line.setAttribute("stroke-width", "1");
+    svg.appendChild(line);
+  });
+
+  // Filled area
+  const poly = document.createElementNS(ns, "polygon");
+  poly.setAttribute("points", `${pts} ${areaBot}`);
+  poly.setAttribute("fill", "var(--wf-accent-soft)");
+  svg.appendChild(poly);
+
+  // Line
+  const pl = document.createElementNS(ns, "polyline");
+  pl.setAttribute("points", pts);
+  pl.setAttribute("fill", "none");
+  pl.setAttribute("stroke", "var(--wf-accent)");
+  pl.setAttribute("stroke-width", "2");
+  pl.setAttribute("stroke-linecap", "round");
+  pl.setAttribute("stroke-linejoin", "round");
+  svg.appendChild(pl);
+
+  // Dots
+  values.forEach((v, i) => {
+    const circle = document.createElementNS(ns, "circle");
+    circle.setAttribute("cx", scaleX(i).toFixed(1));
+    circle.setAttribute("cy", scaleY(v).toFixed(1));
+    circle.setAttribute("r", "3");
+    circle.setAttribute("fill", "var(--wf-accent)");
+    svg.appendChild(circle);
+  });
+
+  container.appendChild(svg);
 }
 
 // ---------------------------------------------------------------------------
-// Streak loader (fire-and-forget)
+// Activity heatmap (12×7 CSS grid)
+// ---------------------------------------------------------------------------
+
+function renderHeatmap(container, heatmapData) {
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!heatmapData || !heatmapData.days || heatmapData.days.length === 0) {
+    const msg = document.createElement("div");
+    msg.style.cssText = "font-size:0.8rem;color:var(--wf-ink-mute);";
+    msg.textContent = t("noDataYet") || "Нет данных";
+    container.appendChild(msg);
+    return;
+  }
+
+  const weeks = heatmapData.weeks || 12;
+  const days = heatmapData.days;
+
+  // Grid: weeks columns × 7 rows (Mon–Sun)
+  const grid = document.createElement("div");
+  grid.className = "stats-heatmap-grid";
+  grid.style.gridTemplateColumns = `repeat(${weeks}, 1fr)`;
+
+  // Split days into week columns
+  for (let w = 0; w < weeks; w++) {
+    const weekCol = document.createElement("div");
+    weekCol.className = "stats-heatmap-week";
+    for (let d = 0; d < 7; d++) {
+      const idx = w * 7 + d;
+      const dayData = days[idx] || { count: 0 };
+      const count = dayData.count || 0;
+      const cell = document.createElement("div");
+      cell.className = "stats-heatmap-cell";
+      const level = count === 0 ? 0 : count === 1 ? 1 : count === 2 ? 2 : 3;
+      if (level > 0) cell.setAttribute("data-level", level);
+      cell.title = dayData.date ? `${dayData.date}: ${count}` : String(count);
+      weekCol.appendChild(cell);
+    }
+    grid.appendChild(weekCol);
+  }
+
+  container.appendChild(grid);
+
+  // Legend
+  const legend = document.createElement("div");
+  legend.className = "stats-heatmap-legend";
+  const lessLabel = document.createElement("span");
+  lessLabel.textContent = t("heatmapLess") || "Меньше";
+  legend.appendChild(lessLabel);
+  [0, 1, 2, 3].forEach((level) => {
+    const c = document.createElement("div");
+    c.className = "stats-heatmap-legend__cell stats-heatmap-cell";
+    if (level > 0) c.setAttribute("data-level", level);
+    legend.appendChild(c);
+  });
+  const moreLabel = document.createElement("span");
+  moreLabel.textContent = t("heatmapMore") || "Больше";
+  legend.appendChild(moreLabel);
+  container.appendChild(legend);
+}
+
+// ---------------------------------------------------------------------------
+// Streak loader
 // ---------------------------------------------------------------------------
 
 async function loadStreak() {
@@ -80,11 +233,369 @@ async function loadStreak() {
 }
 
 // ---------------------------------------------------------------------------
+// Tab A: «Мой прогресс» (StatsA)
+// ---------------------------------------------------------------------------
+
+async function loadTabA() {
+  try {
+    // Load streak and aggregate in parallel
+    const [agg] = await Promise.all([
+      state.currentUser
+        ? fetchMyAggregate().catch(() => null)
+        : Promise.resolve(null),
+      state.currentUser ? loadStreak() : Promise.resolve(),
+    ]);
+
+    const attemptCount = agg?.attemptCount ?? 0;
+    const avgPct = agg?.avgPercentCorrect ?? null;
+    const avgMs = agg?.avgTimePerQuestion ?? null;
+    const streak = state.stats.streak ?? 0;
+
+    renderKpiCards(dom.statsProgressKpis, [
+      { label: t("kpiAttempts"), value: attemptCount },
+      { label: t("kpiAccuracy"), value: fmtPct(avgPct) },
+      { label: t("kpiAvgTime"), value: fmtMs(avgMs) },
+      { label: t("kpiStreak"), value: `${streak} ${t("daysSuffix")}` },
+    ]);
+
+    // Load attempt history for sparkline (uses clientId)
+    const clientId = getClientId();
+    let attemptValues = [];
+    try {
+      const res = await fetchAttemptStats(clientId, { limit: 20 });
+      const attempts = (res.attempts || []).slice().reverse();
+      attemptValues = attempts.map((a) => a.percentCorrect ?? 0);
+      state.stats.attempts = attempts;
+    } catch {
+      // ok — guest or no data
+    }
+    renderSparkline(dom.statsProgressSparkline, attemptValues);
+
+    // Load heatmap (auth only)
+    if (state.currentUser) {
+      try {
+        const heatmapData = await fetchActivityHeatmap(12);
+        state.stats.heatmapData = heatmapData;
+        renderHeatmap(dom.statsProgressHeatmap, heatmapData);
+      } catch {
+        renderHeatmap(dom.statsProgressHeatmap, null);
+      }
+
+      // Weak questions for selected test
+      if (state.stats.selectedTestId) {
+        dom.statsWeakCard?.classList.remove("is-hidden");
+        await loadWeakQuestions(state.stats.selectedTestId);
+      }
+    }
+  } catch (err) {
+    console.warn("[stats] loadTabA error:", err);
+  }
+}
+
+async function loadWeakQuestions(testId) {
+  const container = dom.statsWeakQuestions;
+  if (!container) return;
+  container.innerHTML = "";
+
+  try {
+    const data = await apiFetch(`/api/tests/${testId}/weak-questions`);
+    const questions = data.questions || [];
+    state.stats.weakQuestions = questions;
+
+    if (questions.length === 0) {
+      const msg = document.createElement("div");
+      msg.style.cssText = "font-size:0.8rem;color:var(--wf-ink-mute);";
+      msg.textContent = t("noWeakQuestions");
+      container.appendChild(msg);
+      return;
+    }
+
+    questions.forEach((q, idx) => {
+      const pct = q.totalCount > 0 ? Math.round((q.correctCount / q.totalCount) * 100) : 0;
+      const row = document.createElement("div");
+      row.className = "stats-diff-row";
+      const lbl = document.createElement("div");
+      lbl.className = "stats-diff-row__label";
+      lbl.textContent = `Q${idx + 1} (ID ${q.questionId})`;
+      const bar = document.createElement("div");
+      bar.className = "stats-diff-row__bar";
+      const fill = document.createElement("div");
+      fill.className = `stats-diff-row__fill ${pct < 40 ? "stats-diff-row__fill--low" : pct < 70 ? "stats-diff-row__fill--mid" : "stats-diff-row__fill--high"}`;
+      fill.style.width = `${pct}%`;
+      bar.appendChild(fill);
+      const pctLbl = document.createElement("div");
+      pctLbl.className = "stats-diff-row__pct";
+      pctLbl.textContent = `${pct}%`;
+      row.append(lbl, bar, pctLbl);
+      container.appendChild(row);
+    });
+  } catch {
+    // Silently ignore (e.g. 401)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tab B: «По тесту» (StatsB)
+// ---------------------------------------------------------------------------
+
+async function loadTabB(testId) {
+  if (!testId) {
+    _showTabBEmpty();
+    return;
+  }
+
+  const clientId = getClientId();
+  try {
+    const res = await fetchAttemptStats(clientId, { testId });
+    const attempts = (res.attempts || []).slice().reverse();
+    renderAttemptList(attempts);
+  } catch (err) {
+    console.warn("[stats] loadTabB error:", err);
+  }
+}
+
+function _showTabBEmpty() {
+  if (dom.statsByTestAttempts) {
+    dom.statsByTestAttempts.innerHTML = `<div style="font-size:0.85rem;color:var(--wf-ink-mute);padding:0.5rem 0;">${t("statsSelectTestPrompt") || "Выберите тест"}</div>`;
+  }
+}
+
+function renderAttemptList(attempts) {
+  const container = dom.statsByTestAttempts;
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!attempts.length) {
+    const msg = document.createElement("div");
+    msg.style.cssText = "font-size:0.85rem;color:var(--wf-ink-mute);padding:0.5rem 0;";
+    msg.textContent = t("noAttemptsYet") || "Нет попыток";
+    container.appendChild(msg);
+    return;
+  }
+
+  attempts.forEach((attempt, idx) => {
+    const pct = attempt.percentCorrect ?? 0;
+    const row = document.createElement("div");
+    row.className = "stats-attempt-row";
+    row.dataset.attemptId = attempt.attemptId;
+
+    const num = document.createElement("div");
+    num.className = "stats-attempt-row__num";
+    num.textContent = `#${idx + 1}`;
+
+    const score = document.createElement("div");
+    score.className = "stats-attempt-row__score";
+    score.textContent = fmtPct(pct);
+
+    const date = document.createElement("div");
+    date.className = "stats-attempt-row__date";
+    date.textContent = fmtDate(attempt.finishedAt || attempt.startedAt);
+
+    const barWrap = document.createElement("div");
+    barWrap.className = "stats-attempt-row__bar";
+    const fill = document.createElement("div");
+    fill.className = "stats-attempt-row__bar-fill";
+    fill.style.width = `${pct}%`;
+    barWrap.appendChild(fill);
+
+    row.append(num, score, date, barWrap);
+    row.addEventListener("click", () => showAttemptDetail(attempt, idx));
+    container.appendChild(row);
+  });
+}
+
+async function showAttemptDetail(attempt, idx) {
+  // Mark selected row
+  dom.statsByTestAttempts?.querySelectorAll(".stats-attempt-row").forEach((r) =>
+    r.classList.toggle("is-active", r.dataset.attemptId === attempt.attemptId)
+  );
+
+  const panel = dom.statsByTestDetail;
+  const content = dom.statsByTestDetailContent;
+  if (!panel || !content) return;
+  panel.classList.remove("is-hidden");
+  content.innerHTML = "";
+
+  const pct = attempt.percentCorrect ?? 0;
+  const header = document.createElement("div");
+  header.className = "stats-detail-header";
+  const scoreEl = document.createElement("div");
+  scoreEl.className = "stats-detail-score";
+  scoreEl.textContent = fmtPct(pct);
+  const metaEl = document.createElement("div");
+  metaEl.className = "stats-detail-meta";
+  metaEl.textContent = [
+    `${attempt.correctCount ?? 0}/${attempt.questionCount ?? 0} верно`,
+    fmtMs(attempt.totalDurationMs),
+    fmtDate(attempt.finishedAt),
+  ].filter(Boolean).join(" · ");
+  header.append(scoreEl, metaEl);
+  content.appendChild(header);
+
+  // Per-question difficulty bars (from attempt data)
+  if (state.stats.selectedTestId) {
+    const diffEl = dom.statsByTestDifficulty;
+    if (diffEl) {
+      diffEl.innerHTML = "";
+      const heading = document.createElement("h3");
+      heading.className = "stats-section-title";
+      heading.textContent = t("difficultyChartTitle") || "Сложность вопросов";
+      diffEl.appendChild(heading);
+      // Load difficulty from QuestionPerformance via owner-analytics or just show attempt answers
+      try {
+        const data = await apiFetch(`/api/tests/${state.stats.selectedTestId}/owner-analytics`);
+        renderDiffBars(diffEl, data.questionDifficulty || []);
+      } catch {
+        // 403 if not owner — skip
+      }
+    }
+  }
+}
+
+function renderDiffBars(container, items) {
+  if (!items.length) {
+    const msg = document.createElement("div");
+    msg.style.cssText = "font-size:0.8rem;color:var(--wf-ink-mute);";
+    msg.textContent = "—";
+    container.appendChild(msg);
+    return;
+  }
+  items.forEach((q, idx) => {
+    const pct = Math.round(q.correctRate ?? 0);
+    const row = document.createElement("div");
+    row.className = "stats-diff-row";
+    const lbl = document.createElement("div");
+    lbl.className = "stats-diff-row__label";
+    lbl.textContent = `Q${idx + 1}`;
+    const bar = document.createElement("div");
+    bar.className = "stats-diff-row__bar";
+    const fill = document.createElement("div");
+    fill.className = `stats-diff-row__fill ${pct < 40 ? "stats-diff-row__fill--low" : pct < 70 ? "stats-diff-row__fill--mid" : "stats-diff-row__fill--high"}`;
+    fill.style.width = `${pct}%`;
+    bar.appendChild(fill);
+    const pctLbl = document.createElement("div");
+    pctLbl.className = "stats-diff-row__pct";
+    pctLbl.textContent = `${pct}%`;
+    row.append(lbl, bar, pctLbl);
+    container.appendChild(row);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tab C: «Аналитика владельца» (StatsC)
+// ---------------------------------------------------------------------------
+
+async function loadTabC(testId) {
+  if (!testId) return;
+
+  try {
+    const data = await apiFetch(`/api/tests/${testId}/owner-analytics`);
+    state.stats.ownerAnalytics = data;
+
+    const kpis = data.kpis || {};
+    renderKpiCards(dom.statsOwnerKpis, [
+      { label: t("totalAttempts"), value: kpis.totalAttempts ?? 0 },
+      { label: t("totalUsers"), value: kpis.uniqueStudents ?? 0 },
+      { label: t("kpiAccuracy"), value: fmtPct(kpis.avgScore) },
+      { label: "Сдали (≥60%)", value: fmtPct(kpis.passRate) },
+    ]);
+
+    renderOwnerDiffBars(data.questionDifficulty || []);
+    await renderOwnerDistChart(data.scoreDistribution || []);
+    renderOwnerActivity(data.activityByWeek || []);
+  } catch (err) {
+    if (err.message?.includes("403")) {
+      dom.statsOwnerTab?.classList.add("is-hidden");
+      if (state.stats.activeStatsTab === "owner") {
+        _switchTab("progress");
+      }
+    } else {
+      console.warn("[stats] loadTabC error:", err);
+    }
+  }
+}
+
+function renderOwnerDiffBars(items) {
+  const container = dom.statsOwnerDifficultyChart;
+  if (!container) return;
+  container.innerHTML = "";
+  if (!items.length) {
+    container.innerHTML = `<div style="font-size:0.8rem;color:var(--wf-ink-mute);">—</div>`;
+    return;
+  }
+  renderDiffBars(container, items);
+}
+
+async function renderOwnerDistChart(scoreDistribution) {
+  const canvas = dom.statsOwnerDistChart;
+  if (!canvas) return;
+  await ensureChartJs();
+  if (canvas._chartInstance) {
+    canvas._chartInstance.destroy();
+    canvas._chartInstance = null;
+  }
+  const ctx = canvas.getContext("2d");
+  canvas._chartInstance = new window.Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: scoreDistribution.map((d) => d.bucket),
+      datasets: [{
+        label: t("scoreDistTitle"),
+        data: scoreDistribution.map((d) => d.count),
+        backgroundColor: "rgba(79,155,106,0.7)",
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { color: "var(--wf-ink-mute)", stepSize: 1 } },
+        x: { ticks: { color: "var(--wf-ink-mute)" }, grid: { display: false } },
+      },
+    },
+  });
+}
+
+function renderOwnerActivity(activityByWeek) {
+  const container = dom.statsOwnerActivity;
+  if (!container) return;
+  container.innerHTML = "";
+  if (!activityByWeek.length) {
+    container.innerHTML = `<div style="font-size:0.8rem;color:var(--wf-ink-mute);">—</div>`;
+    return;
+  }
+  const maxCount = Math.max(...activityByWeek.map((w) => w.count), 1);
+  activityByWeek.forEach((week) => {
+    const pct = Math.round((week.count / maxCount) * 100);
+    const row = document.createElement("div");
+    row.className = "stats-diff-row";
+    const lbl = document.createElement("div");
+    lbl.className = "stats-diff-row__label";
+    lbl.style.width = "80px";
+    lbl.textContent = week.week || "—";
+    const bar = document.createElement("div");
+    bar.className = "stats-diff-row__bar";
+    bar.style.width = "auto";
+    bar.style.flex = "1";
+    const fill = document.createElement("div");
+    fill.className = "stats-diff-row__fill stats-diff-row__fill--high";
+    fill.style.width = `${pct}%`;
+    bar.appendChild(fill);
+    const cnt = document.createElement("div");
+    cnt.className = "stats-diff-row__pct";
+    cnt.textContent = String(week.count);
+    row.append(lbl, bar, cnt);
+    container.appendChild(row);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Sidebar rendering
 // ---------------------------------------------------------------------------
 
 export function renderStatsTestSidebar(tests) {
-  // Populate the header test-select dropdown
   const sel = document.getElementById("stats-test-select");
   if (sel) {
     sel.innerHTML = "";
@@ -104,45 +615,19 @@ export function renderStatsTestSidebar(tests) {
   const list = dom.statsTestSidebarList;
   if (!list) return;
   list.innerHTML = "";
-
-  if (!tests || tests.length === 0) {
-    const empty = document.createElement("div");
-    empty.style.cssText = "padding:1rem;color:var(--muted);font-size:0.85rem;";
-    empty.textContent = t("noTestsAvailable");
-    list.appendChild(empty);
-    return;
-  }
-
-  tests.forEach((test) => {
-    const attemptCount = test.attempt_count ?? 0;
-    const avgAccuracy = test.avg_accuracy ?? null;
+  (tests || []).forEach((test) => {
     const isActive = test.id === state.stats.selectedTestId;
-
     const row = document.createElement("div");
     row.style.cssText = [
-      "padding:0.65rem 0.75rem;cursor:pointer;border-radius:8px;",
+      "padding:0.65rem 0.75rem;cursor:pointer;border-radius:var(--wf-radius);",
       "border-left:2px solid transparent;transition:background 0.15s;",
-      isActive
-        ? "border-left-color:var(--primary,#059669);background:var(--primary-soft,#d1fae5);"
-        : "background:transparent;",
-      attemptCount === 0 ? "opacity:0.4;" : "",
+      isActive ? "border-left-color:var(--wf-accent);background:var(--wf-accent-soft);" : "",
     ].join("");
-
     const title = document.createElement("div");
-    title.style.cssText =
-      "font-size:0.85rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+    title.style.cssText = "font-size:0.85rem;font-weight:600;color:var(--wf-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
     title.textContent = test.title || `Test ${test.id}`;
-
-    const meta = document.createElement("div");
-    meta.style.cssText = "font-size:0.72rem;color:var(--muted);margin-top:0.2rem;";
-    const pctStr = avgAccuracy !== null ? ` · ${fmtPct(avgAccuracy)} avg` : "";
-    meta.textContent = `${attemptCount} ${t("kpiAttempts").toLowerCase()}${pctStr}`;
-
     row.appendChild(title);
-    row.appendChild(meta);
-
     row.addEventListener("click", () => selectStatsTest(test.id));
-
     list.appendChild(row);
   });
 }
@@ -158,45 +643,41 @@ export async function selectStatsTest(testId) {
   const test = state.testsCache.find((t) => t.id === testId);
   const isOwner = test && state.currentUser && test.owner_id === state.currentUser.id;
 
-  // Show/hide owner tab depending on ownership
   if (dom.statsOwnerTab) {
     if (isOwner) {
       dom.statsOwnerTab.classList.remove("is-hidden");
     } else {
       dom.statsOwnerTab.classList.add("is-hidden");
-      // If currently on owner tab, switch to progress
-      if (state.stats.activeTab === "owner") {
-        state.stats.activeTab = "progress";
-        _switchToProgressTab();
-      }
+      if (state.stats.activeStatsTab === "owner") _switchTab("progress");
     }
   }
 
-  // Always load progress tab
-  await loadProgressTab(testId);
-
-  // Load owner tab if visible and on owner tab, or if owner tab is active
-  if (isOwner && state.stats.activeTab === "owner") {
-    await loadOwnerTab(testId);
-  }
+  // Reload the active tab
+  const tab = state.stats.activeStatsTab;
+  if (tab === "progress") await loadTabA();
+  else if (tab === "bytest") await loadTabB(testId);
+  else if (tab === "owner" && isOwner) await loadTabC(testId);
 }
 
 // ---------------------------------------------------------------------------
-// Tab switching helpers
+// Tab switching
 // ---------------------------------------------------------------------------
 
-function _switchToProgressTab() {
-  dom.statsProgressTab?.classList.add("is-active");
-  dom.statsOwnerTab?.classList.remove("is-active");
-  dom.statsProgressPanel?.classList.remove("is-hidden");
-  dom.statsOwnerPanel?.classList.add("is-hidden");
-}
+function _switchTab(name) {
+  state.stats.activeStatsTab = name;
+  state.stats.activeTab = name; // keep legacy compat
 
-function _switchToOwnerTab() {
-  dom.statsOwnerTab?.classList.add("is-active");
-  dom.statsProgressTab?.classList.remove("is-active");
-  dom.statsOwnerPanel?.classList.remove("is-hidden");
-  dom.statsProgressPanel?.classList.add("is-hidden");
+  const tabs = {
+    progress: { tab: dom.statsProgressTab, panel: dom.statsProgressPanel },
+    bytest:   { tab: dom.statsByTestTab,   panel: dom.statsByTestPanel },
+    owner:    { tab: dom.statsOwnerTab,    panel: dom.statsOwnerPanel },
+  };
+
+  Object.entries(tabs).forEach(([key, { tab, panel }]) => {
+    const active = key === name;
+    tab?.classList.toggle("is-active", active);
+    panel?.classList.toggle("is-hidden", !active);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -206,399 +687,24 @@ function _switchToOwnerTab() {
 export function initStatsTabs() {
   if (_tabsInitialized) return;
   _tabsInitialized = true;
-  dom.statsProgressTab?.addEventListener("click", () => {
-    state.stats.activeTab = "progress";
-    _switchToProgressTab();
+
+  dom.statsProgressTab?.addEventListener("click", async () => {
+    _switchTab("progress");
+    await loadTabA();
+  });
+
+  dom.statsByTestTab?.addEventListener("click", async () => {
+    _switchTab("bytest");
+    await loadTabB(state.stats.selectedTestId);
   });
 
   dom.statsOwnerTab?.addEventListener("click", async () => {
-    state.stats.activeTab = "owner";
-    _switchToOwnerTab();
-    if (state.stats.selectedTestId) {
-      await loadOwnerTab(state.stats.selectedTestId);
-    }
+    _switchTab("owner");
+    await loadTabC(state.stats.selectedTestId);
   });
 
-  // Wire header test-select dropdown
   document.getElementById("stats-test-select")?.addEventListener("change", (e) => {
     if (e.target.value) selectStatsTest(e.target.value);
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Progress tab
-// ---------------------------------------------------------------------------
-
-async function loadProgressTab(testId) {
-  if (!testId) return;
-
-  try {
-    const clientId = getClientId();
-    const response = await fetchAttemptStats(clientId, { testId });
-    const attempts = response.attempts || response || [];
-    state.stats.attempts = attempts;
-    state.stats.total = response.total ?? attempts.length;
-
-    // Compute KPIs
-    const count = attempts.length;
-    const avgPct =
-      count > 0
-        ? Math.round(
-            attempts.reduce((s, a) => s + (a.percentCorrect ?? 0), 0) / count
-          )
-        : null;
-    const avgMs =
-      count > 0
-        ? Math.round(
-            attempts.reduce((s, a) => s + (a.totalDurationMs ?? 0), 0) / count
-          )
-        : null;
-
-    const kpis = [
-      { label: t("kpiAttempts"), value: count },
-      { label: t("kpiAccuracy"), value: fmtPct(avgPct) },
-      { label: t("kpiAvgTime"), value: fmtMs(avgMs) },
-      { label: t("kpiStreak"), value: `${state.stats.streak} ${t("daysSuffix")}` },
-    ];
-    renderKpiCards(dom.statsProgressKpis, kpis);
-
-    // Chart — attempts sorted oldest → newest
-    await renderProgressChart(attempts);
-
-    // Weak questions (requires auth)
-    if (state.currentUser) {
-      await loadWeakQuestions(testId);
-    }
-  } catch (err) {
-    console.warn("[stats] loadProgressTab error:", err);
-  }
-}
-
-async function renderProgressChart(attempts) {
-  const canvas = dom.statsProgressChart;
-  if (!canvas) return;
-
-  await ensureChartJs();
-
-  if (canvas._chartInstance) {
-    canvas._chartInstance.destroy();
-    canvas._chartInstance = null;
-  }
-
-  // Reverse for chronological order (oldest left)
-  const sorted = [...attempts].reverse();
-  const labels = sorted.map((_, i) => `#${i + 1}`);
-  const data = sorted.map((a) => a.percentCorrect ?? 0);
-
-  const ctx = canvas.getContext("2d");
-  canvas._chartInstance = new window.Chart(ctx, {
-    type: "line",
-    data: {
-      labels,
-      datasets: [
-        {
-          label: t("progressChartTitle"),
-          data,
-          borderColor: "var(--primary,#059669)",
-          backgroundColor: "rgba(5,150,105,0.1)",
-          borderWidth: 2,
-          pointRadius: 3,
-          tension: 0.3,
-          fill: true,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        title: {
-          display: true,
-          text: t("progressChartTitle"),
-          color: "var(--text)",
-          font: { size: 13, weight: "600" },
-        },
-      },
-      scales: {
-        y: {
-          min: 0,
-          max: 100,
-          ticks: { color: "var(--muted)" },
-          grid: { color: "var(--border,#e5e7eb)" },
-        },
-        x: {
-          ticks: { color: "var(--muted)" },
-          grid: { display: false },
-        },
-      },
-    },
-  });
-}
-
-async function loadWeakQuestions(testId) {
-  const container = dom.statsWeakQuestions;
-  if (!container) return;
-
-  try {
-    const data = await apiFetch(`/api/tests/${testId}/weak-questions`);
-    const questions = data.questions || [];
-    state.stats.weakQuestions = questions;
-
-    container.innerHTML = "";
-
-    const heading = document.createElement("div");
-    heading.style.cssText =
-      "font-size:0.8rem;font-weight:700;color:var(--text);margin-bottom:0.5rem;";
-    heading.textContent = t("weakQuestionsTitle");
-    container.appendChild(heading);
-
-    if (questions.length === 0) {
-      const msg = document.createElement("div");
-      msg.style.cssText = "font-size:0.8rem;color:var(--muted);";
-      msg.textContent = t("noWeakQuestions");
-      container.appendChild(msg);
-      return;
-    }
-
-    questions.forEach((q, idx) => {
-      const row = document.createElement("div");
-      row.style.cssText =
-        "display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem;";
-
-      const label = document.createElement("div");
-      label.style.cssText = "font-size:0.78rem;color:var(--text);flex:1;";
-      label.textContent = `Q${idx + 1} (ID ${q.questionId})`;
-
-      const pct = q.totalCount > 0
-        ? Math.round((q.correctCount / q.totalCount) * 100)
-        : 0;
-
-      const bar = document.createElement("div");
-      bar.style.cssText =
-        "height:6px;border-radius:3px;background:var(--border,#e5e7eb);width:80px;flex-shrink:0;";
-      const fill = document.createElement("div");
-      const fillColor =
-        pct < 40
-          ? "var(--danger,#ef4444)"
-          : pct < 70
-          ? "var(--warning,#f59e0b)"
-          : "var(--primary,#059669)";
-      fill.style.cssText = `height:100%;border-radius:3px;width:${pct}%;background:${fillColor};`;
-      bar.appendChild(fill);
-
-      const pctLabel = document.createElement("div");
-      pctLabel.style.cssText =
-        "font-size:0.72rem;color:var(--muted);width:32px;text-align:right;";
-      pctLabel.textContent = `${pct}%`;
-
-      row.appendChild(label);
-      row.appendChild(bar);
-      row.appendChild(pctLabel);
-      container.appendChild(row);
-    });
-  } catch (err) {
-    // Silently ignore (e.g. 401 if not authenticated)
-    console.warn("[stats] loadWeakQuestions error:", err);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Owner analytics tab
-// ---------------------------------------------------------------------------
-
-async function loadOwnerTab(testId) {
-  if (!testId) return;
-
-  try {
-    const data = await apiFetch(`/api/tests/${testId}/owner-analytics`);
-    state.stats.ownerAnalytics = data;
-
-    const kpis = data.kpis || {};
-    renderKpiCards(dom.statsOwnerKpis, [
-      { label: t("totalAttempts"), value: kpis.totalAttempts ?? 0 },
-      { label: t("totalUsers"), value: kpis.uniqueStudents ?? 0 },
-      { label: t("kpiAccuracy"), value: fmtPct(kpis.avgScore) },
-      { label: "Сдали (≥60%)", value: fmtPct(kpis.passRate) },
-    ]);
-
-    renderDifficultyBars(data.questionDifficulty || []);
-    await renderOwnerDistributionChart(data.scoreDistribution || []);
-    renderActivityRows(data.activityByWeek || []);
-  } catch (err) {
-    if (err.message && err.message.includes("403")) {
-      // Not owner — hide tab silently
-      dom.statsOwnerTab?.classList.add("is-hidden");
-      if (state.stats.activeTab === "owner") {
-        state.stats.activeTab = "progress";
-        _switchToProgressTab();
-      }
-    } else {
-      console.warn("[stats] loadOwnerTab error:", err);
-    }
-  }
-}
-
-function renderDifficultyBars(questionDifficulty) {
-  const container = dom.statsOwnerDifficultyChart;
-  if (!container) return;
-  container.innerHTML = "";
-
-  const heading = document.createElement("div");
-  heading.style.cssText =
-    "font-size:0.8rem;font-weight:700;color:var(--text);margin-bottom:0.5rem;";
-  heading.textContent = t("difficultyChartTitle");
-  container.appendChild(heading);
-
-  if (!questionDifficulty.length) {
-    const msg = document.createElement("div");
-    msg.style.cssText = "font-size:0.8rem;color:var(--muted);";
-    msg.textContent = "—";
-    container.appendChild(msg);
-    return;
-  }
-
-  questionDifficulty.forEach((q, idx) => {
-    const pct =
-      q.totalAttempts > 0 ? Math.round(q.correctRate) : 0;
-
-    const row = document.createElement("div");
-    row.style.cssText =
-      "display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem;";
-
-    const label = document.createElement("div");
-    label.style.cssText = "font-size:0.78rem;color:var(--text);flex:1;";
-    label.textContent = `Q${idx + 1}`;
-
-    const bar = document.createElement("div");
-    bar.style.cssText =
-      "height:6px;border-radius:3px;background:var(--border,#e5e7eb);width:100px;flex-shrink:0;";
-    const fill = document.createElement("div");
-    const fillColor =
-      pct < 40
-        ? "var(--danger,#ef4444)"
-        : pct < 70
-        ? "var(--warning,#f59e0b)"
-        : "var(--primary,#059669)";
-    fill.style.cssText = `height:100%;border-radius:3px;width:${pct}%;background:${fillColor};`;
-    bar.appendChild(fill);
-
-    const pctLabel = document.createElement("div");
-    pctLabel.style.cssText =
-      "font-size:0.72rem;color:var(--muted);width:32px;text-align:right;";
-    pctLabel.textContent = `${pct}%`;
-
-    row.appendChild(label);
-    row.appendChild(bar);
-    row.appendChild(pctLabel);
-    container.appendChild(row);
-  });
-}
-
-async function renderOwnerDistributionChart(scoreDistribution) {
-  const canvas = dom.statsOwnerDistChart;
-  if (!canvas) return;
-
-  await ensureChartJs();
-
-  if (canvas._chartInstance) {
-    canvas._chartInstance.destroy();
-    canvas._chartInstance = null;
-  }
-
-  const labels = scoreDistribution.map((d) => d.bucket);
-  const data = scoreDistribution.map((d) => d.count);
-
-  const ctx = canvas.getContext("2d");
-  canvas._chartInstance = new window.Chart(ctx, {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [
-        {
-          label: t("scoreDistTitle"),
-          data,
-          backgroundColor: "rgba(5,150,105,0.7)",
-          borderRadius: 4,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        title: {
-          display: true,
-          text: t("scoreDistTitle"),
-          color: "var(--text)",
-          font: { size: 13, weight: "600" },
-        },
-      },
-      scales: {
-        y: {
-          beginAtZero: true,
-          ticks: { color: "var(--muted)", stepSize: 1 },
-          grid: { color: "var(--border,#e5e7eb)" },
-        },
-        x: {
-          ticks: { color: "var(--muted)" },
-          grid: { display: false },
-        },
-      },
-    },
-  });
-}
-
-function renderActivityRows(activityByWeek) {
-  const container = dom.statsOwnerActivity;
-  if (!container) return;
-  container.innerHTML = "";
-
-  const heading = document.createElement("div");
-  heading.style.cssText =
-    "font-size:0.8rem;font-weight:700;color:var(--text);margin-bottom:0.5rem;";
-  heading.textContent = t("activityTitle");
-  container.appendChild(heading);
-
-  if (!activityByWeek.length) {
-    const msg = document.createElement("div");
-    msg.style.cssText = "font-size:0.8rem;color:var(--muted);";
-    msg.textContent = "—";
-    container.appendChild(msg);
-    return;
-  }
-
-  const maxCount = Math.max(...activityByWeek.map((w) => w.count), 1);
-
-  activityByWeek.forEach((week) => {
-    const pct = Math.round((week.count / maxCount) * 100);
-
-    const row = document.createElement("div");
-    row.style.cssText =
-      "display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem;";
-
-    const label = document.createElement("div");
-    label.style.cssText =
-      "font-size:0.78rem;color:var(--text);width:80px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-    label.textContent = week.week || "—";
-
-    const bar = document.createElement("div");
-    bar.style.cssText =
-      "height:8px;border-radius:4px;background:var(--border,#e5e7eb);flex:1;";
-    const fill = document.createElement("div");
-    fill.style.cssText = `height:100%;border-radius:4px;width:${pct}%;background:var(--primary,#059669);`;
-    bar.appendChild(fill);
-
-    const countLabel = document.createElement("div");
-    countLabel.style.cssText =
-      "font-size:0.72rem;color:var(--muted);width:24px;text-align:right;flex-shrink:0;";
-    countLabel.textContent = String(week.count);
-
-    row.appendChild(label);
-    row.appendChild(bar);
-    row.appendChild(countLabel);
-    container.appendChild(row);
   });
 }
 
@@ -610,44 +716,36 @@ export async function openStatsScreen(testId = null) {
   setActiveScreen("stats");
   renderStatsTestSidebar(state.testsCache);
 
-  if (testId) {
-    state.stats.selectedTestId = testId;
+  if (testId) state.stats.selectedTestId = testId;
+
+  _switchTab(state.stats.activeStatsTab || "progress");
+
+  const targetId = state.stats.selectedTestId || state.testsCache[0]?.id || null;
+  if (targetId && targetId !== state.stats.selectedTestId) {
+    state.stats.selectedTestId = targetId;
+    renderStatsTestSidebar(state.testsCache);
   }
 
-  if (state.currentUser) {
-    loadStreak(); // fire-and-forget
-  }
-
-  const targetId =
-    state.stats.selectedTestId || state.testsCache[0]?.id || null;
-  if (targetId) {
-    await selectStatsTest(targetId);
-  }
+  await loadTabA();
 }
 
 export async function loadStatsData({ preserveSelection = true } = {}) {
   renderStatsTestSidebar(state.testsCache);
   const targetId =
-    state.stats.selectedTestId ||
-    state.stats.filterTestId ||
-    state.testsCache[0]?.id ||
-    null;
-  if (targetId) {
-    await selectStatsTest(targetId);
+    state.stats.selectedTestId || state.stats.filterTestId || state.testsCache[0]?.id || null;
+  if (targetId && !state.stats.selectedTestId) {
+    state.stats.selectedTestId = targetId;
+    renderStatsTestSidebar(state.testsCache);
   }
+  await loadTabA();
 }
 
 // ---------------------------------------------------------------------------
 // Legacy compat stubs
 // ---------------------------------------------------------------------------
 
-export async function loadAttemptDetails(attemptId) {
-  // no-op in new design — kept for backward compat
-}
-
-export function populateTestFilter() {
-  // no-op in new design — kept for backward compat
-}
+export async function loadAttemptDetails() {}
+export function populateTestFilter() {}
 
 // ---------------------------------------------------------------------------
 // Event initialization
@@ -656,15 +754,14 @@ export function populateTestFilter() {
 export function initializeStatsScreenEvents() {
   initStatsTabs();
 
-  // Back button → management
   dom.statsBackButton?.addEventListener("click", () => {
     setActiveScreen("management");
   });
 
-  // Refresh button — reload current test data
   dom.statsRefreshButton?.addEventListener("click", () => {
-    if (state.stats.selectedTestId) {
-      selectStatsTest(state.stats.selectedTestId);
-    }
+    const tab = state.stats.activeStatsTab || "progress";
+    if (tab === "progress") loadTabA();
+    else if (tab === "bytest") loadTabB(state.stats.selectedTestId);
+    else if (tab === "owner") loadTabC(state.stats.selectedTestId);
   });
 }

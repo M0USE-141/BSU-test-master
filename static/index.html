@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="/static/css/design-system.css" />
     <link rel="stylesheet" href="/static/css/components.css" />
     <link rel="stylesheet" href="/static/css/editor.css" />
+    <link rel="stylesheet" href="/static/css/stats.css" />
     <link rel="stylesheet" href="/static/css/theme.css" />
 
     <!-- modulepreload — reduces waterfall on first load -->
@@ -698,57 +699,70 @@
             </select>
           </div>
 
-          <!-- Tab bar -->
-          <div class="underline-tabs" style="margin-bottom:1.25rem;">
+          <!-- Tab bar: 3 tabs -->
+          <div class="underline-tabs" id="stats-tabs" style="margin-bottom:1.25rem;">
             <button id="stats-tab-progress" type="button"
               class="underline-tabs__tab is-active"
               data-i18n="myProgressTab">Мой прогресс</button>
+            <button id="stats-tab-bytest" type="button"
+              class="underline-tabs__tab"
+              data-i18n="byTestTab">По тесту</button>
             <button id="stats-tab-owner" type="button"
               class="underline-tabs__tab is-hidden"
-              data-i18n="ownerAnalyticsTab">Аналитика теста</button>
+              data-i18n="ownerAnalyticsTab">Аналитика владельца</button>
           </div>
 
-          <!-- «Мой прогресс» panel -->
+          <!-- Tab 1: «Мой прогресс» (StatsA) -->
           <div id="stats-panel-progress">
+            <!-- KPI strip -->
             <div id="stats-progress-kpis" class="kpi-strip" style="margin-bottom:1.25rem;"></div>
+            <!-- Sparkline -->
             <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <h3 style="margin:0 0 0.75rem;font-size:var(--font-body);font-weight:600;"
-                data-i18n="progressChartTitle">Точность по попыткам</h3>
-              <div style="position:relative;height:240px;">
-                <canvas id="stats-progress-chart"></canvas>
-              </div>
+              <h3 class="stats-section-title" data-i18n="progressChartTitle">Точность по попыткам</h3>
+              <div id="stats-progress-sparkline" class="stats-sparkline-wrap"></div>
+            </div>
+            <!-- Activity heatmap -->
+            <div class="card" style="padding:1rem;margin-bottom:1rem;">
+              <h3 class="stats-section-title" data-i18n="activityHeatmapTitle">Активность</h3>
+              <div id="stats-progress-heatmap" class="stats-heatmap-wrap"></div>
+            </div>
+            <!-- Weak questions (auth only) -->
+            <div class="card is-hidden" id="stats-weak-card" style="padding:1rem;">
+              <h3 class="stats-section-title" data-i18n="weakQuestionsTitle">Слабые вопросы</h3>
+              <div id="stats-weak-questions"></div>
+            </div>
+          </div>
+
+          <!-- Tab 2: «По тесту» (StatsB) -->
+          <div id="stats-panel-bytest" class="is-hidden">
+            <div class="card" style="padding:1rem;margin-bottom:1rem;">
+              <h3 class="stats-section-title" data-i18n="attemptHistoryTitle">История попыток</h3>
+              <div id="stats-bytest-attempts" class="stats-attempt-list"></div>
+            </div>
+            <div id="stats-bytest-detail" class="card is-hidden" style="padding:1rem;margin-bottom:1rem;">
+              <div id="stats-bytest-detail-content"></div>
             </div>
             <div class="card" style="padding:1rem;">
-              <h3 style="margin:0 0 0.75rem;font-size:var(--font-body);font-weight:600;"
-                data-i18n="weakQuestionsTitle">Слабые вопросы</h3>
-              <div id="stats-weak-questions">
-                <div class="empty-state">
-                  <svg class="empty-state__icon" aria-hidden="true"><use href="/static/icons.svg#chart-bar"/></svg>
-                  <p class="empty-state__title" data-i18n="noWeakQuestions">Нет слабых вопросов</p>
-                  <p class="empty-state__body" data-i18n="statsSelectTestPrompt">Выберите тест и пройдите его, чтобы увидеть статистику</p>
-                </div>
-              </div>
+              <h3 class="stats-section-title" data-i18n="difficultyChartTitle">Сложность вопросов</h3>
+              <div id="stats-bytest-difficulty"></div>
             </div>
           </div>
 
-          <!-- «Аналитика теста» panel (owner only) -->
+          <!-- Tab 3: «Аналитика владельца» (StatsC, owner only) -->
           <div id="stats-panel-owner" class="is-hidden">
             <div id="stats-owner-kpis" class="kpi-strip" style="margin-bottom:1.25rem;"></div>
             <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <h3 style="margin:0 0 0.75rem;font-size:var(--font-body);font-weight:600;"
-                data-i18n="difficultyChartTitle">Сложность вопросов</h3>
-              <div id="stats-owner-difficulty"></div>
-            </div>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <h3 style="margin:0 0 0.75rem;font-size:var(--font-body);font-weight:600;"
-                data-i18n="scoreDistTitle">Распределение баллов</h3>
+              <h3 class="stats-section-title" data-i18n="scoreDistTitle">Распределение баллов</h3>
               <div style="position:relative;height:200px;">
                 <canvas id="stats-owner-distribution"></canvas>
               </div>
             </div>
             <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <h3 style="margin:0 0 0.75rem;font-size:var(--font-body);font-weight:600;"
-                data-i18n="activityTitle">Активность (4 недели)</h3>
+              <h3 class="stats-section-title" data-i18n="difficultyChartTitle">Сложность вопросов</h3>
+              <div id="stats-owner-difficulty"></div>
+            </div>
+            <div class="card" style="padding:1rem;margin-bottom:1rem;">
+              <h3 class="stats-section-title" data-i18n="activityTitle">Активность (4 недели)</h3>
               <div id="stats-owner-activity"></div>
             </div>
           </div>

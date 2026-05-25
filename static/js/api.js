@@ -222,6 +222,16 @@ export async function fetchAttemptDetails(attemptId, clientId) {
   return response.json();
 }
 
+export async function fetchActivityHeatmap(weeks = 12) {
+  return apiFetch(`/api/stats/heatmap?weeks=${weeks}`);
+}
+
+export async function fetchMyAggregate(testId = null) {
+  const params = new URLSearchParams();
+  if (testId) params.append("testId", testId);
+  return apiFetch(`/api/stats/me/aggregate?${params.toString()}`);
+}
+
 export async function fetchTestStatistics(testId) {
   const response = await fetch(`/api/tests/${testId}/statistics`, {
     headers: { ...getAuthHeaders() },
