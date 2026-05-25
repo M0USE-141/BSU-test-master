@@ -32,9 +32,9 @@
   flex-direction: column;
   gap: 0.4rem;
   padding: 0.65rem 0.75rem;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--card-muted);
+  border-radius: var(--wf-radius);
+  border: var(--wf-border);
+  background: var(--wf-paper);
 }
 
 .settings-item input[type="number"] {
