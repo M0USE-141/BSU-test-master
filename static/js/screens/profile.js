@@ -6,6 +6,7 @@
 import { t } from "../i18n.js";
 import { dom, state } from "../state.js";
 import { setActiveScreen } from "../rendering.js";
+import { logout } from "../api/auth.js";
 import {
   getProfile,
   updateProfile,
@@ -40,6 +41,12 @@ export function initializeProfileScreenEvents() {
 
   // Avatar delete
   dom.profileAvatarDelete?.addEventListener("click", handleAvatarDelete);
+
+  // Logout
+  dom.profileLogout?.addEventListener("click", async () => {
+    await logout();
+    window.location.reload();
+  });
 }
 
 /**

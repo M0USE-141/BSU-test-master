@@ -1469,6 +1469,20 @@ button.danger:hover {
   }
 }
 
+/* ── Profile two-column layout (responsive) ──────────────── */
+.profile-layout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 640px) {
+  .profile-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Access Control Styles */
 
 .test-card__header {

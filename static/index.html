@@ -645,63 +645,80 @@
 
       <!-- ─── PROFILE SCREEN ────────────────────────────────────── -->
       <section id="screen-profile" class="app-screen is-hidden">
-        <div style="max-width:680px;margin:0 auto;padding:2rem 1.25rem 3rem;">
-          <div class="card profile-card">
-            <div class="profile-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1.5rem;">
-              <div>
-                <h2 data-i18n="profileTitle">Профиль</h2>
-                <p class="muted" data-i18n="profileSubtitle">Управление профилем и настройки аккаунта.</p>
-              </div>
-              <button id="profile-back" type="button" class="ghost" data-i18n="profileBackButton">К тестам</button>
-            </div>
+        <div style="max-width:768px;margin:0 auto;padding:1.5rem 1.25rem 3rem;">
 
-            <div class="profile-content">
-              <div class="profile-avatar-section">
-                <div class="profile-avatar" style="position:relative;width:96px;height:96px;flex-shrink:0;">
-                  <img id="profile-avatar-image" src="" alt="" class="profile-avatar__image"
-                    style="width:96px;height:96px;border-radius:50%;object-fit:cover;border:3px solid var(--border);" />
-                  <div id="profile-avatar-placeholder" class="profile-avatar__placeholder"
-                    style="width:96px;height:96px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;border:3px solid var(--border);">
-                    <span id="profile-avatar-initials" style="font-size:2rem;font-weight:700;color:white;"></span>
-                  </div>
-                </div>
-                <div class="profile-avatar-actions">
-                  <label class="profile-avatar-upload" for="profile-avatar-input" data-i18n="profileAvatarUpload">Загрузить аватар</label>
-                  <input type="file" id="profile-avatar-input" class="profile-avatar-input" accept=".png,.jpg,.jpeg,.gif" />
-                  <button id="profile-avatar-delete" type="button" class="ghost danger-text" data-i18n="profileAvatarDelete">Удалить</button>
-                </div>
-                <p class="hint" data-i18n="profileAvatarHint">PNG, JPG или GIF. Максимум 2 МБ.</p>
-              </div>
-
-              <div class="profile-fields">
-                <div class="profile-field">
-                  <label for="profile-display-name" data-i18n="profileDisplayNameLabel">Отображаемое имя</label>
-                  <div class="profile-field-row">
-                    <input type="text" id="profile-display-name"
-                      placeholder="Введите отображаемое имя" data-i18n-placeholder="profileDisplayNamePlaceholder"
-                      maxlength="100" />
-                    <button id="profile-display-name-save" type="button" data-i18n="profileSaveButton">Сохранить</button>
-                  </div>
-                </div>
-                <div class="profile-info">
-                  <div class="profile-info-item">
-                    <span class="profile-info-label" data-i18n="profileUsernameLabel">Имя пользователя</span>
-                    <span id="profile-username" class="profile-info-value"></span>
-                  </div>
-                  <div class="profile-info-item">
-                    <span class="profile-info-label" data-i18n="profileEmailLabel">Email</span>
-                    <span id="profile-email" class="profile-info-value"></span>
-                  </div>
-                  <div class="profile-info-item">
-                    <span class="profile-info-label" data-i18n="profileCreatedAtLabel">Дата регистрации</span>
-                    <span id="profile-created-at" class="profile-info-value"></span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div id="profile-status" class="profile-status is-hidden"></div>
+          <!-- Page header: ← back + title -->
+          <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.5rem;">
+            <button id="profile-back" type="button" class="btn btn--ghost btn--sm"
+              style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+              <svg style="width:14px;height:14px;" aria-hidden="true"><use href="/static/icons.svg#arrow-left"/></svg>
+              <span data-i18n="profileBackButton">К тестам</span>
+            </button>
+            <h1 style="margin:0;font-size:var(--font-display);font-weight:600;" data-i18n="profileTitle">Профиль</h1>
           </div>
+
+          <!-- Two-column grid: avatar card (left) | info card (right) -->
+          <div class="profile-layout">
+
+            <!-- Avatar card -->
+            <div class="card" style="padding:1.25rem;display:flex;flex-direction:column;align-items:center;gap:0.75rem;text-align:center;">
+              <div style="position:relative;width:96px;height:96px;flex-shrink:0;">
+                <img id="profile-avatar-image" src="" alt=""
+                  style="width:96px;height:96px;border-radius:50%;object-fit:cover;border:2px solid var(--border);" />
+                <div id="profile-avatar-placeholder"
+                  style="width:96px;height:96px;border-radius:50%;background:var(--primary-soft);display:flex;align-items:center;justify-content:center;border:2px solid var(--border);">
+                  <span id="profile-avatar-initials" style="font-size:2rem;font-weight:700;color:var(--primary);"></span>
+                </div>
+              </div>
+              <label class="btn btn--ghost btn--sm" for="profile-avatar-input" style="cursor:pointer;" data-i18n="profileAvatarUpload">Загрузить</label>
+              <input type="file" id="profile-avatar-input" class="profile-avatar-input" accept=".png,.jpg,.jpeg,.gif" />
+              <button id="profile-avatar-delete" type="button" class="btn btn--ghost btn--sm"
+                style="color:var(--danger);" data-i18n="profileAvatarDelete">Удалить</button>
+              <p style="font-size:var(--font-xs);color:var(--text-subtle);margin:0;" data-i18n="profileAvatarHint">PNG, JPG или GIF. Максимум 2 МБ.</p>
+            </div>
+
+            <!-- Info card -->
+            <div class="card" style="padding:1.25rem;display:flex;flex-direction:column;gap:1.25rem;">
+
+              <!-- Display name field -->
+              <div class="field">
+                <label class="field__label" for="profile-display-name" data-i18n="profileDisplayNameLabel">Отображаемое имя</label>
+                <div style="display:flex;gap:0.5rem;">
+                  <input type="text" id="profile-display-name" class="input" style="flex:1;"
+                    placeholder="Введите отображаемое имя" data-i18n-placeholder="profileDisplayNamePlaceholder"
+                    maxlength="100" />
+                  <button id="profile-display-name-save" type="button" class="btn btn--primary btn--sm" data-i18n="profileSaveButton">Сохранить</button>
+                </div>
+              </div>
+
+              <!-- Account info (read-only definition list) -->
+              <div style="border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;">
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:0.625rem 0.875rem;border-bottom:1px solid var(--border);">
+                  <span style="font-size:var(--font-sm);color:var(--text-muted);" data-i18n="profileUsernameLabel">Имя пользователя</span>
+                  <span id="profile-username" style="font-size:var(--font-sm);font-weight:500;"></span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:0.625rem 0.875rem;border-bottom:1px solid var(--border);">
+                  <span style="font-size:var(--font-sm);color:var(--text-muted);" data-i18n="profileEmailLabel">Email</span>
+                  <span id="profile-email" style="font-size:var(--font-sm);font-weight:500;"></span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:0.625rem 0.875rem;">
+                  <span style="font-size:var(--font-sm);color:var(--text-muted);" data-i18n="profileCreatedAtLabel">Дата регистрации</span>
+                  <span id="profile-created-at" style="font-size:var(--font-sm);font-weight:500;"></span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Status -->
+          <div id="profile-status" class="profile-status is-hidden" style="margin-top:1rem;"></div>
+
+          <!-- Logout -->
+          <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border);">
+            <button id="profile-logout" type="button" class="btn btn--ghost"
+              style="color:var(--danger);" data-i18n="logoutButton">Выйти</button>
+          </div>
+
         </div>
       </section>
 

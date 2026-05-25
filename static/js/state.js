@@ -206,6 +206,7 @@ export const dom = {
   profileEmail: document.getElementById("profile-email"),
   profileCreatedAt: document.getElementById("profile-created-at"),
   profileStatus: document.getElementById("profile-status"),
+  profileLogout: document.getElementById("profile-logout"),
   statsBackButton: document.getElementById("stats-back"),
   statsRefreshButton: document.getElementById("stats-refresh"),
   statsFilterTestSelect: document.getElementById("stats-filter-test"),
