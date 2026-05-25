@@ -1,24 +1,43 @@
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
-  color: var(--text);
-  background: var(--bg);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: var(--font-body);
+  color: var(--wf-ink);
+  background: var(--wf-paper);
   min-height: 100vh;
-  line-height: 1.6;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 h1,
 h2,
-h3 {
+h3,
+h4,
+h5,
+h6 {
+  font-family: 'Caveat', cursive;
   margin: 0 0 0.5rem;
+  line-height: 1.2;
+  color: var(--wf-ink);
 }
 
 p {
   margin: 0 0 0.75rem;
+}
+
+a {
+  color: var(--wf-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
 }
 
 .is-hidden {
@@ -26,16 +45,24 @@ p {
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--wf-ink-fade);
   font-size: 0.9rem;
 }
 
 .hint {
-  color: var(--muted);
+  color: var(--wf-ink-mute);
   font-size: 0.85rem;
 }
 
 .inline-image {
   max-height: 56px;
   vertical-align: middle;
+}
+
+.text-accent {
+  color: var(--wf-accent);
+}
+
+.text-muted {
+  color: var(--wf-ink-fade);
 }
