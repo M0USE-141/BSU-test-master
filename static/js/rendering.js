@@ -276,10 +276,13 @@ export function renderChangeRequestsScreen() {
 }
 
 export function setActiveScreen(screen) {
+  console.log("[setActiveScreen] called with:", screen, "| current:", state.uiState.activeScreen);
   if (!screen || screen === state.uiState.activeScreen) {
+    console.log("[setActiveScreen] GUARD FIRED — returning early");
     return;
   }
   state.uiState.activeScreen = screen;
+  console.log("[setActiveScreen] state updated to:", state.uiState.activeScreen);
   // Update nav link active states in header
   import("./components/header-dropdown.js").then((m) => m.updateNavLinks(screen));
   if (screen === "auth") {

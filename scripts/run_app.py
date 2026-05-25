@@ -1,9 +1,7 @@
-import os
 import socket
 import threading
 import time
 import webbrowser
-from pathlib import Path
 
 import uvicorn
 
@@ -24,20 +22,6 @@ def wait_for_server(host, port, timeout=10):
 def open_browser():
     if wait_for_server("127.0.0.1", 8000):
         webbrowser.open("http://127.0.0.1:8000")
-
-
-def _default_data_dir() -> Path:
-    base = os.environ.get("TEST_DATA_DIR")
-
-    if base:
-        return Path(base)
-
-    if os.name == "nt":
-        root = Path(os.environ.get("APPDATA", Path.home() / "AppData/Roaming"))
-    else:
-        root = Path.home() / ".local" / "share"
-
-    return root / "MyApp" / "data" / "tests"
 
 
 def main():
