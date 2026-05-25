@@ -1,33 +1,22 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title data-i18n="pageTitle">TestMaster</title>
 
-    <!-- Existing CSS — keeps component logic, modal behaviour, editor styles -->
+    <!-- Google Fonts: Caveat (handwritten headings) + Inter (body) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+
+    <!-- CSS Design System -->
     <link rel="stylesheet" href="/static/css/base.css" />
     <link rel="stylesheet" href="/static/css/layout.css" />
     <link rel="stylesheet" href="/static/css/design-system.css" />
     <link rel="stylesheet" href="/static/css/components.css" />
     <link rel="stylesheet" href="/static/css/editor.css" />
     <link rel="stylesheet" href="/static/css/theme.css" />
-
-    <!-- Tailwind CDN v3 (Play CDN — no build step) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        darkMode: ["selector", "[data-theme=\"dark\"]"],
-        corePlugins: { preflight: false },
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ["system-ui", "-apple-system", "Segoe UI", "Roboto", "Arial", "sans-serif"],
-            },
-          },
-        },
-      };
-    </script>
 
     <!-- modulepreload — reduces waterfall on first load -->
     <link rel="modulepreload" href="/static/js/app.js" />
@@ -40,7 +29,7 @@
     <script type="module" src="/static/js/app.js"></script>
   </head>
 
-  <body class="antialiased">
+  <body>
 
     <!-- ═══════════════════════════════════════════════════════════
          HEADER — fixed minimal bar (Linear/Vercel style)
@@ -63,7 +52,7 @@
           </div>
         </nav>
 
-        <div class="flex-1"></div>
+        <div style="flex:1;"></div>
 
         <!-- TODO: wired in Phase 3 -->
         <!-- Hamburger (mobile only) -->
@@ -82,19 +71,15 @@
 
         <!-- Avatar chip with dropdown (shown when logged in) -->
         <div class="relative is-hidden" id="user-chip">
-          <button type="button" id="avatar-chip-btn"
-            class="flex items-center gap-2 px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700
-                   text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800
-                   cursor-pointer select-none transition-colors">
-            <div class="relative shrink-0 w-7 h-7">
+          <button type="button" id="avatar-chip-btn" class="avatar-chip-btn">
+            <div style="position:relative;width:28px;height:28px;flex-shrink:0;">
               <img id="user-avatar-image" src="" alt=""
-                class="is-hidden absolute inset-0 w-7 h-7 rounded-full object-cover" />
+                class="is-hidden" style="position:absolute;inset:0;width:28px;height:28px;border-radius:50%;object-fit:cover;" />
               <span id="user-avatar-initials"
-                class="flex w-7 h-7 rounded-full bg-emerald-600 text-white text-[11px] font-bold
-                       items-center justify-center leading-none"></span>
+                style="display:flex;width:28px;height:28px;border-radius:50%;background:var(--wf-accent);color:var(--wf-paper);font-size:11px;font-weight:700;align-items:center;justify-content:center;line-height:1;"></span>
             </div>
-            <span id="user-display" class="font-medium hidden sm:block max-w-[120px] truncate"></span>
-            <svg class="w-4 h-4 text-gray-400 shrink-0" aria-hidden="true"><use href="/static/icons.svg#chevron-down"/></svg>
+            <span id="user-display" class="avatar-chip-name"></span>
+            <svg style="width:16px;height:16px;color:var(--wf-ink-fade);flex-shrink:0;" aria-hidden="true"><use href="/static/icons.svg#chevron-down"/></svg>
           </button>
 
           <!-- Dropdown -->

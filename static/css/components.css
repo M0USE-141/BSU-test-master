@@ -2279,3 +2279,33 @@ button.danger:hover {
   background: var(--wf-ink-soft);
   color: var(--wf-paper);
 }
+
+/* ── Avatar chip button (header) ──────────────────────────── */
+.avatar-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem 0.25rem 0.25rem;
+  border-radius: var(--wf-radius);
+  border: var(--wf-border);
+  background: transparent;
+  color: var(--wf-ink);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+  font-family: 'Caveat', cursive;
+  font-size: 0.9375rem;
+}
+.avatar-chip-btn:hover {
+  background: var(--wf-ink-soft);
+}
+.avatar-chip-name {
+  font-weight: 600;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .avatar-chip-name { display: none; }
+}
