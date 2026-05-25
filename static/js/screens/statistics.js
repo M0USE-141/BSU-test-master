@@ -35,14 +35,12 @@ function renderKpiCards(container, kpis) {
   container.innerHTML = "";
   kpis.forEach(({ label, value }) => {
     const card = document.createElement("div");
-    card.style.cssText =
-      "background:var(--card-muted,#f8fafc);border-radius:10px;padding:0.75rem;";
+    card.className = "kpi";
     const lbl = document.createElement("div");
-    lbl.style.cssText =
-      "font-size:0.7rem;color:var(--muted);margin-bottom:0.25rem;";
+    lbl.className = "kpi__label";
     lbl.textContent = label;
     const val = document.createElement("div");
-    val.style.cssText = "font-size:1.25rem;font-weight:700;color:var(--text);";
+    val.className = "kpi__value";
     val.textContent = String(value ?? "—");
     card.appendChild(lbl);
     card.appendChild(val);
@@ -84,6 +82,24 @@ async function loadStreak() {
 // ---------------------------------------------------------------------------
 
 export function renderStatsTestSidebar(tests) {
+  // Populate the header test-select dropdown
+  const sel = document.getElementById("stats-test-select");
+  if (sel) {
+    const placeholder = sel.querySelector("option[value='']");
+    sel.innerHTML = "";
+    const firstOpt = document.createElement("option");
+    firstOpt.value = "";
+    firstOpt.textContent = placeholder?.textContent || "Выберите тест...";
+    sel.appendChild(firstOpt);
+    (tests || []).forEach((test) => {
+      const opt = document.createElement("option");
+      opt.value = test.id;
+      opt.textContent = test.title || test.id;
+      if (test.id === state.stats.selectedTestId) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+
   const list = dom.statsTestSidebarList;
   if (!list) return;
   list.innerHTML = "";
@@ -198,6 +214,11 @@ export function initStatsTabs() {
     if (state.stats.selectedTestId) {
       await loadOwnerTab(state.stats.selectedTestId);
     }
+  });
+
+  // Wire header test-select dropdown
+  document.getElementById("stats-test-select")?.addEventListener("change", (e) => {
+    if (e.target.value) selectStatsTest(e.target.value);
   });
 }
 

@@ -81,6 +81,7 @@ export const dom = {
   // Statistics redesign
   statsTestSidebar: document.getElementById("stats-test-sidebar"),
   statsTestSidebarList: document.getElementById("stats-test-sidebar-list"),
+  statsTestSelect: document.getElementById("stats-test-select"),
   statsProgressTab: document.getElementById("stats-tab-progress"),
   statsOwnerTab: document.getElementById("stats-tab-owner"),
   statsProgressPanel: document.getElementById("stats-panel-progress"),
