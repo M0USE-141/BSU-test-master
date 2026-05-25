@@ -6,8 +6,21 @@
  *   export default async function render(root, params) { ... }
  */
 
-import { isMobile } from './utils/device.js';
+import { isMobile, onBreakpointChange } from './utils/device.js';
 import { setState } from './state.js';
+
+/**
+ * Escape HTML special characters to prevent XSS in innerHTML.
+ * @param {string} s
+ * @returns {string}
+ */
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 /** @type {Array<(route: { path: string, params: Record<string, string> }) => void>} */
 const _listeners = [];
@@ -47,7 +60,7 @@ const ROUTES = [
     pattern: '/test/:id',
     module: () => isMobile()
       ? import('./screens/mobile/tests.js')
-      : import('./screens/desktop/home.js'),
+      : import('./screens/desktop/test-detail.js'),
   },
   {
     pattern: '/test/:id/take',
@@ -84,6 +97,18 @@ const ROUTES = [
     module: () => isMobile()
       ? import('./screens/mobile/import.js')
       : import('./screens/desktop/import.js'),
+  },
+  {
+    pattern: '/collection/:id',
+    module: () => isMobile()
+      ? import('./screens/mobile/collection.js')
+      : import('./screens/desktop/home.js'),
+  },
+  {
+    pattern: '/change-requests/:testId',
+    module: () => isMobile()
+      ? import('./screens/mobile/change-requests.js')
+      : import('./screens/desktop/change-requests.js'),
   },
 ];
 
@@ -157,7 +182,7 @@ async function handleRoute(path) {
     _root.innerHTML = `
       <div class="screen" style="align-items:center;justify-content:center;gap:12px;">
         <p style="font-size:18px;font-weight:600;">404</p>
-        <p style="color:var(--ink-mute)">Page not found: ${effectivePath}</p>
+        <p style="color:var(--ink-mute)">Page not found: ${escapeHtml(effectivePath)}</p>
         <a href="#/home" class="btn btn--primary">Go home</a>
       </div>
     `;
@@ -183,7 +208,7 @@ async function handleRoute(path) {
     _root.innerHTML = `
       <div class="screen" style="align-items:center;justify-content:center;gap:8px;padding:var(--pad);">
         <p style="font-weight:600;color:#d9534f;">Render error</p>
-        <p style="font-size:13px;color:var(--ink-mute)">${e.message}</p>
+        <p style="font-size:13px;color:var(--ink-mute)">${escapeHtml(e.message)}</p>
         <a href="#/home" class="btn btn--ghost btn--small">Go home</a>
       </div>
     `;
@@ -200,6 +225,16 @@ export function initRouter(root) {
   // Handle hash changes
   window.addEventListener('hashchange', () => {
     handleRoute(getHashPath());
+  });
+
+  // Re-render current route when mobile/desktop breakpoint changes
+  onBreakpointChange(() => {
+    if (_current) handleRoute(_current.path);
+  });
+
+  // Re-render current route when locale changes
+  window.addEventListener('localechange', () => {
+    if (_current) handleRoute(_current.path);
   });
 
   // Initial route

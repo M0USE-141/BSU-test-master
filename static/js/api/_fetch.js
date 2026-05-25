@@ -71,11 +71,10 @@ export async function apiFetch(method, path, body, opts = {}) {
   let res;
   try {
     res = await fetch(path, {
-      method,
-      headers,
+      ...opts,       // base caller options (e.g. signal for abort)
+      method,        // always our method
+      headers,       // always our headers (with Authorization)
       body: fetchBody,
-      ...opts,
-      // Don't allow opts to override headers/body set above
     });
   } catch (e) {
     throw new ApiError(0, 'Network error: ' + (e.message || 'unknown'));

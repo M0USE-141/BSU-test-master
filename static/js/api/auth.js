@@ -10,11 +10,7 @@ import { apiFetch, setToken, clearToken } from './_fetch.js';
  * @param {string} password
  */
 export async function login(usernameOrEmail, password) {
-  // FastAPI's OAuth2PasswordRequestForm expects form-encoded body
-  const form = new FormData();
-  form.append('username', usernameOrEmail);
-  form.append('password', password);
-  const data = await apiFetch('POST', '/api/auth/login', form);
+  const data = await apiFetch('POST', '/api/auth/login', { username: usernameOrEmail, password });
   if (data?.access_token) {
     setToken(data.access_token);
   }
