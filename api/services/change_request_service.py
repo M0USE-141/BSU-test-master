@@ -114,14 +114,14 @@ def list_change_requests(
         ChangeRequest.test_collection_id == collection.id
     )
 
-    # Count total
-    count_stmt = select(func.count()).select_from(
-        base_query.subquery()
+    # Count total (direct WHERE — no subquery wrapper)
+    count_stmt = select(func.count(ChangeRequest.id)).where(
+        ChangeRequest.test_collection_id == collection.id
     )
     total = db.execute(count_stmt).scalar() or 0
 
     # Count pending
-    pending_stmt = select(func.count()).where(
+    pending_stmt = select(func.count(ChangeRequest.id)).where(
         ChangeRequest.test_collection_id == collection.id,
         ChangeRequest.status == ChangeRequestStatus.PENDING.value,
     )

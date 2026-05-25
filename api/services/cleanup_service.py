@@ -1,7 +1,6 @@
 """Service for cleanup operations."""
 import logging
 import threading
-import time
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete
@@ -25,7 +24,6 @@ def cleanup_abandoned_attempts() -> int:
     try:
         db = SessionLocal()
         try:
-            # Delete abandoned attempts older than retention period
             result = db.execute(
                 delete(Attempt).where(
                     Attempt.status == AttemptStatus.ABANDONED.value,
@@ -44,20 +42,28 @@ def cleanup_abandoned_attempts() -> int:
         return 0
 
 
-def schedule_events_cleanup() -> None:
-    """Schedule periodic cleanup of old attempts."""
-    # Run cleanup once per day
-    cleanup_interval = 24 * 60 * 60
+def schedule_events_cleanup() -> tuple[threading.Thread, threading.Event]:
+    """Schedule periodic cleanup of old attempts.
+
+    Returns:
+        Tuple of (thread, stop_event) for graceful shutdown.
+        Call stop_event.set() then thread.join(timeout=5) to stop.
+    """
+    cleanup_interval = 24 * 60 * 60  # 24 hours
+    stop_event = threading.Event()
 
     def _worker() -> None:
-        # Initial delay before first cleanup
-        time.sleep(60)
-        while True:
+        # Initial delay before first cleanup (60 seconds)
+        if stop_event.wait(60):
+            return  # Stop requested during initial delay
+        while not stop_event.is_set():
             try:
                 cleanup_abandoned_attempts()
             except Exception:
                 pass
-            time.sleep(cleanup_interval)
+            # Wait for next interval or stop signal
+            if stop_event.wait(cleanup_interval):
+                return
 
     thread = threading.Thread(
         target=_worker,
@@ -65,3 +71,4 @@ def schedule_events_cleanup() -> None:
         daemon=True,
     )
     thread.start()
+    return thread, stop_event

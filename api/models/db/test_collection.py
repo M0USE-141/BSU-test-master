@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from api.database import Base
@@ -56,6 +56,10 @@ class TestCollection(Base):
         nullable=False,
     )
 
+    __table_args__ = (
+        Index("ix_test_collections_access_owner", "access_level", "owner_id"),
+    )
+
     # Relationships
     owner: Mapped["User"] = relationship("User", back_populates="owned_tests")
     shares: Mapped[list["TestShare"]] = relationship(
@@ -76,10 +80,10 @@ class TestShare(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     test_collection_id: Mapped[int] = mapped_column(
-        ForeignKey("test_collections.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("test_collections.id", ondelete="CASCADE"), nullable=False, index=True
     )
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     shared_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -92,6 +96,7 @@ class TestShare(Base):
 
     __table_args__ = (
         UniqueConstraint("test_collection_id", "user_id", name="uq_test_user_share"),
+        Index("ix_test_shares_collection_user", "test_collection_id", "user_id"),
     )
 
     # Relationships
