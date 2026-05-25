@@ -1,171 +1,11 @@
-.app-header {
-  background: linear-gradient(120deg, #1e3a8a, #2563eb);
-  color: white;
-  padding: 2.5rem 1.5rem 2rem;
-  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.18);
-}
-
-.app-header__content {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.app-header p {
-  margin-top: 0.5rem;
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.app-header__controls {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.language-select {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.language-select label {
-  font-weight: 600;
-}
-
-.language-select select {
-  appearance: none;
-  border-radius: 10px;
-  padding: 0.4rem 0.65rem;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  background: rgba(255, 255, 255, 0.18);
-  color: #ffffff;
-  font-weight: 600;
-  min-width: 140px;
-}
-
-.language-select select option {
-  color: #0f172a;
-  background: #ffffff;
-}
-
-.language-select select:focus {
-  outline: 2px solid rgba(255, 255, 255, 0.6);
-  outline-offset: 2px;
-}
-
-:root[data-theme="dark"] .language-select select {
-  background: rgba(255, 255, 255, 0.22);
-  border-color: rgba(255, 255, 255, 0.5);
-}
-
-:root[data-theme="dark"] .language-select select option {
-  color: #e2e8f0;
-  background: #1f2937;
-}
-
-.theme-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.85);
-  position: relative;
-}
-
-.theme-toggle__label {
-  font-weight: 600;
-}
-
-.theme-toggle__input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.theme-toggle__slider {
-  position: relative;
-  width: 44px;
-  height: 24px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.35);
-  transition: background 0.2s ease;
-  flex-shrink: 0;
-}
-
-.theme-toggle__slider::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: white;
-  box-shadow: 0 4px 8px rgba(15, 23, 42, 0.2);
-  transition: transform 0.2s ease;
-}
-
-.theme-toggle__input:checked + .theme-toggle__slider {
-  background: rgba(96, 165, 250, 0.7);
-}
-
-.theme-toggle__input:checked + .theme-toggle__slider::after {
-  transform: translateX(20px);
-}
-
-.app {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  padding: 1.5rem 2.5rem 3rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
+/* ── Screen base ─────────────────────────────────────────────────────────── */
+/* Override the old display:grid rule from v2. No !important so
+   .is-hidden { display:none !important } still wins. */
 .app-screen {
-  display: grid;
-  grid-template-columns: minmax(320px, 380px) 1fr;
-  gap: 1.5rem;
+  display: block;
 }
 
-#screen-management {
-  grid-template-columns: 1fr;
-}
-
-#screen-testing {
-  grid-template-columns: 1fr;
-}
-
-#screen-stats {
-  grid-template-columns: minmax(280px, 360px) 1fr;
-}
-
-.panel--stats-sidebar {
-  min-width: 0;
-}
-
-.panel--stats-main {
-  min-width: 0;
-}
-
-.panel--management {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: 1fr;
-  align-items: start;
-}
-
-.card--collections {
-  grid-column: 1 / -1;
-}
-
+/* ── Generic panel ───────────────────────────────────────────────────────── */
 .panel {
   display: flex;
   flex-direction: column;
@@ -179,12 +19,7 @@
   margin-bottom: 1rem;
 }
 
-.test-collections {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-}
-
+/* ── Pretest / settings grid (testing screen, inline settings) ───────────── */
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -213,6 +48,7 @@
   min-height: 48px;
 }
 
+/* ── Question actions + nav ──────────────────────────────────────────────── */
 .question-actions {
   display: flex;
   gap: 0.5rem;
@@ -225,6 +61,7 @@
   gap: 0.4rem;
 }
 
+/* ── Testing screen named-grid (desktop) ─────────────────────────────────── */
 .panel--testing {
   display: grid;
   grid-template-columns: minmax(260px, 360px) 1fr;
@@ -249,37 +86,11 @@
 }
 
 @media (max-width: 960px) {
-  #screen-stats {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 960px) {
-  .app {
-    grid-template-columns: 1fr;
-    padding: 1.25rem;
-  }
-
-  .app-header__content {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
   .panel--testing {
     grid-template-columns: 1fr;
     grid-template-areas:
       "settings"
       "questions"
       "results";
-  }
-}
-
-@media (max-width: 720px) {
-  .app-header {
-    padding: 2rem 1.25rem 1.75rem;
-  }
-
-  .app {
-    padding: 1rem 1.25rem 2.5rem;
   }
 }

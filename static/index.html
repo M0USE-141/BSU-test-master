@@ -29,29 +29,6 @@
       };
     </script>
 
-    <!-- Small CSS bridge: screen base only — header CSS moved to components.css -->
-    <style>
-      /* Push page content below the fixed 56px header */
-      body { padding-top: 56px; }
-      /* Screen base: override layout.css display:grid → block.
-         No !important here so .is-hidden { display:none !important } still wins. */
-      .app-screen {
-        display: block;
-      }
-      /* Auth screen layout — flex centering WITHOUT !important so is-hidden still hides it */
-      #screen-auth {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: calc(100vh - 56px);
-        padding: 1.5rem;
-      }
-      /* Profile avatar: ensure only one shows */
-      #profile-avatar-image:not(.is-hidden) ~ #profile-avatar-placeholder { display: none; }
-      /* User chip flex */
-      #user-chip:not(.is-hidden) { display: flex; }
-    </style>
-
     <!-- modulepreload — reduces waterfall on first load -->
     <link rel="modulepreload" href="/static/js/app.js" />
     <link rel="modulepreload" href="/static/js/state.js" />
@@ -1062,7 +1039,7 @@
             <p class="muted" data-i18n="createTestSubtitle">Задайте название и начните создавать вопросы.</p>
           </div>
           <div class="modal-actions">
-            <button id="close-create-test" type="button" class="ghost" data-i18n="closeButton">Закрыть</button>
+            <button id="close-create-test" type="button" class="btn btn--ghost btn--sm" data-i18n="closeButton">Закрыть</button>
           </div>
         </div>
         <form id="create-test-form" class="create-test-form">
@@ -1082,7 +1059,7 @@
           </label>
           <div class="create-test-actions">
             <button type="submit" data-i18n="createCollectionButton">Создать коллекцию</button>
-            <button id="cancel-create-test" type="button" class="secondary" data-i18n="cancelButton">Отмена</button>
+            <button id="cancel-create-test" type="button" class="btn btn--ghost" data-i18n="cancelButton">Отмена</button>
           </div>
           <p id="create-test-status" class="muted"></p>
         </form>
@@ -1098,7 +1075,7 @@
             <p class="muted" id="access-settings-test-name"></p>
           </div>
           <div class="modal-actions">
-            <button id="close-access-settings" type="button" class="ghost" data-i18n="closeButton">Закрыть</button>
+            <button id="close-access-settings" type="button" class="btn btn--ghost btn--sm" data-i18n="closeButton">Закрыть</button>
           </div>
         </div>
         <div class="access-settings-content">
@@ -1139,7 +1116,7 @@
             <h2 id="test-stats-title" data-i18n="testStatisticsTitle">Статистика теста</h2>
           </div>
           <div class="modal-actions">
-            <button type="button" class="ghost modal__close" data-i18n="closeButton">Закрыть</button>
+            <button type="button" class="btn btn--ghost btn--sm modal__close" data-i18n="closeButton">Закрыть</button>
           </div>
         </div>
         <div class="test-stats-content">

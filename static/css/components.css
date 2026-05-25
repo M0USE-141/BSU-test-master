@@ -1,3 +1,29 @@
+/* ── Global layout shell ─────────────────────────────────────────────────── */
+/* Push page content below the fixed 56px header */
+body {
+  padding-top: 56px;
+}
+
+/* Auth screen: flex-centered full-viewport */
+#screen-auth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 56px);
+  padding: 1.5rem;
+}
+
+/* Profile avatar: show only the image when it's not hidden */
+#profile-avatar-image:not(.is-hidden) ~ #profile-avatar-placeholder {
+  display: none;
+}
+
+/* User chip: use flex layout when visible */
+#user-chip:not(.is-hidden) {
+  display: flex;
+}
+
+/* ── Card ─────────────────────────────────────────────────────────────────── */
 .card {
   background: var(--card);
   border-radius: 16px;
