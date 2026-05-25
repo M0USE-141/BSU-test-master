@@ -1742,14 +1742,14 @@ export function renderDetailKpis(container, kpis) {
   container.innerHTML = "";
   cards.forEach((c) => {
     const el = document.createElement("div");
-    el.style.cssText = "background:var(--card-muted,#f8fafc);border-radius:10px;padding:0.625rem 0.75rem;";
+    el.className = "kpi";
 
     const labelEl = document.createElement("div");
-    labelEl.style.cssText = "font-size:0.7rem;color:var(--muted);margin-bottom:0.25rem;";
+    labelEl.className = "kpi__label";
     labelEl.textContent = c.label;
 
     const valueEl = document.createElement("div");
-    valueEl.style.cssText = "font-size:1.125rem;font-weight:700;color:var(--text);";
+    valueEl.className = "kpi__value";
     valueEl.textContent = String(c.value);
 
     el.appendChild(labelEl);

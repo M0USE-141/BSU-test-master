@@ -158,8 +158,10 @@ export async function showTestDetail(test, allTests = []) {
 
   const badge = document.getElementById("test-detail-badge");
   if (badge) {
-    badge.textContent = test.access_level || "";
-    badge.className = `badge badge--${test.access_level || "private"}`;
+    const level = test.access_level || "private";
+    const labels = { public: "Публичный", private: "Приватный", shared: "Общий доступ" };
+    badge.textContent = labels[level] || level;
+    badge.className = `access-chip access-chip--${level}`;
   }
 
   const meta = document.getElementById("test-detail-meta");
