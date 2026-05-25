@@ -11,6 +11,8 @@ import { dom, state } from "../state.js";
 import { getClientId } from "../telemetry.js";
 import { t } from "../i18n.js";
 
+let _tabsInitialized = false;
+
 // ---------------------------------------------------------------------------
 // Chart.js lazy-loader
 // ---------------------------------------------------------------------------
@@ -85,11 +87,10 @@ export function renderStatsTestSidebar(tests) {
   // Populate the header test-select dropdown
   const sel = document.getElementById("stats-test-select");
   if (sel) {
-    const placeholder = sel.querySelector("option[value='']");
     sel.innerHTML = "";
     const firstOpt = document.createElement("option");
     firstOpt.value = "";
-    firstOpt.textContent = placeholder?.textContent || "Выберите тест...";
+    firstOpt.textContent = t("selectTestPlaceholder");
     sel.appendChild(firstOpt);
     (tests || []).forEach((test) => {
       const opt = document.createElement("option");
@@ -203,6 +204,8 @@ function _switchToOwnerTab() {
 // ---------------------------------------------------------------------------
 
 export function initStatsTabs() {
+  if (_tabsInitialized) return;
+  _tabsInitialized = true;
   dom.statsProgressTab?.addEventListener("click", () => {
     state.stats.activeTab = "progress";
     _switchToProgressTab();
@@ -413,8 +416,8 @@ async function loadOwnerTab(testId) {
 
     const kpis = data.kpis || {};
     renderKpiCards(dom.statsOwnerKpis, [
-      { label: "Всего попыток", value: kpis.totalAttempts ?? 0 },
-      { label: "Уник. студентов", value: kpis.uniqueStudents ?? 0 },
+      { label: t("totalAttempts"), value: kpis.totalAttempts ?? 0 },
+      { label: t("totalUsers"), value: kpis.uniqueStudents ?? 0 },
       { label: t("kpiAccuracy"), value: fmtPct(kpis.avgScore) },
       { label: "Сдали (≥60%)", value: fmtPct(kpis.passRate) },
     ]);
