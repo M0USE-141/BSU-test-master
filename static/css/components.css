@@ -2250,7 +2250,7 @@ button.danger:hover {
 
 .qgrid-sq--correct {
   background: var(--primary);
-  color: #fff;
+  color: var(--surface-1);
 }
 
 .qgrid-sq--wrong {
@@ -2260,5 +2260,5 @@ button.danger:hover {
 
 .qgrid-sq--answered {
   background: var(--text-subtle);
-  color: #fff;
+  color: var(--surface-1);
 }
