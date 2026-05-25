@@ -2210,28 +2210,6 @@ button.danger:hover {
   padding: 1.25rem;
 }
 
-.editor-menu-item {
-  display: block;
-  width: 100%;
-  padding: 0.5rem 1rem;
-  font-size: 0.875rem;
-  text-align: left;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--text);
-  transition: background 0.1s;
-}
-.editor-menu-item:hover {
-  background: var(--card-muted, #f8fafc);
-}
-.editor-menu-item--danger {
-  color: var(--danger, #ef4444);
-}
-.editor-menu-item--danger:hover {
-  background: #fef2f2;
-}
-
 @media (max-width: 640px) {
   .editor-screen-body {
     grid-template-columns: 1fr;

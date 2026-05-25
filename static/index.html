@@ -829,7 +829,7 @@
 
         <!-- Header -->
         <div class="editor-screen-header">
-          <button id="editor-back-btn" type="button" class="ghost"
+          <button id="editor-back-btn" type="button" class="btn btn--ghost btn--sm"
             style="display:flex;align-items:center;gap:6px;font-size:0.875rem;flex-shrink:0;">
             <svg style="width:16px;height:16px;" aria-hidden="true"><use href="/static/icons.svg#arrow-left"/></svg>
             <span data-i18n="navTests">Тесты</span>
@@ -839,25 +839,22 @@
             style="flex:1;font-size:1rem;font-weight:700;margin:0 0.75rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></h1>
 
           <!-- Change requests button (shown for shared tests) -->
-          <button id="editor-change-requests" type="button" class="secondary is-hidden"
-            style="font-size:0.8125rem;padding:0.375rem 0.75rem;flex-shrink:0;"
+          <button id="editor-change-requests" type="button" class="chip chip--info is-hidden"
+            style="flex-shrink:0;cursor:pointer;"
             data-i18n="changeRequestsButton">Предложения</button>
 
           <!-- Kebab menu -->
           <div style="position:relative;flex-shrink:0;">
-            <button id="editor-actions-btn" type="button" class="ghost"
-              style="padding:0.375rem 0.625rem;display:flex;align-items:center;gap:4px;font-size:0.8125rem;">
+            <button id="editor-actions-btn" type="button" class="icon-btn">
               <svg style="width:18px;height:18px;" aria-hidden="true"><use href="/static/icons.svg#ellipsis-vertical"/></svg>
             </button>
-            <div id="editor-actions-menu" class="is-hidden"
-              style="position:absolute;right:0;top:calc(100% + 6px);min-width:200px;
-                     background:var(--card);border:1px solid var(--border);border-radius:12px;
-                     box-shadow:0 4px 16px rgba(0,0,0,0.12);z-index:100;padding:4px 0;">
-              <button id="editor-rename-test" type="button" class="editor-menu-item" data-i18n="renameTestButton">Переименовать тест</button>
-              <button id="editor-access-settings" type="button" class="editor-menu-item" data-i18n="accessSettingsButton">Настройки доступа</button>
-              <button id="editor-test-stats" type="button" class="editor-menu-item" data-i18n="testStatisticsButton">Статистика теста</button>
-              <div style="height:1px;background:var(--border);margin:4px 0;"></div>
-              <button id="editor-delete-test" type="button" class="editor-menu-item editor-menu-item--danger" data-i18n="deleteTestButton">Удалить тест</button>
+            <div id="editor-actions-menu" class="menu is-hidden"
+              style="position:absolute;right:0;top:calc(100% + 6px);">
+              <button id="editor-rename-test" type="button" class="menu__item" data-i18n="renameTestButton">Переименовать тест</button>
+              <button id="editor-access-settings" type="button" class="menu__item" data-i18n="accessSettingsButton">Настройки доступа</button>
+              <button id="editor-test-stats" type="button" class="menu__item" data-i18n="testStatisticsButton">Статистика теста</button>
+              <div class="menu__divider"></div>
+              <button id="editor-delete-test" type="button" class="menu__item menu__item--danger" data-i18n="deleteTestButton">Удалить тест</button>
             </div>
           </div>
         </div>
@@ -885,14 +882,14 @@
                 <div class="editor-options">
                   <div class="editor-options-header">
                     <h4 data-i18n="editorOptionsTitle">Варианты ответов</h4>
-                    <button id="add-option" type="button" class="ghost" data-i18n="editorAddOptionButton">Добавить вариант</button>
+                    <button id="add-option" type="button" class="btn btn--ghost btn--sm" data-i18n="editorAddOptionButton">Добавить вариант</button>
                   </div>
                   <p class="hint"><span data-i18n="editorInlineHint">Вставляйте объекты через {{image:ID}} и {{formula:ID}}</span></p>
                   <div id="editor-options-list" class="editor-options-list"></div>
                 </div>
                 <div class="editor-actions">
-                  <button id="save-question" type="submit" data-i18n="editorSaveButton">Сохранить</button>
-                  <button id="reset-editor" type="button" class="ghost" data-i18n="editorResetButton">Очистить форму</button>
+                  <button id="save-question" type="submit" class="btn btn--primary" data-i18n="editorSaveButton">Сохранить</button>
+                  <button id="reset-editor" type="button" class="btn btn--ghost" data-i18n="editorResetButton">Очистить форму</button>
                 </div>
               </form>
 
@@ -945,7 +942,7 @@
                     </label>
                     <input id="editor-object-formula-file" type="file" accept=".xml" class="editor-object-input" />
                   </div>
-                  <button id="editor-add-object" type="button" class="secondary" data-i18n="editorAddObjectButton">Добавить объект</button>
+                  <button id="editor-add-object" type="button" class="btn btn--ghost" data-i18n="editorAddObjectButton">Добавить объект</button>
                   <p id="editor-object-status" class="muted"></p>
                 </div>
                 <!-- Hidden list section stub for JS compat -->
