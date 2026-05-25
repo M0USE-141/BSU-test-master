@@ -12,9 +12,9 @@
   gap: 0.75rem;
   min-height: 0;
   padding: 1rem;
-  border-radius: 16px;
-  border: 1px solid var(--border);
-  background: var(--card-muted);
+  border-radius: var(--wf-radius);
+  border: var(--wf-border);
+  background: var(--wf-paper);
 }
 
 .editor-column {
@@ -30,10 +30,10 @@
 }
 
 .editor-card {
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  border: var(--wf-border);
+  border-radius: var(--wf-radius);
   padding: 0.75rem;
-  background: var(--card-muted);
+  background: var(--wf-paper);
   display: grid;
   gap: 0.5rem;
   -webkit-tap-highlight-color: transparent;
@@ -274,9 +274,9 @@
   display: grid;
   gap: 0.35rem;
   padding: 0.85rem;
-  border-radius: 12px;
-  border: 1px dashed var(--border);
-  background: var(--card);
+  border-radius: var(--wf-radius);
+  border: var(--wf-border);
+  background: var(--wf-paper);
   text-align: center;
   cursor: pointer;
   transition: border-color 0.2s ease, box-shadow 0.2s ease,
@@ -284,14 +284,14 @@
 }
 
 .editor-object-dropzone:hover {
-  border-color: var(--primary);
-  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.12);
+  border-color: var(--wf-accent);
+  box-shadow: var(--wf-shadow);
   transform: translateY(-1px);
 }
 
 .editor-object-dropzone.is-dragover {
-  border-color: var(--primary);
-  box-shadow: 0 12px 22px rgba(37, 99, 235, 0.16);
+  border-color: var(--wf-accent);
+  box-shadow: var(--wf-shadow);
   transform: translateY(-2px);
 }
 
