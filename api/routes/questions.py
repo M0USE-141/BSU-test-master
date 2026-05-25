@@ -1,6 +1,13 @@
 """Question management endpoints."""
-from fastapi import APIRouter, Body, HTTPException
+from typing import Annotated
 
+from fastapi import APIRouter, Body, Depends, HTTPException
+from sqlalchemy.orm import Session as DbSession
+
+from api.database import get_db
+from api.dependencies.auth import get_current_user
+from api.models.db.user import User
+from api.services import access_service
 from api.services.test_service import (
     extract_blocks,
     find_question,
@@ -12,12 +19,28 @@ from api.services.test_service import (
 router = APIRouter(prefix="/api/tests/{test_id}/questions", tags=["questions"])
 
 
+def _check_edit_permission(
+    test_id: str,
+    db: DbSession,
+    current_user: User,
+) -> None:
+    """Raise 403 if current_user cannot edit the test."""
+    if not access_service.can_edit_test(db, test_id, current_user):
+        raise HTTPException(
+            status_code=403, detail="Only the test owner can modify questions"
+        )
+
+
 @router.post("")
 def add_question(
     test_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
     payload: dict[str, object] = Body(...),
 ) -> dict[str, object]:
     """Add new question to test."""
+    _check_edit_permission(test_id, db, current_user)
+
     test_payload = load_test_payload(test_id)
     questions = test_payload.get("questions", [])
     if not isinstance(questions, list):
@@ -83,9 +106,13 @@ def add_question(
 def update_question(
     test_id: str,
     question_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
     payload: dict[str, object] = Body(...),
 ) -> dict[str, object]:
     """Update existing question."""
+    _check_edit_permission(test_id, db, current_user)
+
     test_payload = load_test_payload(test_id)
     question, _ = find_question(test_payload, question_id)
 
@@ -145,8 +172,15 @@ def update_question(
 
 
 @router.delete("/{question_id}")
-def delete_question(test_id: str, question_id: int) -> dict[str, object]:
+def delete_question(
+    test_id: str,
+    question_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
+) -> dict[str, object]:
     """Delete question from test."""
+    _check_edit_permission(test_id, db, current_user)
+
     test_payload = load_test_payload(test_id)
     question, index = find_question(test_payload, question_id)
 

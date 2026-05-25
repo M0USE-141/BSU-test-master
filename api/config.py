@@ -1,7 +1,10 @@
 """Application configuration and constants."""
+import logging
 import os
 import sys
 from pathlib import Path
+
+_SECRET_KEY_PLACEHOLDER = "CHANGE_ME_IN_PRODUCTION_USE_openssl_rand_hex_32"
 
 
 def _resource_path(relative: str) -> Path:
@@ -38,10 +41,7 @@ DATABASE_URL = os.environ.get(
 )
 
 # Authentication
-SECRET_KEY = os.environ.get(
-    "SECRET_KEY",
-    "CHANGE_ME_IN_PRODUCTION_USE_openssl_rand_hex_32"
-)
+SECRET_KEY = os.environ.get("SECRET_KEY", _SECRET_KEY_PLACEHOLDER)
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = _parse_int_env("ACCESS_TOKEN_EXPIRE_MINUTES", 60)
 SESSION_EXTEND_MINUTES = _parse_int_env("SESSION_EXTEND_MINUTES", 60)
@@ -52,3 +52,33 @@ AVATARS_DIR.mkdir(parents=True, exist_ok=True)
 AVATAR_MAX_SIZE_BYTES = 2 * 1024 * 1024  # 2 MB
 AVATAR_MAX_DIMENSION = 512  # pixels
 AVATAR_ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif"}
+
+# CORS — comma-separated list of allowed origins
+_allowed_origins_raw = os.environ.get(
+    "ALLOWED_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000"
+)
+ALLOWED_ORIGINS: list[str] = [
+    o.strip() for o in _allowed_origins_raw.split(",") if o.strip()
+]
+
+
+def validate_secret_key() -> None:
+    """Validate SECRET_KEY is not the unsafe placeholder.
+
+    Raises RuntimeError in production (ENV=production).
+    Logs a warning in all other environments.
+    """
+    logger = logging.getLogger(__name__)
+    if SECRET_KEY != _SECRET_KEY_PLACEHOLDER:
+        return
+
+    env = os.environ.get("ENV", "").lower()
+    if env == "production":
+        raise RuntimeError(
+            "SECRET_KEY must be set in production. "
+            "Generate a key with: python -c \"import secrets; print(secrets.token_hex(32))\""
+        )
+    logger.warning(
+        "SECRET_KEY is using the unsafe default placeholder. "
+        "Set the SECRET_KEY environment variable before deploying to production."
+    )

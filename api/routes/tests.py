@@ -5,14 +5,15 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from sqlalchemy.orm import Session as DbSession
+from sqlalchemy import select
+from sqlalchemy.orm import Session as DbSession, joinedload
 
 from api.config import DATA_DIR
 from api.database import get_db
 from api.dependencies.auth import get_current_user, get_optional_user
 from api.models import TestCreate, TestUpdate
 from api.models.db.user import User
-from api.models.db.test_collection import AccessLevel
+from api.models.db.test_collection import AccessLevel, TestCollection
 from api.services import access_service
 from api.utils import assets_dir, json_load, payload_path, test_dir
 from api.services.test_service import load_test_payload, save_test_payload
@@ -30,36 +31,41 @@ def list_tests(
     limit: int | None = Query(None, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> dict[str, object]:
-    """List all tests accessible to the current user.
+    """List all tests accessible to the current user."""
+    # Collect test directories from disk
+    test_entries = [
+        (d, d / "test.json")
+        for d in sorted(DATA_DIR.iterdir())
+        if d.is_dir() and (d / "test.json").exists()
+    ]
+    all_test_ids = [entry[0].name for entry in test_entries]
 
-    Args:
-        filter_type: Filter type - "my" (owned by user), "shared" (shared with user),
-                    "public" (public tests), or None for all accessible tests
-        limit: Maximum number of tests to return
-        offset: Number of tests to skip (for pagination)
+    # --- Bulk-load all TestCollections with owners (single query, no N+1) ---
+    if all_test_ids:
+        stmt = (
+            select(TestCollection)
+            .options(joinedload(TestCollection.owner))
+            .where(TestCollection.test_id.in_(all_test_ids))
+        )
+        collections_dict: dict[str, TestCollection] = {
+            c.test_id: c
+            for c in db.execute(stmt).scalars().unique().all()
+        }
+    else:
+        collections_dict = {}
 
-    Returns:
-        Dictionary with tests list and pagination info
-    """
     # Get accessible test IDs from database
     accessible_ids = set(access_service.get_accessible_test_ids(db, current_user))
 
     tests = []
-    for test_directory in sorted(DATA_DIR.iterdir()):
-        if not test_directory.is_dir():
-            continue
-        payload_file = test_directory / "test.json"
-        if not payload_file.exists():
-            continue
-
+    for test_directory, payload_file in test_entries:
         test_id = test_directory.name
         payload = payload_file.read_text(encoding="utf-8")
         metadata = serialize_metadata(json_load(payload))
 
-        # Get access info from database
-        collection = access_service.get_test_collection_with_owner(db, test_id)
+        collection = collections_dict.get(test_id)
         if collection:
-            # Test has access control - check if accessible
+            # Test has access control — check if accessible
             if test_id not in accessible_ids:
                 continue
             metadata["access_level"] = collection.access_level
@@ -80,7 +86,7 @@ def list_tests(
                 if collection.access_level != AccessLevel.PUBLIC:
                     continue
         else:
-            # No access control record - show to everyone (backwards compatibility)
+            # No access control record — show to everyone (backwards compatibility)
             metadata["access_level"] = "public"
             metadata["owner_id"] = None
             metadata["owner_username"] = None
@@ -88,7 +94,7 @@ def list_tests(
 
             # Apply filter for legacy tests (no owner)
             if filter_type == "my" or filter_type == "shared":
-                continue  # Legacy tests without owner don't match "my" or "shared"
+                continue
 
         tests.append(metadata)
 
