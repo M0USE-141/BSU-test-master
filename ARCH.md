@@ -5,8 +5,8 @@
 Один Python-процесс: FastAPI-приложение обслуживает REST API и одновременно отдаёт ванильный SPA-фронтенд из `static/`. Никакого SSR, никаких шаблонов — `templates/` содержит лишь `.gitkeep`. Все данные в SQLite, файлы тестов и аватары — на диске.
 
 ```
-Browser ──GET /──────────────────► static/index.html (SPA)
-         ──GET /static/js/...───► static/js/*.js (ES-modules)
+Browser ──GET /──────────────────► static/index.html (SPA shell)
+         ──GET /static/js/...───► static/js/*.js (ES-modules, cache-busted)
          ──/api/...────────────► FastAPI routes
                                       │
                              SQLAlchemy 2.0
@@ -20,7 +20,7 @@ Browser ──GET /──────────────────► sta
 | Файл | Назначение |
 |---|---|
 | [`main.py`](main.py) | `load_dotenv()` + ре-экспорт `app` из `api.app`. Используется gunicorn, Procfile, `alembic/env.py`. |
-| [`api/app.py`](api/app.py) | Создаёт `FastAPI(lifespan=lifespan)`, CORS из env, 9 роутеров, монтирует `/static`. |
+| [`api/app.py`](api/app.py) | Создаёт `FastAPI(lifespan=lifespan)`, CORS из env, 11 роутеров, монтирует `/static`. |
 | [`scripts/run_app.py`](scripts/run_app.py) | Launcher для PyInstaller — запускает uvicorn на `127.0.0.1:8000`, открывает браузер. |
 
 ## Структура каталогов
@@ -32,8 +32,8 @@ api/
   database.py          # engine, SessionLocal, DeclarativeBase, get_db(), init_db()
   dependencies/
     auth.py            # get_current_user / get_optional_user (JWT + сессии)
-  routes/              # 9 файлов — эндпоинты (см. раздел «Роутеры»)
-  services/            # бизнес-логика (8 сервисов)
+  routes/              # 11 файлов — эндпоинты (см. раздел «Роутеры»)
+  services/            # бизнес-логика (9 сервисов)
   models/              # Pydantic-схемы (запрос/ответ)
     db/                # SQLAlchemy ORM-модели + индексы производительности
   utils/               # paths, file_utils, json_utils, validation, time_utils
@@ -47,29 +47,68 @@ core/
   omml2mml.xsl         # XSLT для OMML → MathML
 
 static/
-  index.html           # единственная HTML-страница; подключает Tailwind CDN v3
-  icons.svg            # Heroicons v2 outline SVG-спрайт (19 символов, hidden)
-  js/
-    app.js             # entry-point; управляет lazy-load экранов
-    api/               # auth.js, profile.js — fetch-обёртки
-    screens/           # auth.js (static), management.js, testing.js, statistics.js, profile.js (lazy)
-    components/        # modals.js, access-modal.js, change-requests-modal.js, test-stats-modal.js
-    utils/             # locale.js, theme.js, file-upload.js
-    rendering.js       # renderXxxScreen(), setActiveScreen(), renderBlocks(), ensureChartJs(), ensureMathJax()
-    editor.js          # редактор вопросов с инлайн-объектами (lazy через management.js)
-    state.js           # dom-кеш, state-объект, localStorage-персист
-    i18n.js            # словари ru/en/uz, t(), setLocale()
-    telemetry.js       # clientId в localStorage
-    api.js             # основной HTTP-клиент
+  index.html           # единственная HTML-страница; подключает шрифты Google Fonts CDN
   css/
-    base.css           # reset, типографика
-    layout.css         # раскладка приложения
-    components.css     # UI-компоненты
-    editor.css         # модальный редактор
-    theme.css          # CSS custom properties: emerald accent (light/dark)
+    tokens.css         # дизайн-токены (--paper, --ink, --accent, --border, shadows…)
+    base.css           # reset, body, focus-visible
+    components.css     # btn, card, chip, input, modal, heatmap, ring, skeleton
+    layout.css         # desktop grid (sidebar+rail+main), mobile shell
+    screens/
+      desktop.css      # desktop-specific overrides
+      mobile.css       # mobile-specific overrides
+      stats.css        # statistics screen styles
+      taking.css       # test-taking + results screen styles
+  js/
+    main.js            # entry: theme init, locale hydration, router bootstrap
+    router.js          # hash-based router (#/home, #/test/:id/take); cache-bust _V
+    state.js           # central store (events + reducer)
+    i18n.js            # ru/en/uz словари + t(), setLocale()
+    icons.js           # ~40 inline SVG icons (icon(), iconEl()); window.__iconsFresh delegation
+    search-palette.js  # cmd-K / Ctrl-K search overlay
+    api/               # fetch-обёртки по одному файлу на роутер:
+                       # auth.js, users.js, tests.js, access.js, change-requests.js,
+                       # attempts.js, statistics.js, questions.js, assets.js,
+                       # notifications.js, search.js
+    components/        # переиспользуемые компоненты (Button, Card, Modal, Heatmap, Ring…)
+    screens/
+      desktop/
+        home.js           # главный экран: sidebar + 5-tab rail + topbar
+        taking.js         # прохождение теста
+        results.js        # результаты + review mode
+        stats.js          # статистика (3 вкладки)
+        notifications.js  # inbox уведомлений
+        change-requests.js# просмотр/одобрение change requests
+        settings.js       # настройки аккаунта (7 разделов)
+        import.js         # импорт .docx (3-step wizard)
+        profile.js        # публичный профиль
+      mobile/
+        _shell.js         # bottom-nav shell + drawer
+        home.js           # mobile home / dashboard
+        collection.js     # список тестов коллекции
+        taking.js         # прохождение теста (mobile)
+        results.js        # результаты (mobile)
+        stats.js          # статистика (mobile)
+        profile.js        # профиль (mobile)
+        tests.js          # каталог тестов
+        notifications.js  # уведомления (mobile)
+        settings.js       # настройки (mobile)
+        import.js         # импорт (mobile)
+      auth/
+        login.js          # экран входа
+        register.js       # экран регистрации
+    utils/
+      device.js           # isMobile(), onBreakpointChange()
+      theme.js            # getTheme(), setTheme(), getResolvedTheme(), applyTheme()
+      locale.js           # getLocale(), setLocale(), t() shorthand
+      format.js           # formatDate(), formatDuration(), formatPercent()
+      render-blocks.js    # renderBlocks() — рендер JSON-блоков (text/img/formula/code)
+  locales/
+    ru.json, en.json, uz.json
+  fonts/               # (опционально self-hosted Inter + JetBrains Mono woff2)
+  assets/              # logo, favicon
 
 alembic/
-  versions/            # 5 миграций (4 схемные + 1 индексы производительности)
+  versions/            # 6 миграций (5 схемных + 1 индексы + user_prefs/notifications)
   env.py               # конфиг alembic, читает DATABASE_URL из api/config.py
   alembic.ini
 
@@ -78,6 +117,19 @@ scripts/
   run_app.py           # PyInstaller launcher
   migrate_test_ownership.py  # data-migration
   attempts_smoke.md    # ручной smoke-чеклист для API попыток
+
+design-plans/          # интерактивные React/JSX прототипы (CDN-Babel, read-only ref)
+  wireframe-primitives.jsx
+  prototype-router.jsx
+  prototype-desktop.jsx, prototype-desktop-2.jsx, desktop-combined.jsx, desktop-screens.jsx
+  prototype-mobile.jsx, mobile-screens.jsx, mobile-screens-extra.jsx
+  stats-screens.jsx
+  extra-screens.jsx, extras-2.jsx
+  tweaks-panel.jsx, design-canvas.jsx
+  Prototype.html, Mobile Prototype.html, Wireframes.html
+
+docs/
+  superpowers/specs/   # дизайн-спецификации, утверждённые в ходе работы
 
 data/                  # runtime-данные (в .gitignore)
   testmaster.db
@@ -124,7 +176,7 @@ data/                  # runtime-данные (в .gitignore)
 
 ### Роутеры
 
-Порядок регистрации в `app.py`: `auth → users → tests → access → change_requests → assets → questions → attempts → statistics`.
+Порядок регистрации в `app.py`: `auth → users → tests → access → change_requests → assets → questions → attempts → statistics → notifications → search`.
 
 #### `/api/auth` — [`routes/auth.py`](api/routes/auth.py)
 
@@ -135,25 +187,27 @@ data/                  # runtime-данные (в .gitignore)
 | POST | `/api/auth/logout` | нет (ручная проверка) | инвалидация сессии |
 | GET | `/api/auth/me` | required | текущий пользователь |
 | POST | `/api/auth/refresh` | нет (ручная проверка) | новый JWT, старая сессия инвалидируется |
+| POST | `/api/auth/change-password` | required | смена пароля (текущий + новый) |
 
 #### `/api/users` — [`routes/users.py`](api/routes/users.py)
 
 | Метод | Путь | Auth | Описание |
 |---|---|---|---|
-| GET | `/api/users/me/profile` | required | профиль |
-| PATCH | `/api/users/me/profile` | required | обновить display_name |
+| GET | `/api/users/me/profile` | required | профиль (включает theme/language/accent) |
+| PATCH | `/api/users/me/profile` | required | обновить display_name, theme, language, accent |
 | POST | `/api/users/me/avatar` | required | загрузить аватар |
 | DELETE | `/api/users/me/avatar` | required | удалить аватар |
 | GET | `/api/users/{user_id}/avatar` | нет | публичный аватар |
+| GET | `/api/users/{user_id}` | нет | публичная карточка (id, username, display_name, avatar_url) |
 
 #### `/api/tests` — [`routes/tests.py`](api/routes/tests.py)
 
 | Метод | Путь | Auth | Описание |
 |---|---|---|---|
 | GET | `/api/tests` | optional | список (bulk-запрос TestCollection, без N+1) |
-| POST | `/api/tests` | required | создать пустую коллекцию |
+| POST | `/api/tests` | required | создать пустую коллекцию (поддерживает `title`, `description`, `access_level`) |
 | GET | `/api/tests/{id}` | optional | данные теста |
-| PATCH | `/api/tests/{id}` | required (owner) | переименовать |
+| PATCH | `/api/tests/{id}` | required (owner) | переименовать / обновить описание |
 | DELETE | `/api/tests/{id}` | required (owner) | удалить |
 | POST | `/api/tests/upload` | required | загрузить `.docx` |
 
@@ -210,7 +264,26 @@ data/                  # runtime-данные (в .gitignore)
 | GET | `/api/stats/attempts` | нет (clientId query) | список попыток клиента |
 | GET | `/api/stats/attempts/{id}` | нет (clientId query) | детали попытки |
 | GET | `/api/stats/aggregate` | нет | агрегированная статистика |
+| GET | `/api/stats/me/trend` | required | тренд по дням `{date, avg_score, attempts_count}[]` |
 | GET | `/api/tests/{id}/statistics` | required (owner) | статистика теста |
+
+#### `/api/notifications` — [`routes/notifications.py`](api/routes/notifications.py)
+
+| Метод | Путь | Auth | Описание |
+|---|---|---|---|
+| GET | `/api/notifications` | required | список уведомлений (фильтр `?unread=true`, `?kind=...`) |
+| POST | `/api/notifications/{id}/read` | required | пометить прочитанным |
+| POST | `/api/notifications/read-all` | required | пометить все прочитанными |
+
+Уведомления создаются автоматически: при создании/одобрении/отклонении change-request и при добавлении share.
+
+Модель: `id, user_id, kind (cr_received|cr_approved|cr_rejected|share_received), payload (JSON), read_at, created_at`.
+
+#### `/api/search` — [`routes/search.py`](api/routes/search.py)
+
+| Метод | Путь | Auth | Описание |
+|---|---|---|---|
+| GET | `/api/search` | optional | full-text поиск по `tests.title` + `questions.text` (`?q=...`) |
 
 ### Сервисы
 
@@ -218,10 +291,11 @@ data/                  # runtime-данные (в .gitignore)
 |---|---|---|
 | `auth_service` | [`services/auth_service.py`](api/services/auth_service.py) | bcrypt-хеширование, JWT create/verify, CRUD сессий по `jti` |
 | `access_service` | [`services/access_service.py`](api/services/access_service.py) | RBAC: `can_view_test`, `can_edit_test`, CRUD TestCollection/TestShare |
-| `change_request_service` | [`services/change_request_service.py`](api/services/change_request_service.py) | полный lifecycle CR; оптимизированный подсчёт через прямые WHERE-запросы |
+| `change_request_service` | [`services/change_request_service.py`](api/services/change_request_service.py) | полный lifecycle CR; триггеры создания уведомлений |
+| `notification_service` | [`services/notification_service.py`](api/services/notification_service.py) | CRUD уведомлений; `create_notification()`, `mark_read()`, `mark_all_read()` |
 | `test_service` | [`services/test_service.py`](api/services/test_service.py) | `load_test_payload`, `save_test_payload`, `find_question` |
 | `attempt_service` | [`services/attempt_service.py`](api/services/attempt_service.py) | lifecycle попытки: start/answer/skip/finish/abandon |
-| `stats_service` | [`services/stats_service.py`](api/services/stats_service.py) | server-side агрегация через `func.sum/count/avg`; per-question breakdown |
+| `stats_service` | [`services/stats_service.py`](api/services/stats_service.py) | server-side агрегация через `func.sum/count/avg`; trend; per-question breakdown |
 | `cleanup_service` | [`services/cleanup_service.py`](api/services/cleanup_service.py) | фоновый поток с `threading.Event` — graceful shutdown; удаление abandoned-попыток (каждые 24ч) |
 | `image_service` | [`services/image_service.py`](api/services/image_service.py) | валидация/сохранение/ресайз аватаров через Pillow |
 
@@ -232,7 +306,8 @@ data/                  # runtime-данные (в .gitignore)
 ```
 users ─────────┬──► sessions          (user_id FK, cascade delete)
                ├──► test_collections  (owner_id FK, cascade delete)
-               └──► change_requests   (user_id FK, SET NULL on delete)
+               ├──► change_requests   (user_id FK, SET NULL on delete)
+               └──► notifications     (user_id FK, cascade delete)
 
 test_collections ──► test_shares      (test_collection_id FK, cascade delete)
                  └──► change_requests (test_collection_id FK, cascade delete)
@@ -242,11 +317,12 @@ attempts ──────────► attempt_answers  (attempt_id FK, casc
 
 | Таблица | Ключевые поля |
 |---|---|
-| `users` | `id`, `username` (unique), `email` (unique), `hashed_password`, `display_name`, `avatar_path`, `is_active` |
+| `users` | `id`, `username` (unique), `email` (unique), `hashed_password`, `display_name`, `avatar_path`, `is_active`, `theme` (light/dark/system), `language` (ru/en/uz), `accent` (green/blue/coral/yellow/mono) |
 | `sessions` | `token_jti` (unique), `expires_at`, `is_active`, `last_activity` |
 | `test_collections` | `test_id` (filesystem uuid), `owner_id`, `access_level` (private/shared/public) |
 | `test_shares` | `(test_collection_id, user_id)` unique |
 | `change_requests` | `type`, `status` (pending/approved/rejected), `payload` (JSON Text) |
+| `notifications` | `user_id`, `kind`, `payload` (JSON), `read_at` (nullable), `created_at` |
 | `attempts` | PK = `String(64)` UUID, `settings_json`, `percent_correct`, `is_completed` |
 | `attempt_answers` | `(attempt_id, question_id)` unique; snapshot вопроса |
 
@@ -284,7 +360,7 @@ Refresh: `POST /api/auth/refresh` выдаёт новый токен и инва
 
 ### Change Requests
 
-Не-владелец может предлагать: добавить, редактировать или удалить вопрос, изменить настройки. Payload хранится как JSON. При одобрении `_apply_*` хелперы читают `test.json`, применяют изменение, записывают обратно.
+Не-владелец может предлагать: добавить, редактировать или удалить вопрос, изменить настройки. Payload хранится как JSON. При одобрении `_apply_*` хелперы читают `test.json`, применяют изменение, записывают обратно. При создании/одобрении/отклонении CR автоматически создаются уведомления через `notification_service`.
 
 ### БД и миграции
 
@@ -295,6 +371,7 @@ Refresh: `POST /api/auth/refresh` выдаёт новый токен и инва
 | 3 | `6d6221c278d9` | `test_collections`, `test_shares` |
 | 4 | `a8b5c3d7e9f1` | `change_requests` |
 | 5 | `f911293af21c` | Индексы производительности (9 индексов) |
+| 6 | `b2c4d6e8f0a2` | `notifications`, user prefs (`theme`, `language`, `accent`) |
 
 Схема также создаётся через `Base.metadata.create_all()` при старте. При наличии существующей БД: `alembic upgrade head`.
 
@@ -312,57 +389,80 @@ Refresh: `POST /api/auth/refresh` выдаёт новый токен и инва
 
 ### Дизайн-система
 
-Modern-minimal стиль (Linear/Vercel):
-- **Шрифт**: system-ui, `-apple-system`, Segoe UI, Roboto — системные шрифты, нет Google Fonts.
-- **Акцент**: emerald-600 (`#059669` light, `#34d399` dark) — корпоративный цвет БГУ.
-- **Иконки**: Heroicons v2 outline — `static/icons.svg` SVG-спрайт, используется через `<svg><use href="/static/icons.svg#name"/></svg>`.
-- **Tailwind CSS v3**: Play CDN (`cdn.tailwindcss.com`) без сборщика. `preflight: false` — не конфликтует с существующим CSS. `darkMode: ['selector', '[data-theme="dark"]']`. Для production рекомендуется Tailwind CLI.
-- **Тема**: переключается JS через `data-theme="dark"` на `:root`. Состояние в `localStorage`.
+Paper/ink стиль (учебная атмосфера, не утомляет при долгих сессиях):
+
+- **Шрифт**: Inter (400/500/600/700) + JetBrains Mono для формул/кода — Google Fonts CDN.
+- **Цветовые токены**: CSS-переменные в `static/css/tokens.css`. Два режима (`[data-theme="dark"]`). Пять акцентных палитр (`--accent` переключается через JS).
+- **Иконки**: ~40 inline SVG, нарисованных вручную (`stroke-width:1.8`, `stroke-linecap:round`), экспортируются как `icon(kind, size, color)` и `iconEl(kind, size)`. Модуль `icons.js` использует `window.__iconsFresh`-делегирование для обхода ES-module cache.
+- **Тема**: `setTheme('light'|'dark'|'system')` из `utils/theme.js`. Состояние — `localStorage` + поле `theme` в профиле пользователя.
+
+### Ключевые дизайн-токены
+
+| Токен | Значение (light) |
+|---|---|
+| `--paper` | `#f9f6ef` |
+| `--ink` | `#1c1a18` |
+| `--accent` | `#4f9b6a` (green, по умолчанию) |
+| `--border` | `1.5px solid var(--ink)` |
+| `--radius-sm/md/lg` | `8px / 10px / 16px` |
+| `--shadow-sm/md/lg` | мягкие Gaussian-тени |
+
+### Роутинг (hash-based)
+
+`router.js` реализует hash-router без серверного fallback:
+
+- `#/home` → `screens/desktop/home.js` или `screens/mobile/home.js`
+- `#/test/:id/take` → `taking.js`
+- `#/test/:id/results` → `results.js`
+- `#/stats` → `stats.js`
+- `#/notifications` → `notifications.js`
+- `#/settings` → `settings.js`
+- `#/import` → `import.js`
+- `#/auth/login`, `#/auth/register` → auth screens
+
+Mobile vs desktop — отдельные шаблоны, переключение по `isMobile()` (`matchMedia`). Один URL → разный рендер.
+
+Каждый модуль экрана загружается с cache-bust параметром `?v=${_V}` (где `_V = Date.now()`), что гарантирует свежий код после деплоя. Общие зависимости (`icons.js`, `router.js` и др.) догружаются через `window.__iconsFresh`-паттерн.
 
 ### Структура JS (граф загрузки)
 
 ```
-app.js (static)
-  ├─ rendering.js (static) ← ensureChartJs(), ensureMathJax() — lazy CDN inject
-  ├─ state.js (static)
-  ├─ i18n.js (static)
-  ├─ telemetry.js (static)
-  ├─ api.js (static)
-  ├─ screens/auth.js (static) ← критический путь
-  └─ [post-auth, Promise.all dynamic import]:
-       ├─ screens/management.js → components/modals.js → editor.js (1036 строк)
-       ├─ screens/testing.js
-       ├─ screens/statistics.js
-       └─ screens/profile.js
+index.html
+  └─ main.js (static)
+       ├─ router.js  ← регистрирует hash-routes, cache-bust _V
+       │    └─ import('./screens/…/home.js?v=_V')  — lazy per route
+       ├─ state.js
+       ├─ i18n.js    ← t(), setLocale(), 3 локали
+       └─ utils/theme.js
 ```
 
-**Lazy-загрузка**:
-- Экраны management/testing/statistics/profile и их зависимости (включая editor.js) не грузятся до авторизации.
-- `Chart.js` (cdn.jsdelivr.net) внедряется динамически при первом открытии статистики.
-- `MathJax 3` (cdn.jsdelivr.net) внедряется динамически при первом рендере формулы.
+Каждый экранный модуль self-contained: содержит собственный рендер, локальный стейт, подписки на события.
 
 ### Экраны
 
-В `index.html` пять секций `<section class="app-screen">`. Активна одна — остальные скрыты через `.is-hidden`. URL всегда `/`, истории браузера нет.
+Каждый экран: функция `export default async function render(root, params)`, заменяет содержимое `#app`.
 
-| Экран | ID | Назначение |
+| Экран | Desktop | Mobile |
 |---|---|---|
-| Auth | `screen-auth` | Вход / регистрация (таб-свитчер) |
-| Management | `screen-management` | Список тестов (пилл-табы, Heroicons-бэйджи доступа) |
-| Testing | `screen-testing` | Прохождение теста (настройки / вопросы / результаты) |
-| Profile | `screen-profile` | Профиль, аватар |
-| Statistics | `screen-stats` | История попыток, фильтры, Chart.js |
+| Главная | `home.js` — sidebar + 5-tab rail + topbar с поиском | `home.js` — dashboard / streak / last attempts |
+| Прохождение | `taking.js` — вопрос + таймер + pad + flag | `taking.js` |
+| Результаты | `results.js` — SVG score ring + Q-grid + review | `results.js` |
+| Статистика | `stats.js` — heatmap + sparkline + 3 вкладки | `stats.js` |
+| Уведомления | `notifications.js` — inbox с табами | `notifications.js` |
+| Change requests | `change-requests.js` — 2-pane diff | — |
+| Настройки | `settings.js` — 7 разделов | `settings.js` |
+| Импорт | `import.js` — 3-step wizard | `import.js` |
+| Профиль | `profile.js` | `profile.js` |
+| Авторизация | `auth/login.js`, `auth/register.js` | (те же) |
 
 ### CSS
 
-5 файлов, подключаются в порядке:
-1. `base.css` — reset; `.is-hidden { display: none !important }`.
-2. `layout.css` — раскладка экранов и панелей.
-3. `components.css` — UI-компоненты (кнопки, карточки, таблицы).
-4. `editor.css` — редактор вопросов.
-5. `theme.css` — CSS custom properties: `--primary`, `--bg`, `--card`, `--text`, `--success`, `--danger`, `--warning`, `--neutral`. Emerald accent (light/dark).
-
-Tailwind utility-классы добавляются поверх через Play CDN (runtime). Inline `<style>` в `index.html` содержит переопределения для фиксированного заголовка, dark-mode иконок, и экранов.
+Файлы подключаются в `index.html` в порядке:
+1. `tokens.css` — дизайн-токены.
+2. `base.css` — reset, body, focus-visible.
+3. `components.css` — btn, card, chip, input, modal, heatmap, ring, skeleton, notif-tab.
+4. `layout.css` — desktop grid (sidebar+rail+main), mobile bottom-nav shell.
+5. `screens/desktop.css`, `mobile.css`, `stats.css`, `taking.css` — screen-specific.
 
 ## Запуск и деплой
 
@@ -383,6 +483,7 @@ Tailwind utility-классы добавляются поверх через Pla
 |---|---|
 | Нет автотестов (pytest) | Высокая |
 | `ABANDONED_RETENTION_DAYS = 90` захардкожено в `cleanup_service.py` | Низкая |
-| Tailwind Play CDN — для production рекомендуется Tailwind CLI или standalone | Низкая |
-| MathJax и Chart.js грузятся с CDN без SRI-хешей | Низкая |
-| `api/models/attempts.py` — Pydantic-модели не используются роутами | Низкая |
+| `api/models/attempts.py` — Pydantic-модели не используются роутами (legacy) | Низкая |
+| MathJax 3 грузится с CDN без SRI-хешей | Низкая |
+| `/api/tests/{id}/assets`, `/api/tests/{id}/questions` — auth не проверяется на GET | Низкая (known gap) |
+| `nul` файл в Windows при некоторых операциях — добавлен в `.gitignore` | Ничтожная |
