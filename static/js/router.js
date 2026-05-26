@@ -10,6 +10,16 @@ import { isMobile, onBreakpointChange } from './utils/device.js';
 import { setState } from './state.js';
 
 /**
+ * Cache-bust version: changes every page load so the browser fetches fresh
+ * ES modules instead of serving stale cached versions after deploys.
+ */
+const _V = Date.now();
+
+// Preload icons with a versioned URL so any module that calls icon() via
+// window.__iconsFresh gets the latest PATHS, bypassing the static-import cache.
+import(`./icons.js?v=${_V}`).then(m => { window.__iconsFresh = m; });
+
+/**
  * Escape HTML special characters to prevent XSS in innerHTML.
  * @param {string} s
  * @returns {string}
@@ -38,77 +48,77 @@ let _root = null;
 const ROUTES = [
   {
     pattern: '/auth/login',
-    module: () => import('./screens/auth/login.js'),
+    module: () => import(`./screens/auth/login.js?v=${_V}`),
   },
   {
     pattern: '/auth/register',
-    module: () => import('./screens/auth/register.js'),
+    module: () => import(`./screens/auth/register.js?v=${_V}`),
   },
   {
     pattern: '/home',
     module: () => isMobile()
-      ? import('./screens/mobile/home.js')
-      : import('./screens/desktop/home.js'),
+      ? import(`./screens/mobile/home.js?v=${_V}`)
+      : import(`./screens/desktop/home.js?v=${_V}`),
   },
   {
     pattern: '/stats',
     module: () => isMobile()
-      ? import('./screens/mobile/stats.js')
-      : import('./screens/desktop/stats.js'),
+      ? import(`./screens/mobile/stats.js?v=${_V}`)
+      : import(`./screens/desktop/stats.js?v=${_V}`),
   },
   {
     pattern: '/test/:id',
     module: () => isMobile()
-      ? import('./screens/mobile/tests.js')
-      : import('./screens/desktop/test-detail.js'),
+      ? import(`./screens/mobile/tests.js?v=${_V}`)
+      : import(`./screens/desktop/test-detail.js?v=${_V}`),
   },
   {
     pattern: '/test/:id/take',
     module: () => isMobile()
-      ? import('./screens/mobile/taking.js')
-      : import('./screens/desktop/taking.js'),
+      ? import(`./screens/mobile/taking.js?v=${_V}`)
+      : import(`./screens/desktop/taking.js?v=${_V}`),
   },
   {
     pattern: '/test/:id/results/:attemptId',
     module: () => isMobile()
-      ? import('./screens/mobile/results.js')
-      : import('./screens/desktop/results.js'),
+      ? import(`./screens/mobile/results.js?v=${_V}`)
+      : import(`./screens/desktop/results.js?v=${_V}`),
   },
   {
     pattern: '/profile',
     module: () => isMobile()
-      ? import('./screens/mobile/profile.js')
-      : import('./screens/desktop/profile.js'),
+      ? import(`./screens/mobile/profile.js?v=${_V}`)
+      : import(`./screens/desktop/profile.js?v=${_V}`),
   },
   {
     pattern: '/settings',
     module: () => isMobile()
-      ? import('./screens/mobile/settings.js')
-      : import('./screens/desktop/settings.js'),
+      ? import(`./screens/mobile/settings.js?v=${_V}`)
+      : import(`./screens/desktop/settings.js?v=${_V}`),
   },
   {
     pattern: '/notifications',
     module: () => isMobile()
-      ? import('./screens/mobile/notifications.js')
-      : import('./screens/desktop/notifications.js'),
+      ? import(`./screens/mobile/notifications.js?v=${_V}`)
+      : import(`./screens/desktop/notifications.js?v=${_V}`),
   },
   {
     pattern: '/import',
     module: () => isMobile()
-      ? import('./screens/mobile/import.js')
-      : import('./screens/desktop/import.js'),
+      ? import(`./screens/mobile/import.js?v=${_V}`)
+      : import(`./screens/desktop/import.js?v=${_V}`),
   },
   {
     pattern: '/collection/:id',
     module: () => isMobile()
-      ? import('./screens/mobile/collection.js')
-      : import('./screens/desktop/home.js'),
+      ? import(`./screens/mobile/collection.js?v=${_V}`)
+      : import(`./screens/desktop/home.js?v=${_V}`),
   },
   {
     pattern: '/change-requests/:testId',
     module: () => isMobile()
-      ? import('./screens/mobile/change-requests.js')
-      : import('./screens/desktop/change-requests.js'),
+      ? import(`./screens/mobile/change-requests.js?v=${_V}`)
+      : import(`./screens/desktop/change-requests.js?v=${_V}`),
   },
 ];
 
@@ -136,24 +146,36 @@ function matchPattern(pattern, path) {
 }
 
 /**
- * Parse the current location.hash into a path string.
- * @returns {string}
+ * Parse the current location.hash into { path, query }.
+ * e.g. "#/test/abc/take?review=true&startIdx=2"
+ *   → { path: "/test/abc/take", query: { review: "true", startIdx: "2" } }
+ * @returns {{ path: string, query: Record<string, string> }}
  */
 function getHashPath() {
   const hash = location.hash;
-  if (!hash || hash === '#' || hash === '#/') return '/home';
-  return hash.startsWith('#') ? hash.slice(1) : hash;
+  if (!hash || hash === '#' || hash === '#/') return { path: '/home', query: {} };
+  const raw = hash.startsWith('#') ? hash.slice(1) : hash;
+  const qIdx = raw.indexOf('?');
+  if (qIdx === -1) return { path: raw, query: {} };
+  const path = raw.slice(0, qIdx);
+  const query = {};
+  for (const [k, v] of new URLSearchParams(raw.slice(qIdx + 1))) query[k] = v;
+  return { path: path || '/home', query };
 }
 
 /**
  * Render a route by loading its module and calling render().
- * @param {string} path
+ * Accepts either a string path or a { path, query } object from getHashPath().
+ * @param {string | { path: string, query: Record<string,string> }} pathOrObj
  */
-async function handleRoute(path) {
+async function handleRoute(pathOrObj) {
   if (!_root) return;
 
+  const rawPath = typeof pathOrObj === 'string' ? pathOrObj : (pathOrObj?.path ?? '');
+  const queryParams = typeof pathOrObj === 'object' ? (pathOrObj?.query ?? {}) : {};
+
   // Handle redirect for empty/root paths
-  const effectivePath = (!path || path === '/' || path === '') ? '/home' : path;
+  const effectivePath = (!rawPath || rawPath === '/' || rawPath === '') ? '/home' : rawPath;
 
   // Auth guard — redirect unauthenticated users to login
   const publicRoutes = ['/auth/login', '/auth/register'];
@@ -170,7 +192,8 @@ async function handleRoute(path) {
     const match = matchPattern(route.pattern, effectivePath);
     if (match !== null) {
       matchedModule = route.module;
-      params = match;
+      // Merge path params + query params (path params take precedence)
+      params = { ...queryParams, ...match };
       break;
     }
   }

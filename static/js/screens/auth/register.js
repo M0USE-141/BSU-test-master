@@ -176,12 +176,13 @@ function buildThemeToggle() {
   btn.type = 'button';
   btn.className = 'auth-footer__theme-btn';
   btn.setAttribute('aria-label', 'Toggle theme');
-  btn.textContent = resolved === 'dark' ? '☀' : '☽';
+  btn.appendChild(iconEl(resolved === 'dark' ? 'sun' : 'moon', 16));
 
   btn.addEventListener('click', () => {
     const current = getResolvedTheme();
     setTheme(current === 'dark' ? 'light' : 'dark');
-    btn.textContent = getResolvedTheme() === 'dark' ? '☀' : '☽';
+    btn.innerHTML = '';
+    btn.appendChild(iconEl(getResolvedTheme() === 'dark' ? 'sun' : 'moon', 16));
   });
 
   return btn;

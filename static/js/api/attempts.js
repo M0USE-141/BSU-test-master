@@ -23,9 +23,10 @@ export async function recordAnswer(attemptId, data) {
 /**
  * Finish an attempt.
  * @param {string} attemptId
+ * @param {{ testId: string, clientId: string, totalDurationMs?: number }} data
  */
-export async function finishAttempt(attemptId) {
-  return apiFetch('POST', `/api/attempts/${attemptId}/finish`);
+export async function finishAttempt(attemptId, data) {
+  return apiFetch('POST', `/api/attempts/${attemptId}/finish`, data);
 }
 
 /**

@@ -628,13 +628,14 @@
 }
 
 .rs-qgrid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
   gap: 5px;
 }
 
 .rs-qcell {
-  width: 40px;
+  width: auto;
+  min-width: 36px;
   height: 44px;
   display: flex;
   flex-direction: column;
@@ -650,7 +651,7 @@
   padding: 0;
 }
 .rs-qcell__num  { font-size: 10px; font-weight: 600; color: var(--ink-mute); line-height: 1; }
-.rs-qcell__icon { font-size: 12px; font-weight: 700; line-height: 1; }
+.rs-qcell__icon { font-size: 12px; font-weight: 700; line-height: 1; display:flex;align-items:center;justify-content:center; }
 
 .rs-qcell:hover { box-shadow: var(--shadow-sm); background: var(--ink-soft); }
 

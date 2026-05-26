@@ -30,6 +30,15 @@ const PATHS = {
   lock:   '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>',
   eye:    '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
   eyeOff: '<path d="M3 3l18 18M10.5 10.5A3 3 0 0013.5 13.5M6.3 6.3C4.3 7.7 2.9 9.8 2 12c1.7 4 5.7 7 10 7 1.8 0 3.5-.5 5-.4M9.9 5.2C10.6 5.1 11.3 5 12 5c4.3 0 8.3 3 10 7-.6 1.5-1.5 2.8-2.6 3.9"/>',
+  flag:   '<path d="M4 3v18"/><path d="M4 3h13l-3 6 3 6H4"/>',
+  redo:   '<path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0115-6.7L21 13"/>',
+  share:  '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>',
+  sun:    '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>',
+  moon:   '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>',
+  monitor:'<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  arrowL: '<path d="M19 12H5M12 5l-7 7 7 7"/>',
+  arrowR: '<path d="M5 12h14M12 5l7 7-7 7"/>',
+  info:   '<circle cx="12" cy="12" r="9"/><path d="M12 8v1M12 12v5"/>',
 };
 
 /**
@@ -40,6 +49,10 @@ const PATHS = {
  * @returns {string}
  */
 export function icon(kind, size = 18, color = 'currentColor') {
+  // If a fresher version was preloaded (via versioned URL), delegate to it
+  if (typeof window !== 'undefined' && window.__iconsFresh && window.__iconsFresh !== icon) {
+    return window.__iconsFresh.icon(kind, size, color);
+  }
   const paths = PATHS[kind];
   if (!paths) {
     console.warn(`[icons] unknown icon: "${kind}"`);

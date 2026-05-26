@@ -1,5 +1,15 @@
 /**
  * statistics.js — statistics API wrapper
+ *
+ * Actual backend routes (prefix="/api"):
+ *   GET /api/stats/heatmap?weeks=N
+ *   GET /api/stats/me/aggregate?testId=...
+ *   GET /api/stats/streak
+ *   GET /api/stats/attempts?clientId=...&testId=...
+ *   GET /api/stats/attempts/{id}
+ *   GET /api/tests/{id}/statistics        (owner only)
+ *   GET /api/tests/{id}/weak-questions
+ *   GET /api/tests/{id}/owner-analytics
  */
 import { apiFetch } from './_fetch.js';
 
@@ -10,36 +20,12 @@ function qs(params) {
 }
 
 /**
- * List attempts (paginated).
- * @param {{ page?: number, limit?: number, test_id?: string }} [params]
- */
-export async function listAttempts(params) {
-  return apiFetch('GET', `/api/attempts${qs(params)}`);
-}
-
-/**
- * Get statistics for a specific attempt.
- * @param {string} attemptId
- * @param {string} [clientId]
- */
-export async function getAttemptStats(attemptId, clientId) {
-  return apiFetch('GET', `/api/attempts/${attemptId}/stats${clientId ? '?client_id=' + encodeURIComponent(clientId) : ''}`);
-}
-
-/**
- * Get aggregate stats for all users (admin).
- * @param {{ page?: number, limit?: number }} [params]
- */
-export async function getAggregate(params) {
-  return apiFetch('GET', `/api/statistics/aggregate${qs(params)}`);
-}
-
-/**
- * Get aggregate stats for the current user.
- * @param {{ days?: number }} [params]
+ * Get aggregate stats for the current user (optionally for a specific test).
+ * @param {{ test_id?: string }} [params]
  */
 export async function getMyAggregate(params) {
-  return apiFetch('GET', `/api/statistics/me${qs(params)}`);
+  const p = params?.test_id ? { testId: params.test_id } : undefined;
+  return apiFetch('GET', `/api/stats/me/aggregate${qs(p)}`);
 }
 
 /**
@@ -47,28 +33,28 @@ export async function getMyAggregate(params) {
  * @param {number} [weeks=16]
  */
 export async function getHeatmap(weeks = 16) {
-  return apiFetch('GET', `/api/statistics/heatmap?weeks=${weeks}`);
+  return apiFetch('GET', `/api/stats/heatmap?weeks=${weeks}`);
 }
 
 /**
  * Get current streak info.
  */
 export async function getStreak() {
-  return apiFetch('GET', '/api/statistics/streak');
+  return apiFetch('GET', '/api/stats/streak');
 }
 
 /**
- * Get weak questions for a test (questions with low correct rate).
+ * Get weak questions for a test.
  * @param {string} testId
  */
 export async function getWeakQuestions(testId) {
-  return apiFetch('GET', `/api/tests/${testId}/statistics/weak-questions`);
+  return apiFetch('GET', `/api/tests/${testId}/weak-questions`);
 }
 
 /**
- * Get detailed statistics for a specific test.
+ * Get detailed statistics for a test (owner only).
  * @param {string} testId
- * @param {{ page?: number, limit?: number }} [params]
+ * @param {{ limit?: number, offset?: number }} [params]
  */
 export async function getTestStatistics(testId, params) {
   return apiFetch('GET', `/api/tests/${testId}/statistics${qs(params)}`);
@@ -79,7 +65,15 @@ export async function getTestStatistics(testId, params) {
  * @param {string} testId
  */
 export async function getOwnerAnalytics(testId) {
-  return apiFetch('GET', `/api/tests/${testId}/statistics/owner`);
+  return apiFetch('GET', `/api/tests/${testId}/owner-analytics`);
+}
+
+/**
+ * Get a single attempt by ID.
+ * @param {string} attemptId
+ */
+export async function getAttempt(attemptId) {
+  return apiFetch('GET', `/api/attempts/${attemptId}`);
 }
 
 /**
@@ -87,5 +81,13 @@ export async function getOwnerAnalytics(testId) {
  * @param {number} [days=30]
  */
 export async function getMyTrend(days = 30) {
-  return apiFetch('GET', `/api/statistics/trend?days=${days}`);
+  return apiFetch('GET', `/api/stats/trend?days=${days}`);
+}
+
+/**
+ * List attempts by clientId (no auth required).
+ * @param {{ clientId: string, testId?: string, status?: string, limit?: number }} params
+ */
+export async function listAttempts(params) {
+  return apiFetch('GET', `/api/stats/attempts${qs(params)}`);
 }

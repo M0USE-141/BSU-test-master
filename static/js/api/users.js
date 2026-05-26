@@ -4,14 +4,14 @@
 import { apiFetch } from './_fetch.js';
 
 export async function getMyProfile() {
-  return apiFetch('GET', '/api/users/me');
+  return apiFetch('GET', '/api/users/me/profile');
 }
 
 /**
- * @param {{ username?: string, email?: string, bio?: string }} data
+ * @param {{ username?: string, email?: string, bio?: string, display_name?: string }} data
  */
 export async function updateProfile(data) {
-  return apiFetch('PATCH', '/api/users/me', data);
+  return apiFetch('PATCH', '/api/users/me/profile', data);
 }
 
 /**

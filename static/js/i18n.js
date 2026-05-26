@@ -25,7 +25,7 @@ function detectLocale() {
  */
 async function loadLocale(locale) {
   try {
-    const res = await fetch(`/static/locales/${locale}.json`);
+    const res = await fetch(`/static/locales/${locale}.json`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (e) {

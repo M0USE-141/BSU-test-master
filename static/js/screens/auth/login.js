@@ -177,12 +177,13 @@ function buildThemeToggle() {
   btn.setAttribute('aria-label', 'Toggle theme');
 
   // In dark mode show sun (click → go light); in light mode show moon (click → go dark)
-  btn.textContent = resolved === 'dark' ? '☀' : '☽';
+  btn.appendChild(iconEl(resolved === 'dark' ? 'sun' : 'moon', 16));
 
   btn.addEventListener('click', () => {
     const current = getResolvedTheme();
     setTheme(current === 'dark' ? 'light' : 'dark');
-    btn.textContent = getResolvedTheme() === 'dark' ? '☀' : '☽';
+    btn.innerHTML = '';
+    btn.appendChild(iconEl(getResolvedTheme() === 'dark' ? 'sun' : 'moon', 16));
   });
 
   return btn;

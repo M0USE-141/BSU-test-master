@@ -12,9 +12,22 @@
   <link rel="stylesheet" href="/static/css/components.css"/>
   <link rel="stylesheet" href="/static/css/layout.css"/>
   <link rel="stylesheet" href="/static/css/screens/auth.css"/>
+  <link rel="stylesheet" href="/static/css/screens/desktop.css"/>
+  <link rel="stylesheet" href="/static/css/screens/taking.css"/>
+  <link rel="stylesheet" href="/static/css/screens/stats.css"/>
+  <link rel="stylesheet" href="/static/css/screens/mobile.css"/>
+  <!-- MathJax: renders MathML and LaTeX formulas from Word imports -->
+  <script>
+    window.MathJax = {
+      options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] },
+      startup: { typeset: false }   // we call MathJax.typesetPromise() manually
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/mml-chtml.js"></script>
 </head>
 <body>
   <div id="app"></div>
-  <script type="module" src="/static/js/main.js"></script>
+  <!-- Dynamic import ensures main.js and its transitive deps are never served stale -->
+  <script type="module">import(`/static/js/main.js?v=${Date.now()}`).catch(console.error);</script>
 </body>
 </html>

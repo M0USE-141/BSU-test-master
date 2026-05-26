@@ -45,11 +45,13 @@ export async function deleteTest(id) {
 /**
  * Upload a .docx file to create/import a test.
  * @param {File} file
- * @param {{ title?: string }} [params]
+ * @param {{ title?: string, access_level?: 'private'|'shared'|'public', symbol?: string }} [params]
  */
 export async function uploadTestDocx(file, params) {
   const form = new FormData();
   form.append('file', file);
-  if (params?.title) form.append('title', params.title);
+  if (params?.title)        form.append('title', params.title);
+  if (params?.access_level) form.append('access_level', params.access_level);
+  if (params?.symbol)       form.append('symbol', params.symbol);
   return apiFetch('POST', '/api/tests/upload', form);
 }
