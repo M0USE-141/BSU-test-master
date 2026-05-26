@@ -267,8 +267,7 @@ export default async function render(root, params = {}) {
   const form = document.createElement('form');
   form.className = 'auth-form';
   form.noValidate = true;
-  // Prevent native submit
-  form.addEventListener('submit', e => e.preventDefault());
+  form.addEventListener('submit', e => { e.preventDefault(); handleSubmit(); });
 
   // Username field
   const { field: usernameField, input: usernameInput, errorEl: usernameError } =
@@ -391,13 +390,9 @@ export default async function render(root, params = {}) {
 
     setButtonLoading(true);
 
+    // Step 1: Register
     try {
       await register(username, email, password);
-      // Auto-login after successful registration
-      await login(username, password);
-      const user = await getMe();
-      setState({ user });
-      navigate('/home');
     } catch (err) {
       setButtonLoading(false);
       const msg = parseApiError(err);
@@ -416,18 +411,24 @@ export default async function render(root, params = {}) {
         generalError.textContent = msg;
         generalError.style.display = '';
       }
+      return;
+    }
+
+    // Step 2: Auto-login (registration already succeeded)
+    try {
+      const data = await login(username, password);
+      if (data?.access_token) {
+        localStorage.setItem('access_token', data.access_token);
+      }
+      const user = await getMe();
+      setState({ user });
+      navigate('/home');
+    } catch (err) {
+      // Auto-login failed AFTER successful registration — send to login page
+      setButtonLoading(false);
+      navigate('/auth/login');
     }
   }
-
-  submitBtn.addEventListener('click', handleSubmit);
-  form.addEventListener('submit', handleSubmit);
-
-  // Enter key on any field submits
-  [usernameInput, emailInput, passwordInput, confirmInput].forEach(inp => {
-    inp.addEventListener('keydown', e => {
-      if (e.key === 'Enter') handleSubmit();
-    });
-  });
 
   // ── Assemble form ──
   form.appendChild(usernameField);

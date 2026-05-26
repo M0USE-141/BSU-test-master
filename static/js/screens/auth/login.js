@@ -176,15 +176,13 @@ function buildThemeToggle() {
   btn.className = 'btn btn--ghost btn--small btn--icon';
   btn.setAttribute('aria-label', 'Toggle theme');
 
-  // In dark mode show sun icon (click → go light); in light mode show moon (click → go dark)
-  btn.appendChild(iconEl(resolved === 'dark' ? 'flame' : 'eye', 16));
+  // In dark mode show sun (click → go light); in light mode show moon (click → go dark)
+  btn.textContent = resolved === 'dark' ? '☀' : '☽';
 
   btn.addEventListener('click', () => {
     const current = getResolvedTheme();
     setTheme(current === 'dark' ? 'light' : 'dark');
-    // Re-render the icon in place
-    btn.innerHTML = '';
-    btn.appendChild(iconEl(getResolvedTheme() === 'dark' ? 'flame' : 'eye', 16));
+    btn.textContent = getResolvedTheme() === 'dark' ? '☀' : '☽';
   });
 
   return btn;
@@ -227,10 +225,6 @@ export default async function render(root, params = {}) {
     }
   }
 
-  // Check for success message passed via URL (after register)
-  const hash = location.hash || '';
-  const successMsg = hash.includes('registered=1') ? t('auth.success.registered') : '';
-
   // ── Layout shell ──
   const layout = document.createElement('div');
   layout.className = 'auth-layout';
@@ -249,18 +243,12 @@ export default async function render(root, params = {}) {
 
   // ── Card ──
   const card = document.createElement('div');
-  card.className = 'card card--elevated auth-card';
+  card.className = 'auth-card';
 
   // Heading
   const heading = document.createElement('h1');
   heading.className = 'auth-heading';
   heading.textContent = t('auth.login.title');
-
-  // Success banner (shown after register redirect)
-  const successBanner = document.createElement('div');
-  successBanner.className = 'auth-success' + (successMsg ? ' auth-success--visible' : '');
-  successBanner.setAttribute('role', 'status');
-  successBanner.textContent = successMsg;
 
   // Fields
   const fieldsWrap = document.createElement('div');
@@ -343,6 +331,11 @@ export default async function render(root, params = {}) {
       navigate('/home');
     } catch (err) {
       setButtonLoading(false);
+      // If token was already stored by login(), getMe() failed — navigate anyway
+      if (localStorage.getItem('access_token')) {
+        navigate('/home');
+        return;
+      }
       const msg = parseApiError(err);
       // Show under password field for credential errors, general otherwise
       if (err?.status === 401 || err?.status === 400 || err?.status === 422) {
@@ -366,7 +359,6 @@ export default async function render(root, params = {}) {
 
   // ── Assemble card ──
   card.appendChild(heading);
-  card.appendChild(successBanner);
   card.appendChild(fieldsWrap);
   card.appendChild(generalError);
   card.appendChild(submitBtn);
