@@ -69,7 +69,8 @@
   gap: 4px;
 }
 
-.auth-form__field-error {
+.auth-form__field-error,
+.auth-form__error {
   font: 400 12px/1.4 'Inter', system-ui, sans-serif;
   color: var(--error);
 }
