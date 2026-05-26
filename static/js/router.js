@@ -155,6 +155,13 @@ async function handleRoute(path) {
   // Handle redirect for empty/root paths
   const effectivePath = (!path || path === '/' || path === '') ? '/home' : path;
 
+  // Auth guard — redirect unauthenticated users to login
+  const publicRoutes = ['/auth/login', '/auth/register'];
+  if (!publicRoutes.includes(effectivePath) && !localStorage.getItem('access_token')) {
+    navigate('/auth/login');
+    return;
+  }
+
   // Find matching route
   let matchedModule = null;
   let params = {};

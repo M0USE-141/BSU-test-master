@@ -190,8 +190,8 @@
 }
 
 .input--error {
-  border-color: #d9534f;
-  box-shadow: 0 0 0 3px rgba(217, 83, 79, .12);
+  border-color: var(--error, #c4554a);
+  box-shadow: 0 0 0 3px var(--error-soft, rgba(196, 85, 74, .10));
 }
 
 .input-group {
@@ -234,7 +234,7 @@
 
 .field__error {
   font-size: 12px;
-  color: #d9534f;
+  color: var(--error, #c4554a);
 }
 
 /* ── Modal ──────────────────────────────────────────────── */
