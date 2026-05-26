@@ -36,6 +36,9 @@ def _user_to_profile_response(user: User) -> ProfileResponse:
         avatar_size=user.avatar_size,
         is_active=user.is_active,
         created_at=user.created_at,
+        theme=user.theme,
+        language=user.language,
+        accent=user.accent,
     )
 
 
@@ -54,10 +57,14 @@ async def update_profile(
     db: Annotated[DbSession, Depends(get_db)],
 ) -> ProfileResponse:
     """Update current user's profile."""
-    # Update display_name if provided
     if data.display_name is not None:
-        # Allow setting to empty string to clear, or a valid name
         current_user.display_name = data.display_name if data.display_name else None
+    if data.theme is not None:
+        current_user.theme = data.theme
+    if data.language is not None:
+        current_user.language = data.language
+    if data.accent is not None:
+        current_user.accent = data.accent
 
     db.commit()
     db.refresh(current_user)
@@ -113,6 +120,23 @@ async def delete_user_avatar(
     db.commit()
 
     return MessageResponse(message="Avatar deleted successfully")
+
+
+@router.get("/{user_id}", response_model=dict)
+async def get_public_user(
+    user_id: int,
+    db: Annotated[DbSession, Depends(get_db)],
+) -> dict:
+    """Get public user card (id, username, display_name, avatar_url)."""
+    user = get_user_by_id(db, user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return {
+        "id": user.id,
+        "username": user.username,
+        "display_name": user.display_name,
+        "avatar_url": get_avatar_url(user.id, user.avatar_path),
+    }
 
 
 @router.get("/{user_id}/avatar")

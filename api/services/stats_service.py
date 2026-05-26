@@ -196,7 +196,9 @@ def get_aggregate_stats(
         func.coalesce(func.sum(Attempt.answered_count), 0).label("total_answered"),
         func.coalesce(func.sum(Attempt.correct_count), 0).label("total_correct"),
         func.coalesce(func.sum(Attempt.total_duration_ms), 0).label("total_duration"),
-        func.avg(Attempt.percent_correct).label("avg_percent"),
+        func.avg(
+            Attempt.correct_count * 100.0 / func.nullif(Attempt.question_count, 0)
+        ).label("avg_percent"),
     ).where(and_(*conditions))
 
     row = db.execute(agg_stmt).one()
@@ -264,7 +266,9 @@ def get_test_owner_stats(
         agg_stmt = select(
             func.coalesce(func.sum(Attempt.correct_count), 0).label("total_correct"),
             func.coalesce(func.sum(Attempt.question_count), 0).label("total_questions"),
-            func.avg(Attempt.percent_correct).label("avg_percent"),
+            func.avg(
+                Attempt.correct_count * 100.0 / func.nullif(Attempt.question_count, 0)
+            ).label("avg_percent"),
         ).where(and_(*base_conditions))
         agg = db.execute(agg_stmt).one()
         total_correct = int(agg.total_correct or 0)

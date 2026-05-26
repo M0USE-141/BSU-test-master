@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>TestMasterBSU — Redesign wireframes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Kalam:wght@300;400;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+
+<style>
+  :root {
+    --wf-paper: #f9f6ef;
+    --wf-ink: #1c1a18;
+    --wf-ink-mute: rgba(28,26,24,0.35);
+    --wf-ink-soft: rgba(28,26,24,0.06);
+    --wf-ink-fade: rgba(28,26,24,0.55);
+    --wf-accent: oklch(0.68 0.17 38);
+    --wf-accent-soft: oklch(0.68 0.17 38 / 0.12);
+    --wf-hand: 'Caveat', 'Kalam', 'Comic Sans MS', cursive;
+    --wf-mono: 'JetBrains Mono', monospace;
+    --wf-pad: 18px;
+  }
+  [data-wf-theme="dark"] {
+    --wf-paper: #1a1714;
+    --wf-ink: #f3ece0;
+    --wf-ink-mute: rgba(243,236,224,0.30);
+    --wf-ink-soft: rgba(243,236,224,0.08);
+    --wf-ink-fade: rgba(243,236,224,0.55);
+    --wf-accent: oklch(0.72 0.16 38);
+    --wf-accent-soft: oklch(0.72 0.16 38 / 0.18);
+  }
+  [data-wf-font="typed"] {
+    --wf-hand: 'Inter', system-ui, sans-serif;
+  }
+  [data-wf-density="compact"] { --wf-pad: 12px; }
+  [data-wf-density="roomy"] { --wf-pad: 24px; }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: #ece8df;
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--wf-ink);
+  }
+  [data-wf-theme="dark"] body { background: #100e0c; }
+
+  /* Smoothing for handwritten font */
+  body { -webkit-font-smoothing: antialiased; }
+</style>
+</head>
+<body style="background-color: rgb(46, 162, 218)">
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="wireframe-primitives.jsx"></script>
+<script type="text/babel" src="desktop-screens.jsx"></script>
+<script type="text/babel" src="desktop-combined.jsx"></script>
+<script type="text/babel" src="mobile-screens.jsx"></script>
+<script type="text/babel" src="mobile-screens-extra.jsx"></script>
+<script type="text/babel" src="stats-screens.jsx"></script>
+<script type="text/babel" src="extra-screens.jsx"></script>
+<script type="text/babel" src="extras-2.jsx"></script>
+
+<script type="text/babel">
+const {
+  DesignCanvas, DCSection, DCArtboard,
+  TweaksPanel, useTweaks, TweakSection, TweakRadio, TweakSelect, TweakToggle, TweakColor, TweakSlider, TweakButton,
+  DesktopEmailA, DesktopEmailB, DesktopCombined, EditorScreen,
+  MobileA, MobileB, MobileC, MobileD, MobileStats, MobileTaking, MobileResults, MobileEditor, MobileProfile, MobileDrawer,
+  StatsA, StatsB, StatsC,
+  PreTestModal, TestTaking, ResultsScreen, ChangeRequestScreen, EmptyState,
+  ShareModal, NotificationsPanel, ImportFlow, QuestionTypePicker, SearchResults, SettingsScreen,
+} = window;
+
+const DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "light",
+  "font": "typed",
+  "density": "normal",
+  "annot": true,
+  "filter": "all",
+  "accent": "#4f9b6a"
+}/*EDITMODE-END*/;
+
+// TweakColor options are color strings; map color -> soft variant.
+const ACCENTS = [
+  { color: '#e07a5f', soft: 'rgba(224,122,95,0.14)', label: 'coral' },
+  { color: '#e6b54a', soft: 'rgba(230,181,74,0.18)', label: 'yellow' },
+  { color: '#4a78c4', soft: 'rgba(74,120,196,0.14)', label: 'blue' },
+  { color: '#4f9b6a', soft: 'rgba(79,155,106,0.14)', label: 'green' },
+  { color: '#3a3530', soft: 'rgba(58,53,48,0.10)', label: 'mono' },
+];
+const accentSoft = (c) => (ACCENTS.find((a) => a.color === c) || ACCENTS[0]).soft;
+
+const SCREENS = {
+  // Desktop · workspace
+  desktopA:   { label: 'A · Classic email layout',           section: 'desktop', w: 1280, h: 820, render: () => <DesktopEmailA/> },
+  desktopB:   { label: 'B · Hero + vertical rail',           section: 'desktop', w: 1280, h: 820, render: () => <DesktopEmailB/> },
+  desktopAB:  { label: 'A+B · Combined (info + icon rail)',   section: 'desktop', w: 1280, h: 820, render: () => <DesktopCombined/> },
+  editor:     { label: 'Editor (3-pane) · mixed content',     section: 'desktop', w: 1280, h: 820, render: () => <EditorScreen/> },
+  // Stats
+  statsA: { label: 'A · Personal progress',     section: 'stats', w: 1280, h: 820, render: () => <StatsA/> },
+  statsB: { label: 'B · Per-test diagnosis',    section: 'stats', w: 1280, h: 820, render: () => <StatsB/> },
+  statsC: { label: 'C · Owner / teacher view',  section: 'stats', w: 1280, h: 820, render: () => <StatsC/> },
+  // Mobile · nav patterns
+  mobileA: { label: 'A · Bottom nav · classic',    section: 'mobile-nav', w: 380, h: 760, render: () => <MobileA/> },
+  mobileB: { label: 'B · FAB + card stack',        section: 'mobile-nav', w: 380, h: 760, render: () => <MobileB/> },
+  mobileC: { label: 'C · Floating pill (5 btn)',   section: 'mobile-nav', w: 380, h: 760, render: () => <MobileC/> },
+  mobileD: { label: 'D · Top tabs (web-like)',     section: 'mobile-nav', w: 380, h: 760, render: () => <MobileD/> },
+  // Mobile · screens
+  mobStats:   { label: 'Stats',           section: 'mobile-screens', w: 380, h: 760, render: () => <MobileStats/> },
+  mobTaking:  { label: 'During a test · mixed content', section: 'mobile-screens', w: 380, h: 760, render: () => <MobileTaking/> },
+  mobResults: { label: 'Results',         section: 'mobile-screens', w: 380, h: 760, render: () => <MobileResults/> },
+  mobEditor:  { label: 'Editor',          section: 'mobile-screens', w: 380, h: 760, render: () => <MobileEditor/> },
+  mobProfile: { label: 'Profile / me',    section: 'mobile-screens', w: 380, h: 760, render: () => <MobileProfile/> },
+  mobDrawer:  { label: 'Slide-in menu',   section: 'mobile-screens', w: 380, h: 760, render: () => <MobileDrawer/> },
+  // Extras
+  preTest:    { label: 'Pre-test settings',        section: 'extras', w: 720,  h: 700, render: () => <PreTestModal/> },
+  taking:     { label: 'During a test · desktop',  section: 'extras', w: 1280, h: 820, render: () => <TestTaking/> },
+  results:    { label: 'Results · finished',       section: 'extras', w: 1280, h: 820, render: () => <ResultsScreen/> },
+  change:     { label: 'Change-request review',    section: 'extras', w: 1280, h: 820, render: () => <ChangeRequestScreen/> },
+  empty:      { label: 'Empty state · new user',   section: 'extras', w: 1280, h: 820, render: () => <EmptyState/> },
+  share:      { label: 'Share & permissions',      section: 'extras', w: 720,  h: 700, render: () => <ShareModal/> },
+  notif:      { label: 'Notifications',            section: 'extras', w: 760,  h: 760, render: () => <NotificationsPanel/> },
+  importDoc:  { label: 'Import .docx flow',        section: 'extras', w: 1280, h: 820, render: () => <ImportFlow/> },
+  qPicker:    { label: 'Question-type picker',     section: 'extras', w: 720,  h: 620, render: () => <QuestionTypePicker/> },
+  search:     { label: 'Command palette / search', section: 'extras', w: 800,  h: 640, render: () => <SearchResults/> },
+  settings:   { label: 'Settings',                 section: 'extras', w: 1280, h: 820, render: () => <SettingsScreen/> },
+};
+
+const SECTIONS = [
+  { id: 'desktop', title: 'Desktop · collections & test view', subtitle: 'Email-style 3-pane. A+B combined = test info layout + vertical icon rail. Mixed content (text + image + formula) in editor.' },
+  { id: 'stats',   title: 'Statistics dashboard · 3 directions', subtitle: 'Personal · diagnostic · owner. Pick & mix.' },
+  { id: 'mobile-nav', title: 'Mobile · navigation variants',  subtitle: 'Bottom tabs / FAB stack / floating pill / top tabs.' },
+  { id: 'mobile-screens', title: 'Mobile · individual screens', subtitle: 'Stats, test-taking (with mixed content), results, editor, profile, drawer menu.' },
+  { id: 'extras',  title: 'Extras & menus',                   subtitle: 'Settings, share, notifications, import .docx, question picker, search palette, change-requests, empty state.' },
+];
+
+function App() {
+  const [t, setT] = useTweaks(DEFAULTS);
+  // expose to primitive components (Annot reads window.__wfTweaks.annot)
+  React.useEffect(() => {
+    window.__wfTweaks = t;
+    const root = document.documentElement;
+    root.dataset.wfTheme = t.theme;
+    root.dataset.wfFont = t.font;
+    root.dataset.wfDensity = t.density;
+    root.style.setProperty('--wf-accent', t.accent);
+    root.style.setProperty('--wf-accent-soft', accentSoft(t.accent));
+  }, [t]);
+
+  const filtered = t.filter === 'all'
+    ? Object.entries(SCREENS)
+    : Object.entries(SCREENS).filter(([k]) => k === t.filter);
+
+  // Group by section
+  const bySection = {};
+  filtered.forEach(([k, s]) => {
+    (bySection[s.section] = bySection[s.section] || []).push([k, s]);
+  });
+
+  return (
+    <>
+      <DesignCanvas>
+        {SECTIONS.map((sec) => {
+          const items = bySection[sec.id];
+          if (!items || !items.length) return null;
+          return (
+            <DCSection key={sec.id} id={sec.id} title={sec.title} subtitle={sec.subtitle}>
+              {items.map(([k, s]) => (
+                <DCArtboard key={k} id={k} label={s.label} width={s.w} height={s.h}>
+                  {s.render()}
+                </DCArtboard>
+              ))}
+            </DCSection>
+          );
+        })}
+      </DesignCanvas>
+
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="Display">
+          <TweakRadio
+            label="Theme"
+            value={t.theme}
+            options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]}
+            onChange={(v) => setT('theme', v)}
+          />
+          <TweakRadio
+            label="Font"
+            value={t.font}
+            options={[{ value: 'hand', label: 'Handwritten' }, { value: 'typed', label: 'Typed' }]}
+            onChange={(v) => setT('font', v)}
+          />
+          <TweakRadio
+            label="Density"
+            value={t.density}
+            options={[
+              { value: 'compact', label: 'Compact' },
+              { value: 'normal', label: 'Normal' },
+              { value: 'roomy', label: 'Roomy' },
+            ]}
+            onChange={(v) => setT('density', v)}
+          />
+          <TweakToggle
+            label="Designer notes"
+            value={t.annot}
+            onChange={(v) => setT('annot', v)}
+          />
+        </TweakSection>
+
+        <TweakSection label="Color">
+          <TweakColor
+            label="Accent"
+            value={t.accent}
+            options={ACCENTS.map((a) => a.color)}
+            onChange={(v) => setT('accent', v)}
+          />
+        </TweakSection>
+
+        <TweakSection label="Filter">
+          <TweakSelect
+            label="Show"
+            value={t.filter}
+            options={[
+              { value: 'all', label: 'All screens' },
+              ...Object.entries(SCREENS).map(([k, s]) => ({ value: k, label: s.label })),
+            ]}
+            onChange={(v) => setT('filter', v)}
+          />
+        </TweakSection>
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+
+</body>
+</html>

@@ -77,6 +77,18 @@ def create_change_request(
     db.commit()
     db.refresh(change_request)
 
+    # Notify test owner that a change request was received
+    try:
+        from api.services.notification_service import create_notification
+        create_notification(db, collection.owner_id, "cr_received", {
+            "cr_id": change_request.id,
+            "test_id": test_id,
+            "proposer_id": user.id,
+            "proposer_username": user.username,
+        })
+    except Exception:
+        pass  # Notifications are best-effort; never fail the main flow
+
     return change_request
 
 
@@ -202,6 +214,17 @@ def approve_change_request(
     db.commit()
     db.refresh(change_request)
 
+    # Notify proposer that their CR was approved
+    try:
+        from api.services.notification_service import create_notification
+        create_notification(db, change_request.user_id, "cr_approved", {
+            "cr_id": change_request.id,
+            "test_id": test_id,
+            "reviewer_username": reviewer.username,
+        })
+    except Exception:
+        pass
+
     return change_request
 
 
@@ -227,6 +250,19 @@ def reject_change_request(
 
     db.commit()
     db.refresh(change_request)
+
+    # Notify proposer that their CR was rejected
+    try:
+        from api.services.notification_service import create_notification
+        test_id = change_request.test_collection.test_id
+        create_notification(db, change_request.user_id, "cr_rejected", {
+            "cr_id": change_request.id,
+            "test_id": test_id,
+            "reviewer_username": reviewer.username,
+            "comment": comment,
+        })
+    except Exception:
+        pass
 
     return change_request
 

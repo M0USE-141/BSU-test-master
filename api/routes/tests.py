@@ -132,6 +132,8 @@ def create_test(
     assets_directory.mkdir(parents=True, exist_ok=True)
 
     test_payload = serialize_test_payload(test_id, title, [], assets_directory)
+    if payload.description:
+        test_payload["description"] = payload.description.strip()
     save_test_payload(test_id, test_payload)
 
     # Create TestCollection record with ownership
@@ -204,6 +206,8 @@ def update_test(
 
     payload = json_load(payload_file.read_text(encoding="utf-8"))
     payload["title"] = title
+    if update.description is not None:
+        payload["description"] = update.description.strip()
     payload_file.write_text(json_dump(payload), encoding="utf-8")
 
     return serialize_metadata(payload)

@@ -1,8 +1,10 @@
 """Statistics endpoints using SQLite database."""
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+import sqlalchemy as sa
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
 
 from api.database import get_db
@@ -22,6 +24,7 @@ from api.services.stats_service import (
     get_activity_by_week,
     get_activity_heatmap,
 )
+from api.models.db.attempt import Attempt, AttemptStatus
 from api.utils import validate_id, validate_test_exists
 
 
@@ -235,4 +238,51 @@ def get_owner_analytics(
         "questionDifficulty": get_owner_question_difficulty(db, test_id),
         "scoreDistribution": get_score_distribution(db, test_id),
         "activityByWeek": get_activity_by_week(db, test_id),
+    }
+
+
+@router.get("/stats/me/trend")
+def get_my_trend(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
+    days: int = Query(30, ge=7, le=365),
+) -> dict[str, Any]:
+    """
+    Per-user score trend: daily avg_score + attempts_count for the last N days.
+    Returns [{date, avg_score, attempts_count}, ...] sorted ascending.
+    """
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    rows = (
+        db.execute(
+            select(
+                func.date(Attempt.started_at).label("date"),
+                func.avg(
+                    func.cast(Attempt.correct_count, sa.Float())
+                    / func.cast(func.nullif(Attempt.question_count, 0), sa.Float())
+                    * 100
+                ).label("avg_score"),
+                func.count(Attempt.id).label("attempts_count"),
+            )
+            .where(
+                Attempt.user_id == current_user.id,
+                Attempt.status == AttemptStatus.COMPLETED.value,
+                Attempt.started_at >= since,
+            )
+            .group_by(func.date(Attempt.started_at))
+            .order_by(func.date(Attempt.started_at))
+        )
+        .all()
+    )
+
+    return {
+        "trend": [
+            {
+                "date": str(row.date),
+                "avg_score": round(row.avg_score or 0, 1),
+                "attempts_count": row.attempts_count,
+            }
+            for row in rows
+        ],
+        "days": days,
     }

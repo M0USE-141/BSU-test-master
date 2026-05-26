@@ -10,6 +10,7 @@ from api.config import ACCESS_TOKEN_EXPIRE_MINUTES
 from api.database import get_db
 from api.dependencies.auth import get_current_user
 from api.models.auth import (
+    ChangePasswordRequest,
     MessageResponse,
     TokenResponse,
     UserLogin,
@@ -23,6 +24,7 @@ from api.services.auth_service import (
     create_user,
     get_user_by_email,
     get_user_by_username,
+    hash_password,
     invalidate_session,
     verify_password,
     verify_token,
@@ -125,6 +127,23 @@ async def get_me(
 ) -> User:
     """Get current user info."""
     return current_user
+
+
+@router.post("/change-password", response_model=MessageResponse)
+async def change_password(
+    data: ChangePasswordRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
+) -> MessageResponse:
+    """Change the current user's password."""
+    if not verify_password(data.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    current_user.hashed_password = hash_password(data.new_password)
+    db.commit()
+    return MessageResponse(message="Password changed successfully")
 
 
 @router.post("/refresh", response_model=TokenResponse)
