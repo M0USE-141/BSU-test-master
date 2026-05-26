@@ -1,13 +1,14 @@
 """Question management endpoints."""
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Path
 from sqlalchemy.orm import Session as DbSession
 
 from api.database import get_db
 from api.dependencies.auth import get_current_user
 from api.models.db.user import User
 from api.services import access_service
+from api.utils.validation import TEST_ID_PATTERN
 from api.services.test_service import (
     extract_blocks,
     find_question,
@@ -20,7 +21,7 @@ router = APIRouter(prefix="/api/tests/{test_id}/questions", tags=["questions"])
 
 
 def _check_edit_permission(
-    test_id: str,
+    test_id: str,  # already validated by Path() at route level
     db: DbSession,
     current_user: User,
 ) -> None:
@@ -33,7 +34,7 @@ def _check_edit_permission(
 
 @router.post("")
 def add_question(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
     payload: dict[str, object] = Body(...),
@@ -104,7 +105,7 @@ def add_question(
 
 @router.patch("/{question_id}")
 def update_question(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     question_id: int,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
@@ -173,7 +174,7 @@ def update_question(
 
 @router.delete("/{question_id}")
 def delete_question(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     question_id: int,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],

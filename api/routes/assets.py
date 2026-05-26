@@ -1,7 +1,7 @@
 """Asset management endpoints."""
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Path, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session as DbSession
 
@@ -10,13 +10,14 @@ from api.dependencies.auth import get_current_user, get_optional_user
 from api.models.db.user import User
 from api.services import access_service
 from api.utils import assets_dir, safe_asset_path, save_upload_file, test_dir
+from api.utils.validation import TEST_ID_PATTERN
 
 router = APIRouter(prefix="/api/tests/{test_id}/assets", tags=["assets"])
 
 
 @router.get("/{asset_path:path}")
 def get_asset(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     asset_path: str,
     current_user: Annotated[User | None, Depends(get_optional_user)],
     db: Annotated[DbSession, Depends(get_db)],
@@ -36,7 +37,7 @@ def get_asset(
 
 @router.post("")
 def upload_asset(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
     file: UploadFile = File(...),

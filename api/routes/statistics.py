@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 import sqlalchemy as sa
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
@@ -26,6 +26,7 @@ from api.services.stats_service import (
 )
 from api.models.db.attempt import Attempt, AttemptStatus
 from api.utils import validate_id, validate_test_exists
+from api.utils.validation import TEST_ID_PATTERN
 
 
 router = APIRouter(prefix="/api", tags=["statistics"])
@@ -147,7 +148,7 @@ def get_aggregate_statistics(
 
 @router.get("/tests/{test_id}/statistics")
 def get_test_statistics(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
     start_date: str | None = Query(None, alias="startDate"),
@@ -161,7 +162,6 @@ def get_test_statistics(
     Returns aggregated statistics for all attempts on this test,
     including per-user breakdown.
     """
-    test_id = validate_id("testId", test_id)
     validate_test_exists(test_id)
 
     # Check if user is owner
@@ -202,12 +202,11 @@ def get_heatmap(
 
 @router.get("/tests/{test_id}/weak-questions")
 def list_weak_questions(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> dict[str, Any]:
     """Personal weak questions (correct rate < 60%) for authenticated user."""
-    test_id = validate_id("testId", test_id)
     validate_test_exists(test_id)
     return {"questions": get_weak_questions(db, test_id, current_user.id)}
 
@@ -223,12 +222,11 @@ def get_user_streak(
 
 @router.get("/tests/{test_id}/owner-analytics")
 def get_owner_analytics(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> dict[str, Any]:
     """Full owner analytics: KPIs, question difficulty, score distribution, activity."""
-    test_id = validate_id("testId", test_id)
     validate_test_exists(test_id)
     if not access_service.can_edit_test(db, test_id, current_user):
         raise HTTPException(status_code=403, detail="Only owner can view analytics")

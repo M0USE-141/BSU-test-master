@@ -1,6 +1,8 @@
 """Access control API routes."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session as DbSession
 
 from api.database import get_db
@@ -14,6 +16,7 @@ from api.models.access import (
 )
 from api.models.db.user import User
 from api.services import access_service
+from api.utils.validation import TEST_ID_PATTERN
 
 router = APIRouter(prefix="/api", tags=["access"])
 
@@ -35,9 +38,9 @@ def get_user_by_username(db: DbSession, username: str) -> User | None:
 
 @router.get("/tests/{test_id}/access", response_model=TestAccessInfo)
 def get_test_access(
-    test_id: str,
-    current_user: User = Depends(get_current_user),
-    db: DbSession = Depends(get_db),
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
 ) -> TestAccessInfo:
     """Get access settings for a test."""
     collection = access_service.get_test_collection_with_owner(db, test_id)
@@ -61,10 +64,10 @@ def get_test_access(
 
 @router.patch("/tests/{test_id}/access", response_model=TestAccessInfo)
 def update_test_access(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     payload: AccessUpdateRequest,
-    current_user: User = Depends(get_current_user),
-    db: DbSession = Depends(get_db),
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
 ) -> TestAccessInfo:
     """Update access level for a test (owner only)."""
     if not access_service.can_edit_test(db, test_id, current_user):
@@ -89,9 +92,9 @@ def update_test_access(
 
 @router.get("/tests/{test_id}/shares", response_model=list[ShareResponse])
 def list_test_shares(
-    test_id: str,
-    current_user: User = Depends(get_current_user),
-    db: DbSession = Depends(get_db),
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
 ) -> list[ShareResponse]:
     """List users with shared access (owner only)."""
     if not access_service.can_edit_test(db, test_id, current_user):
@@ -114,10 +117,10 @@ def list_test_shares(
 
 @router.post("/tests/{test_id}/shares", response_model=ShareResponse)
 def add_test_share(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     payload: ShareRequest,
-    current_user: User = Depends(get_current_user),
-    db: DbSession = Depends(get_db),
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
 ) -> ShareResponse:
     """Add user to shared access (owner only)."""
     if not access_service.can_edit_test(db, test_id, current_user):
@@ -138,6 +141,9 @@ def add_test_share(
     target_user = get_user_by_username(db, payload.username)
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if not target_user.is_active:
+        raise HTTPException(status_code=400, detail="Cannot share with an inactive account")
 
     if target_user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot share with yourself")
@@ -164,10 +170,10 @@ def add_test_share(
 
 @router.delete("/tests/{test_id}/shares/{user_id}")
 def remove_test_share(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     user_id: int,
-    current_user: User = Depends(get_current_user),
-    db: DbSession = Depends(get_db),
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
 ) -> dict:
     """Remove user from shared access (owner only)."""
     if not access_service.can_edit_test(db, test_id, current_user):

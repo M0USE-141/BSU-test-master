@@ -38,7 +38,6 @@ class RecordAnswerRequest(BaseModel):
     questionId: int
     answerIndex: int | None = None
     canonicalAnswerIndex: int | None = None
-    isCorrect: bool | None = None
     durationMs: int = 0
     isSkipped: bool = False
 
@@ -122,7 +121,6 @@ def record_attempt_answer(
             question_id=payload.questionId,
             answer_index=payload.answerIndex,
             canonical_answer_index=payload.canonicalAnswerIndex,
-            is_correct=payload.isCorrect,
             duration_ms=payload.durationMs,
         )
 
@@ -230,7 +228,6 @@ def get_attempt_details(
     return {
         "attemptId": attempt.id,
         "testId": attempt.test_id,
-        "clientId": attempt.client_id,
         "userId": attempt.user_id,
         "status": attempt.status,
         "startedAt": attempt.started_at.isoformat() if attempt.started_at else None,

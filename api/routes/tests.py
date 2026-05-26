@@ -1,10 +1,10 @@
 """Test management endpoints."""
 import shutil
 import uuid
-from pathlib import Path
+from pathlib import Path as FilePath
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession, joinedload
 
@@ -16,6 +16,7 @@ from api.models.db.user import User
 from api.models.db.test_collection import AccessLevel, TestCollection
 from api.services import access_service
 from api.utils import assets_dir, json_load, payload_path, test_dir
+from api.utils.validation import TEST_ID_PATTERN
 from api.services.test_service import load_test_payload, save_test_payload
 from core.serialization import serialize_metadata, serialize_test_payload
 from core.word_extract import WordTestExtractor
@@ -150,7 +151,7 @@ def create_test(
 
 @router.get("/{test_id}")
 def get_test(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     current_user: Annotated[User | None, Depends(get_optional_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> dict[str, object]:
@@ -184,7 +185,7 @@ def get_test(
 
 @router.patch("/{test_id}")
 def update_test(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     update: TestUpdate,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
@@ -215,7 +216,7 @@ def update_test(
 
 @router.delete("/{test_id}")
 def delete_test(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> dict[str, str]:
@@ -246,7 +247,7 @@ def upload_test(
 ) -> dict[str, object]:
     """Upload test from Word document."""
     file_name = file.filename or ""
-    if Path(file_name).suffix.lower() == ".doc":
+    if FilePath(file_name).suffix.lower() == ".doc":
         raise HTTPException(status_code=400, detail="Поддерживаются только .docx")
 
     test_id = uuid.uuid4().hex
@@ -256,7 +257,7 @@ def upload_test(
     assets_directory = assets_dir(test_id)
     assets_directory.mkdir(parents=True, exist_ok=True)
 
-    safe_name = Path(file.filename or f"upload_{test_id}.docx").name
+    safe_name = FilePath(file.filename or f"upload_{test_id}.docx").name
     file_path = test_directory / safe_name
     file_path.write_bytes(file.file.read())
 

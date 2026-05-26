@@ -13,7 +13,7 @@ from api.utils.paths import (
     test_dir,
 )
 from api.utils.time_utils import parse_iso_timestamp, utc_now
-from api.utils.validation import validate_id, validate_test_exists
+from api.utils.validation import validate_id, validate_test_exists, validate_test_id
 
 __all__ = [
     "safe_asset_path",
@@ -30,4 +30,5 @@ __all__ = [
     "utc_now",
     "validate_id",
     "validate_test_exists",
+    "validate_test_id",
 ]

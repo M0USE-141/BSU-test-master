@@ -135,15 +135,14 @@ def record_answer(
     attempt_id: str,
     question_id: int,
     answer_index: int | None,
-    is_correct: bool | None,
     duration_ms: int = 0,
     is_skipped: bool = False,
     canonical_answer_index: int | None = None,
 ) -> AttemptAnswer:
     """
     Record or update an answer for a question in an attempt.
+    is_correct is computed server-side from the stored correct_option_index snapshot.
     """
-    # Get or create answer record
     answer = db.execute(
         select(AttemptAnswer).where(
             AttemptAnswer.attempt_id == attempt_id,
@@ -152,19 +151,25 @@ def record_answer(
     ).scalar_one_or_none()
 
     if not answer:
-        # This shouldn't happen normally - answers are pre-created in start_attempt
-        # But handle gracefully for backwards compatibility
         answer = AttemptAnswer(
             attempt_id=attempt_id,
             question_id=question_id,
-            question_index=0,  # Unknown index
+            question_index=0,
         )
         db.add(answer)
 
-    # Update answer data
+    # Compute correctness server-side — never trust client-sent value
+    if is_skipped or answer_index is None:
+        computed_correct = None
+    elif answer.correct_option_index is not None:
+        computed_correct = answer_index == answer.correct_option_index
+    else:
+        # No snapshot available (legacy attempt); fall back to None (unknown)
+        computed_correct = None
+
     answer.answer_index = answer_index
     answer.canonical_answer_index = canonical_answer_index
-    answer.is_correct = is_correct
+    answer.is_correct = computed_correct
     answer.is_skipped = is_skipped
     answer.duration_ms = duration_ms
     answer.answered_at = datetime.now(timezone.utc)
@@ -186,7 +191,6 @@ def skip_question(
         attempt_id,
         question_id,
         answer_index=None,
-        is_correct=None,
         duration_ms=duration_ms,
         is_skipped=True,
     )

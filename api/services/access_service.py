@@ -131,10 +131,8 @@ def can_view_test(db: DbSession, test_id: str, user: User | None) -> bool:
     """Check if user can view a test."""
     collection = get_test_collection(db, test_id)
 
-    # No collection record = test exists but no access control yet
-    # For backwards compatibility, allow viewing
     if not collection:
-        return True
+        return False
 
     # PUBLIC tests are visible to everyone
     if collection.access_level == AccessLevel.PUBLIC.value:
@@ -165,9 +163,8 @@ def can_edit_test(db: DbSession, test_id: str, user: User) -> bool:
     """Check if user can edit a test (only owner can edit)."""
     collection = get_test_collection(db, test_id)
 
-    # No collection record = treat as editable (backwards compatibility)
     if not collection:
-        return True
+        return False
 
     return collection.owner_id == user.id
 
