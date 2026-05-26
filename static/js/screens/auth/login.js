@@ -144,7 +144,7 @@ function clearFieldError(input, errorEl) {
  */
 function buildLangPicker() {
   const picker = document.createElement('div');
-  picker.className = 'auth-lang-picker';
+  picker.className = 'auth-footer__langs';
 
   const currentLocale = getLocale();
   const langs = ['ru', 'en', 'uz'];
@@ -173,7 +173,7 @@ function buildThemeToggle() {
   const resolved = getResolvedTheme();
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'btn btn--ghost btn--small btn--icon';
+  btn.className = 'auth-footer__theme-btn';
   btn.setAttribute('aria-label', 'Toggle theme');
 
   // In dark mode show sun (click → go light); in light mode show moon (click → go dark)
@@ -231,12 +231,12 @@ export default async function render(root, params = {}) {
 
   // ── Brand ──
   const brand = document.createElement('div');
-  brand.className = 'auth-brand';
+  brand.className = 'auth-header';
   const brandTitle = document.createElement('div');
-  brandTitle.className = 'auth-brand__title';
+  brandTitle.className = 'auth-header__logo';
   brandTitle.textContent = 'TestMaster';
   const brandTagline = document.createElement('div');
-  brandTagline.className = 'auth-brand__tagline';
+  brandTagline.className = 'auth-header__tagline';
   brandTagline.textContent = t('auth.tagline');
   brand.appendChild(brandTitle);
   brand.appendChild(brandTagline);
@@ -247,12 +247,12 @@ export default async function render(root, params = {}) {
 
   // Heading
   const heading = document.createElement('h1');
-  heading.className = 'auth-heading';
+  heading.className = 'auth-card__title';
   heading.textContent = t('auth.login.title');
 
   // Fields
   const fieldsWrap = document.createElement('div');
-  fieldsWrap.className = 'auth-fields';
+  fieldsWrap.className = 'auth-form';
 
   const { field: usernameField, input: usernameInput, errorEl: usernameError } =
     buildField('login-username', t('auth.error.username_or_email'), 'text', t('auth.error.username_or_email'), 'user', 'username email');
@@ -293,11 +293,11 @@ export default async function render(root, params = {}) {
 
   // Link to register
   const linkRow = document.createElement('div');
-  linkRow.className = 'auth-link-row';
+  linkRow.className = 'auth-form__link';
   const linkText = document.createTextNode(t('auth.no_account') + ' ');
   const registerLink = document.createElement('button');
   registerLink.type = 'button';
-  registerLink.className = 'auth-link';
+  registerLink.className = 'auth-link-btn';
   registerLink.textContent = t('auth.register');
   registerLink.addEventListener('click', () => navigate('/auth/register'));
   linkRow.appendChild(linkText);
