@@ -1239,7 +1239,7 @@ export default async function render(root, params = {}) {
   const myToken = _renderToken;
 
   // Guard: returns true if we should abort (route changed or new render started)
-  const stale = () => location.hash !== '#/home' && location.hash !== '#/'
+  const stale = () => (!location.hash.startsWith('#/home') && !location.hash.startsWith('#/tests') && location.hash !== '#/')
     || _renderToken !== myToken;
 
   // Show skeleton immediately

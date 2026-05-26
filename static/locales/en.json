@@ -139,6 +139,7 @@
   "common.questions": "questions",
   "common.minutes": "minutes",
   "common.seconds": "seconds",
+  "stats.min_short": "m",
   "common.all": "All",
   "common.my": "My",
   "common.shared": "Shared",

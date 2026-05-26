@@ -35,6 +35,9 @@ function escapeHtml(s) {
 /** @type {Array<(route: { path: string, params: Record<string, string> }) => void>} */
 const _listeners = [];
 
+/** Incremented on every navigation; screens compare against their captured value to abort stale renders. */
+let _routeToken = 0;
+
 /** @type {{ path: string, params: Record<string,string> }} */
 let _current = { path: '', params: {} };
 
@@ -56,6 +59,12 @@ const ROUTES = [
   },
   {
     pattern: '/home',
+    module: () => isMobile()
+      ? import(`./screens/mobile/home.js?v=${_V}`)
+      : import(`./screens/desktop/home.js?v=${_V}`),
+  },
+  {
+    pattern: '/tests',
     module: () => isMobile()
       ? import(`./screens/mobile/home.js?v=${_V}`)
       : import(`./screens/desktop/home.js?v=${_V}`),
@@ -171,6 +180,9 @@ function getHashPath() {
 async function handleRoute(pathOrObj) {
   if (!_root) return;
 
+  const myToken = ++_routeToken;
+  const stale = () => _routeToken !== myToken;
+
   const rawPath = typeof pathOrObj === 'string' ? pathOrObj : (pathOrObj?.path ?? '');
   const queryParams = typeof pathOrObj === 'object' ? (pathOrObj?.query ?? {}) : {};
 
@@ -228,12 +240,14 @@ async function handleRoute(pathOrObj) {
 
   try {
     const mod = await matchedModule();
+    if (stale()) return;
     const renderFn = mod.default;
     if (typeof renderFn !== 'function') {
       throw new Error(`Screen module for "${effectivePath}" must export a default function`);
     }
     await renderFn(_root, params);
   } catch (e) {
+    if (stale()) return;
     console.error('[router] render error:', e);
     _root.innerHTML = `
       <div class="screen" style="align-items:center;justify-content:center;gap:8px;padding:var(--pad);">

@@ -15,7 +15,7 @@ from api.models import TestCreate, TestUpdate
 from api.models.db.user import User
 from api.models.db.test_collection import AccessLevel, TestCollection
 from api.services import access_service
-from api.utils import assets_dir, json_load, payload_path, test_dir
+from api.utils import assets_dir, json_load, payload_path, test_dir, write_json_atomic
 from api.utils.validation import TEST_ID_PATTERN
 from api.services.test_service import load_test_payload, save_test_payload
 from core.serialization import serialize_metadata, serialize_test_payload
@@ -203,13 +203,11 @@ def update_test(
     if not title:
         raise HTTPException(status_code=400, detail="Title is required")
 
-    from api.utils import json_dump
-
     payload = json_load(payload_file.read_text(encoding="utf-8"))
     payload["title"] = title
     if update.description is not None:
         payload["description"] = update.description.strip()
-    payload_file.write_text(json_dump(payload), encoding="utf-8")
+    write_json_atomic(payload_file, payload)
 
     return serialize_metadata(payload)
 
@@ -272,9 +270,7 @@ def upload_test(
         test_payload = serialize_test_payload(
             test_id, file_path.stem, tests, assets_directory
         )
-        from api.utils import json_dump
-
-        payload_path(test_id).write_text(json_dump(test_payload), encoding="utf-8")
+        write_json_atomic(payload_path(test_id), test_payload)
     finally:
         extractor.cleanup()
 

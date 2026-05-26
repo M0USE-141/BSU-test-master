@@ -8,6 +8,7 @@ from api.database import get_db
 from api.dependencies.auth import get_current_user
 from api.models.db.user import User
 from api.services.notification_service import (
+    count_notifications,
     list_notifications,
     mark_all_read,
     mark_read,
@@ -42,10 +43,11 @@ def get_notifications(
         db, current_user.id, kind=kind, unread_only=unread,
         limit=limit, offset=offset,
     )
+    total = count_notifications(db, current_user.id, kind=kind, unread_only=unread)
     return {
         "items": [_serialize(n) for n in items],
         "unread_count": unread_count(db, current_user.id),
-        "total": len(items),
+        "total": total,
     }
 
 

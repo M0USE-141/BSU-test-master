@@ -33,16 +33,15 @@ router = APIRouter(prefix="/api", tags=["statistics"])
 
 
 def parse_date(date_str: str | None) -> datetime | None:
-    """Parse ISO date string to datetime."""
+    """Parse ISO date string to datetime, raising 400 on invalid input."""
     if not date_str:
         return None
     try:
-        # Handle both full ISO and date-only formats
         if "T" in date_str:
             return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
         return datetime.fromisoformat(date_str + "T00:00:00")
     except ValueError:
-        return None
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {date_str!r}")
 
 
 @router.get("/stats/attempts")

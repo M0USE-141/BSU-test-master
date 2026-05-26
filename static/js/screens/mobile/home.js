@@ -28,7 +28,7 @@ function segmentFilter(tests, filter, userId) {
 export default async function render(root) {
   _renderToken++;
   const myToken = _renderToken;
-  const stale = () => _renderToken !== myToken || !location.hash.startsWith('#/home');
+  const stale = () => _renderToken !== myToken || (!location.hash.startsWith('#/home') && !location.hash.startsWith('#/tests'));
 
   const state = getState();
   const username = state.user?.display_name || state.user?.username || 'there';
@@ -150,7 +150,7 @@ export default async function render(root) {
       screen.querySelector('#mob-test-list').innerHTML = buildList();
     });
 
-  screen.appendChild(buildBottomNav('home'));
+  screen.appendChild(buildBottomNav());
 
   root.innerHTML = '';
   root.appendChild(screen);

@@ -6,6 +6,7 @@ from api.utils.json_utils import (
     ndjson_dump,
     read_json_file,
     write_json_file,
+    write_json_atomic,
 )
 from api.utils.paths import (
     assets_dir,
@@ -23,6 +24,7 @@ __all__ = [
     "ndjson_dump",
     "read_json_file",
     "write_json_file",
+    "write_json_atomic",
     "assets_dir",
     "payload_path",
     "test_dir",

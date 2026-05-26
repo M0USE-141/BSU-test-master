@@ -15,6 +15,7 @@ from api.models.db import (  # noqa: F401
     ChangeRequest, ChangeRequestType, ChangeRequestStatus,
     Attempt, AttemptAnswer, AttemptStatus,
     QuestionPerformance,
+    Notification,
 )
 
 # this is the Alembic Config object, which provides

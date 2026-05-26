@@ -41,18 +41,11 @@ async def register(
     db: Annotated[DbSession, Depends(get_db)],
 ) -> User:
     """Register a new user."""
-    # Check if username already exists
-    if get_user_by_username(db, data.username):
+    # Check if username or email already exists — unified message to avoid enumeration
+    if get_user_by_username(db, data.username) or get_user_by_email(db, data.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered",
-        )
-
-    # Check if email already exists
-    if get_user_by_email(db, data.email):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered",
+            detail="Registration failed",
         )
 
     # Create user

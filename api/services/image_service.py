@@ -118,6 +118,12 @@ async def process_avatar(file: UploadFile, user_id: int) -> tuple[str, int]:
     Raises:
         HTTPException: If processing fails
     """
+    if not PIL_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Image processing is not available on this server",
+        )
+
     validate_avatar_file(file)
 
     # Read file content
@@ -131,8 +137,22 @@ async def process_avatar(file: UploadFile, user_id: int) -> tuple[str, int]:
             detail=f"File too large. Maximum size: {AVATAR_MAX_SIZE_BYTES // (1024 * 1024)}MB",
         )
 
+    # Verify magic bytes to prevent extension-spoofed uploads
+    _MAGIC = {
+        b"\xff\xd8\xff": ".jpg",
+        b"\x89PNG\r\n\x1a\n": ".png",
+        b"GIF87a": ".gif",
+        b"GIF89a": ".gif",
+    }
+    detected = next((ext for sig, ext in _MAGIC.items() if content[:len(sig)] == sig), None)
+    if detected is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File content does not match a supported image format",
+        )
+
     # Generate unique filename
-    ext = Path(file.filename).suffix.lower()
+    ext = detected
     filename = f"{user_id}_{uuid.uuid4().hex[:8]}{ext}"
     avatar_path = AVATARS_DIR / filename
 

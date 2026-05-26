@@ -78,3 +78,19 @@ def unread_count(db: DbSession, user_id: int) -> int:
         .where(Notification.user_id == user_id, Notification.read_at.is_(None))
     ).scalar()
     return row or 0
+
+
+def count_notifications(
+    db: DbSession,
+    user_id: int,
+    kind: str | None = None,
+    unread_only: bool = False,
+) -> int:
+    """Count total notifications matching the given filters."""
+    from sqlalchemy import func
+    stmt = select(func.count(Notification.id)).where(Notification.user_id == user_id)
+    if kind:
+        stmt = stmt.where(Notification.kind == kind)
+    if unread_only:
+        stmt = stmt.where(Notification.read_at.is_(None))
+    return db.execute(stmt).scalar() or 0

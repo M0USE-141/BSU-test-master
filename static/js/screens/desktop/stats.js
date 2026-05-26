@@ -37,7 +37,7 @@ function fmtDuration(ms) {
   const m = Math.floor(s / 60);
   const rem = s % 60;
   if (m === 0) return `${rem}${t('common.seconds') || 's'}`;
-  return `${m}${t('common.minutes')[0] || 'm'} ${rem}s`;
+  return `${m}${t('stats.min_short') || 'm'} ${rem}s`;
 }
 
 function fmtDate(iso) {

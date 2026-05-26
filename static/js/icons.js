@@ -49,8 +49,9 @@ const PATHS = {
  * @returns {string}
  */
 export function icon(kind, size = 18, color = 'currentColor') {
-  // If a fresher version was preloaded (via versioned URL), delegate to it
-  if (typeof window !== 'undefined' && window.__iconsFresh && window.__iconsFresh !== icon) {
+  // If a fresher version was preloaded (via versioned URL), delegate to it.
+  // Compare .icon function references so we don't recurse inside the fresh module itself.
+  if (typeof window !== 'undefined' && window.__iconsFresh?.icon && window.__iconsFresh.icon !== icon) {
     return window.__iconsFresh.icon(kind, size, color);
   }
   const paths = PATHS[kind];

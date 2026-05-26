@@ -1,5 +1,6 @@
 """JSON serialization utilities."""
 import json
+import os
 from pathlib import Path
 
 
@@ -29,3 +30,11 @@ def write_json_file(path: Path, payload: object) -> None:
     """Write object as JSON file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json_dump(payload), encoding="utf-8")
+
+
+def write_json_atomic(path: Path, payload: object) -> None:
+    """Write object as JSON file atomically (write to .tmp then os.replace)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json_dump(payload), encoding="utf-8")
+    os.replace(tmp, path)
