@@ -53,10 +53,12 @@ const ROUTES = [
   {
     pattern: '/auth/login',
     module: () => import(`./screens/auth/login.js?v=${_V}`),
+    shell: false,
   },
   {
     pattern: '/auth/register',
     module: () => import(`./screens/auth/register.js?v=${_V}`),
+    shell: false,
   },
   {
     pattern: '/home',
@@ -87,6 +89,7 @@ const ROUTES = [
     module: () => isMobile()
       ? import(`./screens/mobile/taking.js?v=${_V}`)
       : import(`./screens/desktop/taking.js?v=${_V}`),
+    shell: false,
   },
   {
     pattern: '/test/:id/results/:attemptId',
@@ -199,12 +202,14 @@ async function handleRoute(pathOrObj) {
 
   // Find matching route
   let matchedModule = null;
+  let matchedRoute = null;
   let params = {};
 
   for (const route of ROUTES) {
     const match = matchPattern(route.pattern, effectivePath);
     if (match !== null) {
       matchedModule = route.module;
+      matchedRoute = route;
       // Merge path params + query params (path params take precedence)
       params = { ...queryParams, ...match };
       break;
@@ -239,6 +244,10 @@ async function handleRoute(pathOrObj) {
     </div>
   `;
 
+  // Expose route metadata so screens can opt into the AppShell themselves
+  // (rolled out incrementally in Phase 3+).
+  _current.useShell = matchedRoute.shell !== false;
+
   try {
     const mod = await matchedModule();
     if (stale()) return;
@@ -252,7 +261,7 @@ async function handleRoute(pathOrObj) {
     console.error('[router] render error:', e);
     _root.innerHTML = `
       <div class="screen" style="align-items:center;justify-content:center;gap:8px;padding:var(--pad);">
-        <p style="font-weight:600;color:#d9534f;">Render error</p>
+        <p style="font-weight:600;color:var(--error);">Render error</p>
         <p style="font-size:13px;color:var(--ink-mute)">${escapeHtml(e.message)}</p>
         <a href="#/home" class="btn btn--ghost btn--small">Go home</a>
       </div>
