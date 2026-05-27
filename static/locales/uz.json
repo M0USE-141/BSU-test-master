@@ -220,5 +220,14 @@
   "import.questions_imported": "ta savol import qilindi",
   "access.private": "Shaxsiy",
   "access.shared": "Ulashilgan",
-  "access.public": "Ommaviy"
+  "access.public": "Ommaviy",
+  "taking.jump_to": "Savolga o'tish",
+  "home.recent_activity": "So'nggi urinishlar",
+  "home.no_activity": "Urinishlar yo'q — testni boshlang!",
+  "home.browse_tests": "Testlar",
+  "time.just_now": "hozirgina",
+  "time.min_ago": "daq. oldin",
+  "time.h_ago": "soat oldin",
+  "time.yesterday": "kecha",
+  "time.days_ago": "kun oldin"
 }

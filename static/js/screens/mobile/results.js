@@ -37,12 +37,15 @@ function buildRingSvg(pct) {
 // ── Build screen ──────────────────────────────────────────────
 
 function buildScreen(snap) {
-  const pct        = snap.percentCorrect ?? snap.percent_correct ?? 0;
-  const correct    = snap.correctCount   ?? snap.correct_count   ?? 0;
   const total      = snap.questionCount  ?? snap.question_count  ?? 0;
   const durationMs = snap.totalDurationMs ?? snap.total_duration_ms ?? 0;
   const answers    = snap.answers        || [];       // from API
   const answersLocal = snap.answersLocal || {};        // from sessionStorage
+  // Fallback: count correct from local data if API didn't return it
+  const localCorrect = Object.values(answersLocal).filter(a => a.isCorrect === true).length;
+  const correct    = snap.correctCount ?? snap.correct_count ?? localCorrect;
+  const pct        = snap.percentCorrect ?? snap.percent_correct
+    ?? (total > 0 && localCorrect > 0 ? Math.round(localCorrect / total * 100) : 0);
   const questions  = snap.questions      || [];
   const flaggedIds = new Set(snap.flaggedIds || []);
   const timedOut   = snap.timedOut       || false;
@@ -103,8 +106,8 @@ function buildScreen(snap) {
           <div class="mob-kpi__label">${t('results.avg_per_q') || 'avg/q'}</div>
         </div>
         <div class="mob-kpi" style="text-align:center;">
-          <div class="mob-kpi__val" style="font-size:16px;">${flaggedIds.size}</div>
-          <div class="mob-kpi__label">${t('results.flagged') || 'flagged'}</div>
+          <div class="mob-kpi__val" style="font-size:16px;">${flaggedIds.size || '—'}</div>
+          <div class="mob-kpi__label">${t('taking.flagged') || 'flagged'}</div>
         </div>
       </div>
 
@@ -114,7 +117,7 @@ function buildScreen(snap) {
         <div style="font:600 13px/1 Inter,sans-serif;color:var(--ink);margin-bottom:10px;">
           ${t('results.q_by_q') || 'Question by question'}
         </div>
-        <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:4px;">
+        <div class="rs-qgrid">
           ${Array.from({ length: cellCount }, (_, i) => {
             const qId = questions[i]?.id ?? (i + 1);
             const isCorrect = correctMap[qId];
@@ -124,7 +127,8 @@ function buildScreen(snap) {
             else if (isCorrect === false) cls += ' rs-qcell--wrong';
             if (isFlagged) cls += ' rs-qcell--flagged';
             return `<div class="${cls}" title="Q${i + 1}">
-              ${isCorrect === true ? '✓' : isCorrect === false ? '✗' : String(i + 1)}
+              <span class="rs-qcell__num">${i + 1}</span>
+              <span class="rs-qcell__icon">${isCorrect === true ? '✓' : isCorrect === false ? '✗' : ''}</span>
             </div>`;
           }).join('')}
         </div>

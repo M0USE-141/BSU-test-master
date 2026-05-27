@@ -67,7 +67,7 @@ const ROUTES = [
   {
     pattern: '/tests',
     module: () => isMobile()
-      ? import(`./screens/mobile/home.js?v=${_V}`)
+      ? import(`./screens/mobile/tests-list.js?v=${_V}`)
       : import(`./screens/desktop/home.js?v=${_V}`),
   },
   {

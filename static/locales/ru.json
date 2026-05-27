@@ -220,5 +220,14 @@
   "import.questions_imported": "вопросов импортировано",
   "access.private": "Приватный",
   "access.shared": "Общий",
-  "access.public": "Публичный"
+  "access.public": "Публичный",
+  "taking.jump_to": "Перейти к вопросу",
+  "home.recent_activity": "Последние попытки",
+  "home.no_activity": "Попыток ещё нет — начните тест!",
+  "home.browse_tests": "Тесты",
+  "time.just_now": "только что",
+  "time.min_ago": "мин назад",
+  "time.h_ago": "ч назад",
+  "time.yesterday": "вчера",
+  "time.days_ago": "дн. назад"
 }

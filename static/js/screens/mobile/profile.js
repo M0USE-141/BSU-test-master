@@ -77,11 +77,7 @@ export default async function render(root, params = {}) {
         <div class="mob-profile__name">${esc(displayName)}</div>
         ${email ? `<div class="mob-profile__email">${esc(email)}</div>` : ''}
         ${joinedStr
-          ? `<div style="font:400 12px/1 Inter,sans-serif;color:var(--ink-mute);margin-top:2px;">joined ${esc(joinedStr)}</div>`
-          : ''
-        }
-        ${streak > 0
-          ? `<div style="margin-top:10px;"><span class="chip chip--active">🔥 ${streak}-day streak</span></div>`
+          ? `<div style="font:400 12px/1 Inter,sans-serif;color:var(--ink-mute);margin-top:2px;">${t('profile.joined') || 'joined'} ${esc(joinedStr)}</div>`
           : ''
         }
       </div>

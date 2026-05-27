@@ -220,5 +220,14 @@
   "import.questions_imported": "questions imported",
   "access.private": "Private",
   "access.shared": "Shared",
-  "access.public": "Public"
+  "access.public": "Public",
+  "taking.jump_to": "Jump to question",
+  "home.recent_activity": "Recent activity",
+  "home.no_activity": "No attempts yet — start a test!",
+  "home.browse_tests": "Browse tests",
+  "time.just_now": "just now",
+  "time.min_ago": "min ago",
+  "time.h_ago": "h ago",
+  "time.yesterday": "yesterday",
+  "time.days_ago": "days ago"
 }

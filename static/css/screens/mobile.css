@@ -412,6 +412,25 @@
   font: 500 15px/1.5 'Inter', sans-serif;
 }
 
+/* ── Dashboard activity rows ─────────────────────────────── */
+.mob-activity-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ink-soft);
+  text-decoration: none;
+  color: inherit;
+}
+
+.mob-activity-row:last-child {
+  border-bottom: none;
+}
+
+.mob-activity-row:active {
+  opacity: 0.7;
+}
+
 /* ── Taking timer warning ────────────────────────────────── */
 .mob-tk__timer--warn {
   color: #c4554a;
