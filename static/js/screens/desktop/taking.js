@@ -925,6 +925,11 @@ export default async function render(root, params = {}) {
       _s.settings.order = hand.shuffle ? 'random' : 'sequential';
       _s.settings.timeLimitMin = parseInt(hand.timeLimitMin, 10) || 0;
       _s.settings.showAnswers = !!hand.revealImmediately;
+      // The render layer reads `shuffleOptions` — accept the explicit handoff
+      // value when present, otherwise leave the default.
+      if (typeof hand.shuffleAnswers === 'boolean') {
+        _s.settings.shuffleOptions = hand.shuffleAnswers;
+      }
       _s.settings.allowSkip = true;
       _s.settings.mode = hand.mode || 'training';
       _s.settings.source = hand.source || 'all';

@@ -7,6 +7,17 @@
  * under the key "pretest:<testId>" — taking.js consumes that to skip its
  * built-in modal. If a user opens "/take" directly, the existing in-screen
  * modal still works as a fallback.
+ *
+ * Field set (per user feedback, replacing the original slider design):
+ *   - Mode chips    (training / timed / exam)
+ *   - Count         (preset chips: 10/20/30/All + a custom numeric input)
+ *   - Source        (all / weak / flagged / untaken — chips with live counts)
+ *   - Time limit    (chip presets + custom minutes input)
+ *   - Options       (shuffle questions / shuffle answers / reveal correct)
+ *
+ * Everything plumbs into taking.js via the handoff JSON, including
+ * `shuffleAnswers` which maps to `_s.settings.shuffleOptions` (already
+ * applied by the rendering layer at runtime).
  */
 import { getTest } from '../../api/tests.js';
 import { listFlagged } from '../../api/flagged.js';
@@ -17,15 +28,20 @@ import { iconEl } from '../../icons.js';
 import { t } from '../../utils/locale.js';
 import { toast } from '../../components/toast.js';
 
-// State per render instance (closed over by handlers).
 function makeState(totalQs) {
   return {
     mode: 'training',
     source: 'all',
-    shuffle: true,
-    revealImmediately: false,
-    timeLimitMin: 0,
+    // Counts: preset (incl. "all") or a custom number.
     count: Math.min(20, totalQs),
+    countMode: 'preset',  // 'preset' | 'custom'
+    // Options.
+    shuffleQuestions: true,
+    shuffleAnswers: false,
+    revealImmediately: false,
+    // Time limit (minutes; 0 = no limit).
+    timeLimitMin: 0,
+    timeMode: 'preset',  // 'preset' | 'custom'
   };
 }
 
@@ -99,7 +115,6 @@ export default async function render(root, params) {
 
   card.innerHTML = '';
 
-  // Header
   const headCaps = document.createElement('div');
   headCaps.className = 'caps';
   headCaps.textContent = (test.title || params.id) + ' · ' + totalQs + ' ' + (t('test.questions') || 'вопросов');
@@ -113,26 +128,28 @@ export default async function render(root, params) {
   title.textContent = t('pretest.title') || 'Запустить тест';
   card.appendChild(title);
 
-  // Sections
-  const modeRow = renderModeChips(state);
-  card.appendChild(section('pretest.mode', 'Режим', modeRow));
+  // ── Mode ──
+  card.appendChild(section('pretest.mode', 'Режим', renderModeChips(state)));
 
-  const slider = renderSlider(state, totalQs);
-  card.appendChild(section('pretest.count', 'Сколько вопросов', slider.el));
+  // ── Count (preset chips + custom number input) ──
+  const countCtl = renderCountField(state, totalQs);
+  card.appendChild(section('pretest.count', 'Сколько вопросов', countCtl.el));
 
-  const sourceRow = renderSourceChips(state, counts, function () {
-    slider.setMax(poolMax(state, counts));
-    if (state.count > parseInt(slider.input.max, 10)) {
-      state.count = parseInt(slider.input.max, 10);
-      slider.refresh();
-    }
+  // ── Source (chips with live counts) ──
+  const sourceCtl = renderSourceChips(state, counts, function () {
+    countCtl.setPoolMax(poolMax(state, counts));
     refreshHint();
   });
-  card.appendChild(section('pretest.source', 'Источник вопросов', sourceRow));
+  card.appendChild(section('pretest.source', 'Источник вопросов', sourceCtl));
 
+  // ── Time limit (preset chips + custom input) ──
+  const timeCtl = renderTimeField(state);
+  card.appendChild(section('pretest.time_limit', 'Ограничение времени', timeCtl.el));
+
+  // ── Options (3 toggles) ──
   card.appendChild(section('pretest.options', 'Опции', renderOptions(state)));
 
-  // Time estimate
+  // ── Estimate hint ──
   const hint = document.createElement('div');
   hint.style.background = 'var(--ink-soft)';
   hint.style.padding = '10px 12px';
@@ -151,10 +168,10 @@ export default async function render(root, params) {
     hint.appendChild(document.createTextNode(' для ' + state.count + ' вопросов'));
   }
   refreshHint();
-  slider.onChange = refreshHint;
+  countCtl.onChange = refreshHint;
   card.appendChild(hint);
 
-  // Buttons
+  // ── Action buttons ──
   const btnRow = document.createElement('div');
   btnRow.style.display = 'flex';
   btnRow.style.gap = 'var(--sp-2)';
@@ -183,7 +200,7 @@ export default async function render(root, params) {
   card.appendChild(btnRow);
 }
 
-// ── Helpers ─────────────────────────────────────────────────────
+// ─── Field constructors ─────────────────────────────────────
 
 function extractIds(resp) {
   let arr;
@@ -234,9 +251,11 @@ function renderModeChips(state) {
       row.querySelectorAll('.chip').forEach(function (c) {
         c.classList.toggle('chip--active', c.dataset.mode === m.key);
       });
+      // Mode-driven defaults: 'exam' enforces no reveal + shuffled;
+      // 'timed' bumps the timer if none was chosen.
       if (m.key === 'exam') {
         state.revealImmediately = false;
-        state.shuffle = true;
+        state.shuffleQuestions = true;
       }
       if (m.key === 'timed' && state.timeLimitMin === 0) {
         state.timeLimitMin = 20;
@@ -247,73 +266,92 @@ function renderModeChips(state) {
   return row;
 }
 
-function renderSlider(state, total) {
+/**
+ * Count field — chip presets (10, 20, 30, …, Все N) + a custom numeric input.
+ * Replaces the slider. Returns:
+ *   { el, setPoolMax(n), onChange }   ← caller wires onChange to refresh hint
+ */
+function renderCountField(state, total) {
   const wrap = document.createElement('div');
-  wrap.style.position = 'relative';
+  wrap.style.display = 'flex';
+  wrap.style.alignItems = 'center';
+  wrap.style.gap = '8px';
+  wrap.style.flexWrap = 'wrap';
 
-  const labels = document.createElement('div');
-  labels.style.display = 'flex';
-  labels.style.justifyContent = 'space-between';
-  labels.style.fontSize = 'var(--fs-sm)';
-  labels.style.marginBottom = '6px';
-  const lo = document.createElement('span');
-  lo.style.color = 'var(--ink-tertiary)';
-  lo.textContent = String(Math.min(5, total));
-  const mid = document.createElement('span');
-  mid.className = 'mono';
-  mid.style.fontWeight = 'var(--fw-semibold)';
-  const hi = document.createElement('span');
-  hi.style.color = 'var(--ink-tertiary)';
-  hi.textContent = String(total);
-  labels.appendChild(lo);
-  labels.appendChild(mid);
-  labels.appendChild(hi);
-  wrap.appendChild(labels);
+  const chipsWrap = document.createElement('div');
+  chipsWrap.style.display = 'flex';
+  chipsWrap.style.gap = '4px';
+  chipsWrap.style.flexWrap = 'wrap';
 
-  const input = document.createElement('input');
-  input.type = 'range';
-  input.min = String(Math.min(5, total));
-  input.max = String(total);
-  input.value = String(state.count);
-  input.style.width = '100%';
-  input.style.accentColor = 'var(--accent)';
-  wrap.appendChild(input);
+  const customInput = document.createElement('input');
+  customInput.type = 'number';
+  customInput.min = '1';
+  customInput.placeholder = t('taking.custom') || 'Своё';
+  customInput.style.width = '80px';
+  customInput.style.padding = '5px 8px';
+  customInput.style.border = 'var(--border)';
+  customInput.style.borderRadius = 'var(--radius-sm)';
+  customInput.style.font = '400 13px Inter, sans-serif';
+  customInput.style.color = 'var(--ink)';
+  customInput.style.background = 'var(--paper)';
 
-  const api = { el: wrap, input: input, onChange: null };
+  let poolMax = total;
+  const api = { el: wrap, onChange: null };
 
-  function setMid() {
-    mid.textContent = state.count + ' из ' + input.max;
+  function presets() {
+    // Standard ladder, plus the "all" pseudo-step capped to the active pool.
+    const steps = [10, 20, 30, 50].filter(function (n) { return n < poolMax; });
+    steps.push(poolMax);
+    // Deduplicate while preserving order.
+    return Array.from(new Set(steps));
   }
-  api.refresh = function () {
-    input.value = String(state.count);
-    setMid();
-  };
-  api.setMax = function (newMax) {
-    // Range inputs misbehave when min > max — re-floor min so the slider
-    // can actually move when a tiny source pool (e.g. one flagged question)
-    // is selected.
-    const safeMin = Math.min(Math.min(5, total), newMax);
-    input.min = String(safeMin);
-    lo.textContent = String(safeMin);
-    input.max = String(newMax);
-    hi.textContent = String(newMax);
-    if (parseInt(input.value, 10) > newMax) {
-      input.value = String(newMax);
-      state.count = newMax;
-    } else if (parseInt(input.value, 10) < safeMin) {
-      input.value = String(safeMin);
-      state.count = safeMin;
-    }
-    setMid();
-  };
 
-  input.addEventListener('input', function () {
-    state.count = parseInt(input.value, 10);
-    setMid();
-    if (typeof api.onChange === 'function') api.onChange();
+  function renderChips() {
+    chipsWrap.innerHTML = '';
+    const ps = presets();
+    customInput.max = String(poolMax);
+    ps.forEach(function (n) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      const isActive = state.countMode === 'preset' && state.count === n;
+      chip.className = 'chip chip--small' + (isActive ? ' chip--active' : '');
+      chip.textContent = (n === poolMax) ? ((t('common.all') || 'Все') + ' ' + poolMax) : String(n);
+      chip.addEventListener('click', function () {
+        state.count = n;
+        state.countMode = 'preset';
+        customInput.value = '';
+        renderChips();
+        if (typeof api.onChange === 'function') api.onChange();
+      });
+      chipsWrap.appendChild(chip);
+    });
+  }
+  renderChips();
+
+  customInput.addEventListener('input', function () {
+    const v = parseInt(customInput.value, 10);
+    if (!isNaN(v) && v >= 1 && v <= poolMax) {
+      state.count = v;
+      state.countMode = 'custom';
+      renderChips();
+      if (typeof api.onChange === 'function') api.onChange();
+    }
   });
 
-  setMid();
+  api.setPoolMax = function (newMax) {
+    poolMax = Math.max(1, newMax);
+    customInput.max = String(poolMax);
+    if (state.count > poolMax) {
+      state.count = poolMax;
+      state.countMode = 'preset';
+      customInput.value = '';
+    }
+    renderChips();
+    if (typeof api.onChange === 'function') api.onChange();
+  };
+
+  wrap.appendChild(chipsWrap);
+  wrap.appendChild(customInput);
   return api;
 }
 
@@ -361,13 +399,93 @@ function poolMax(state, counts) {
   return counts.total;
 }
 
+/**
+ * Time-limit field — preset chips (Без / 5 / 10 / 20 / 40 / 60 min) + a
+ * custom minutes input. Matches the count-field UX.
+ */
+function renderTimeField(state) {
+  const wrap = document.createElement('div');
+  wrap.style.display = 'flex';
+  wrap.style.alignItems = 'center';
+  wrap.style.gap = '8px';
+  wrap.style.flexWrap = 'wrap';
+
+  const chipsWrap = document.createElement('div');
+  chipsWrap.style.display = 'flex';
+  chipsWrap.style.gap = '4px';
+  chipsWrap.style.flexWrap = 'wrap';
+
+  const customInput = document.createElement('input');
+  customInput.type = 'number';
+  customInput.min = '1';
+  customInput.max = '600';
+  customInput.placeholder = 'мин';
+  customInput.style.width = '70px';
+  customInput.style.padding = '5px 8px';
+  customInput.style.border = 'var(--border)';
+  customInput.style.borderRadius = 'var(--radius-sm)';
+  customInput.style.font = '400 13px Inter, sans-serif';
+  customInput.style.color = 'var(--ink)';
+  customInput.style.background = 'var(--paper)';
+
+  const presets = [
+    { value: 0,  label: 'Без' },
+    { value: 5,  label: '5'   },
+    { value: 10, label: '10'  },
+    { value: 20, label: '20'  },
+    { value: 40, label: '40'  },
+    { value: 60, label: '60'  },
+  ];
+
+  function renderChips() {
+    chipsWrap.innerHTML = '';
+    presets.forEach(function (p) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      const isActive = state.timeMode === 'preset' && state.timeLimitMin === p.value;
+      chip.className = 'chip chip--small' + (isActive ? ' chip--active' : '');
+      chip.textContent = p.label;
+      chip.addEventListener('click', function () {
+        state.timeLimitMin = p.value;
+        state.timeMode = 'preset';
+        customInput.value = '';
+        renderChips();
+      });
+      chipsWrap.appendChild(chip);
+    });
+  }
+  renderChips();
+
+  customInput.addEventListener('input', function () {
+    const v = parseInt(customInput.value, 10);
+    if (!isNaN(v) && v >= 1 && v <= 600) {
+      state.timeLimitMin = v;
+      state.timeMode = 'custom';
+      renderChips();
+    }
+  });
+
+  wrap.appendChild(chipsWrap);
+  wrap.appendChild(customInput);
+
+  return { el: wrap };
+}
+
+/**
+ * Options — three toggles per the spec:
+ *   - Случайный порядок вопросов  → shuffleQuestions  → handoff.shuffle
+ *   - Случайный порядок ответов   → shuffleAnswers    → handoff.shuffleAnswers
+ *                                                       → _s.settings.shuffleOptions
+ *   - Показывать правильный ответ → revealImmediately → handoff.revealImmediately
+ */
 function renderOptions(state) {
   const wrap = document.createElement('div');
   wrap.style.display = 'flex';
   wrap.style.flexDirection = 'column';
   wrap.style.gap = '8px';
-  wrap.appendChild(buildToggle('Случайный порядок вопросов', state, 'shuffle'));
-  wrap.appendChild(buildToggle('Показывать правильный ответ сразу', state, 'revealImmediately'));
+  wrap.appendChild(buildToggle('Случайный порядок вопросов', state, 'shuffleQuestions'));
+  wrap.appendChild(buildToggle('Случайный порядок ответов', state, 'shuffleAnswers'));
+  wrap.appendChild(buildToggle('Показывать правильный ответ', state, 'revealImmediately'));
   return wrap;
 }
 
@@ -406,12 +524,13 @@ function handleStart(testId, state, flaggedIds, weakIds) {
   const handoff = {
     mode: state.mode,
     count: state.count,
-    shuffle: state.shuffle,
+    shuffle: state.shuffleQuestions,
+    shuffleAnswers: state.shuffleAnswers,
     source: state.source,
     revealImmediately: state.revealImmediately,
-    timeLimitMin: (state.mode === 'timed' || state.mode === 'exam')
-      ? (state.timeLimitMin || 20)
-      : 0,
+    // Honour the explicit user choice rather than auto-forcing on mode —
+    // the user might pick "Тренировка" with a custom 5-minute cap, etc.
+    timeLimitMin: state.timeLimitMin,
     filterIds: filterIds,
   };
 
