@@ -5,12 +5,9 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete
 
+from api.config import ABANDONED_RETENTION_DAYS
 from api.database import SessionLocal
 from api.models.db.attempt import Attempt, AttemptStatus
-
-
-# Default retention: 90 days for abandoned attempts, unlimited for completed
-ABANDONED_RETENTION_DAYS = 90
 
 
 def cleanup_abandoned_attempts() -> int:

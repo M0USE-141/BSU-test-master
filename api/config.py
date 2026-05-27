@@ -54,6 +54,9 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = _parse_int_env("ACCESS_TOKEN_EXPIRE_MINUTES", 60)
 SESSION_EXTEND_MINUTES = _parse_int_env("SESSION_EXTEND_MINUTES", 60)
 
+# Cleanup
+ABANDONED_RETENTION_DAYS = _parse_int_env("ABANDONED_RETENTION_DAYS", 90)
+
 # Avatars
 AVATARS_DIR = Path(os.environ.get("AVATARS_DIR", Path.cwd() / "data" / "avatars"))
 AVATARS_DIR.mkdir(parents=True, exist_ok=True)

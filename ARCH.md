@@ -108,7 +108,7 @@ static/
   assets/              # logo, favicon
 
 alembic/
-  versions/            # 6 миграций (5 схемных + 1 индексы + user_prefs/notifications)
+  versions/            # 7 миграций (см. раздел «БД и миграции»)
   env.py               # конфиг alembic, читает DATABASE_URL из api/config.py
   alembic.ini
 
@@ -145,7 +145,7 @@ data/                  # runtime-данные (в .gitignore)
 - На startup: `init_db()`, `validate_secret_key()`, `schedule_events_cleanup()`.
 - На shutdown: `stop_event.set()` + `thread.join(timeout=5)` — graceful shutdown фонового потока.
 - CORS middleware: `allow_origins` из env `ALLOWED_ORIGINS` (CSV), методы — `["GET","POST","PATCH","DELETE","OPTIONS"]`, заголовки — `["Authorization","Content-Type"]`.
-- `GET /` → `FileResponse("static/index.html")`.
+- `GET /` → `HTMLResponse` с `index.html` + инжект `window.__APP_VERSION__` для cache-bust ES-модулей.
 - `app.mount("/static", StaticFiles(...))`.
 
 ### `api/config.py`
@@ -161,8 +161,10 @@ data/                  # runtime-данные (в .gitignore)
 | `ALGORITHM` | `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `60` |
 | `SESSION_EXTEND_MINUTES` | `60` (sliding expiration) |
+| `ABANDONED_RETENTION_DAYS` | `90` (дней до удаления abandoned-попыток) |
 | `AVATARS_DIR` | `data/avatars` |
 | `ALLOWED_ORIGINS` | CSV допустимых Origin для CORS (`http://localhost:8000,http://127.0.0.1:8000`) |
+| `APP_VERSION` | строка версии для cache-bust (дефолт = timestamp запуска; в prod — git SHA) |
 | `CLOUDCONVERT_API_KEY` | для конвертации WMF/EMF на Linux |
 
 Поддерживает PyInstaller-сборку через `_resource_path()` (`sys._MEIPASS`).
@@ -370,10 +372,11 @@ Refresh: `POST /api/auth/refresh` выдаёт новый токен и инва
 | 2 | `e7309514da6f` | Поля профиля (`display_name`, `avatar_path`, `avatar_size`) |
 | 3 | `6d6221c278d9` | `test_collections`, `test_shares` |
 | 4 | `a8b5c3d7e9f1` | `change_requests` |
-| 5 | `f911293af21c` | Индексы производительности (9 индексов) |
-| 6 | `b2c4d6e8f0a2` | `notifications`, user prefs (`theme`, `language`, `accent`) |
+| 5 | `25d2b9dc70be` | Поле `correct_option_index` в `attempt_answers` (server-side правильность) |
+| 6 | `f911293af21c` | Индексы производительности (9 индексов) |
+| 7 | `b2c4d6e8f0a2` | `notifications`, user prefs (`theme`, `language`, `accent`) |
 
-Схема также создаётся через `Base.metadata.create_all()` при старте. При наличии существующей БД: `alembic upgrade head`.
+**Важно:** `alembic upgrade head` обязателен при первом запуске и после каждого обновления кода. `Base.metadata.create_all()` создаёт только недостающие таблицы и не применяет ALTER-миграции (новые колонки, индексы).
 
 ## Core
 
@@ -422,7 +425,7 @@ Paper/ink стиль (учебная атмосфера, не утомляет �
 
 Mobile vs desktop — отдельные шаблоны, переключение по `isMobile()` (`matchMedia`). Один URL → разный рендер.
 
-Каждый модуль экрана загружается с cache-bust параметром `?v=${_V}` (где `_V = Date.now()`), что гарантирует свежий код после деплоя. Общие зависимости (`icons.js`, `router.js` и др.) догружаются через `window.__iconsFresh`-паттерн.
+Каждый модуль экрана загружается с cache-bust параметром `?v=${_V}` (где `_V = window.__APP_VERSION__`, а значение инжектируется сервером при `GET /`). В production устанавливается через `APP_VERSION` env (git SHA деплоя); в dev — timestamp запуска сервера. Общие зависимости (`icons.js`, `router.js` и др.) догружаются через `window.__iconsFresh`-паттерн.
 
 ### Структура JS (граф загрузки)
 
@@ -481,9 +484,10 @@ index.html
 
 | Проблема | Серьёзность |
 |---|---|
-| Нет автотестов (pytest) | Высокая |
-| `ABANDONED_RETENTION_DAYS = 90` захардкожено в `cleanup_service.py` | Низкая |
+| Нет автотестов (pytest) — только ручной smoke-чеклист | Высокая |
 | `api/models/attempts.py` — Pydantic-модели не используются роутами (legacy) | Низкая |
 | MathJax 3 грузится с CDN без SRI-хешей | Низкая |
-| `/api/tests/{id}/assets`, `/api/tests/{id}/questions` — auth не проверяется на GET | Низкая (known gap) |
+| `/api/tests/{id}/assets` — GET открыт без auth (доступ к ассетам публичных тестов) | Низкая (known gap) |
+| `/api/tests/{id}/questions` — GET отдаёт вопросы без auth (публичный контент) | Низкая (known gap) |
+| Тесты хранятся как JSON-файлы на диске — два источника правды с БД | Архитектурный долг |
 | `nul` файл в Windows при некоторых операциях — добавлен в `.gitignore` | Ничтожная |

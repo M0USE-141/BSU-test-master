@@ -3,9 +3,6 @@ from api.utils.file_utils import safe_asset_path, save_upload_file
 from api.utils.json_utils import (
     json_dump,
     json_load,
-    ndjson_dump,
-    read_json_file,
-    write_json_file,
     write_json_atomic,
 )
 from api.utils.paths import (
@@ -21,9 +18,6 @@ __all__ = [
     "save_upload_file",
     "json_dump",
     "json_load",
-    "ndjson_dump",
-    "read_json_file",
-    "write_json_file",
     "write_json_atomic",
     "assets_dir",
     "payload_path",

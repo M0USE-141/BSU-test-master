@@ -7,8 +7,8 @@
 ```bash
 uv sync                                     # установить зависимости
 uvicorn api:app --reload                    # dev-сервер → http://localhost:8000
-alembic upgrade head                        # применить миграции БД (обязательно при первом запуске)
-python scripts/migrate_test_ownership.py    # назначить владельцев существующим тестам
+alembic upgrade head                                                   # применить миграции БД (обязательно при первом запуске)
+python scripts/migrate_test_ownership.py --owner-username alice        # назначить владельцев существующим тестам
 python scripts/cli.py file.docx            # CLI-импорт теста из docx (без привязки к пользователю)
 ```
 
@@ -43,7 +43,7 @@ static/
     screens/        # desktop.css, mobile.css, stats.css, taking.css
   js/
     main.js         # entry-point: тема, локаль, router bootstrap
-    router.js       # hash-router + cache-bust _V + window.__iconsFresh preload
+    router.js       # hash-router + cache-bust (window.__APP_VERSION__ от сервера) + window.__iconsFresh preload
     state.js        # central store
     i18n.js         # t(), setLocale(), 3 локали
     icons.js        # ~40 inline SVG (icon(), iconEl()), window.__iconsFresh delegation
@@ -56,12 +56,13 @@ static/
       mobile/       # _shell, home, collection, taking, results, stats,
                     # profile, tests, notifications, settings, import
       auth/         # login, register
-    utils/          # device.js, theme.js, locale.js, format.js, render-blocks.js
+    utils/          # device.js, theme.js, locale.js, format.js, render-blocks.js,
+                    #             escape.js (escHtml), client-id.js (getClientId)
     components/     # переиспользуемые компоненты (Modal, Heatmap, Ring…)
   locales/          # ru.json, en.json, uz.json
   fonts/            # (опционально) self-hosted Inter + JetBrains Mono woff2
 design-plans/       # React/JSX прототипы на CDN-Babel (read-only, не компилируются)
-alembic/versions/   # 6 миграций
+alembic/versions/   # 7 миграций
 scripts/            # run_app.py, cli.py, migrate_test_ownership.py
 data/               # testmaster.db, tests/<uuid>/{test.json,assets/}, avatars/
 ```

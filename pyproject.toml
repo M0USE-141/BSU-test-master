@@ -1,7 +1,7 @@
 [project]
 name = "testmasterbsu"
 version = "0.1.0"
-description = "Add your description here"
+description = "FastAPI + SQLite SPA for creating and managing tests with collaborative change-request workflow"
 requires-python = ">=3.13"
 dependencies = [
     "python-docx>=1.2.0",
@@ -10,7 +10,6 @@ dependencies = [
     "fastapi>=0.115.0",
     "python-multipart>=0.0.9",
     "uvicorn>=0.30.0",
-    "pyinstaller>=6.18.0",
     "sqlalchemy>=2.0.0",
     "alembic>=1.13.0",
     "bcrypt>=4.1.0",
@@ -21,4 +20,9 @@ dependencies = [
     "requests>=2.32.0",
     "python-dotenv>=1.2.1",
     "cloudconvert>=2.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.18.0",
 ]
