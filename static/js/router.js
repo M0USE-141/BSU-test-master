@@ -109,6 +109,10 @@ const ROUTES = [
     module: () => import(`./screens/desktop/pre-test.js?v=${_V}`),
   },
   {
+    pattern: '/test/:id/edit',
+    module: () => import(`./screens/desktop/edit-collection.js?v=${_V}`),
+  },
+  {
     pattern: '/test/:id/take',
     module: () => isMobile()
       ? import(`./screens/mobile/taking.js?v=${_V}`)

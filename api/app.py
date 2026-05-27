@@ -58,6 +58,23 @@ def index() -> HTMLResponse:
     html = index_path.read_text(encoding="utf-8")
     version_script = f'<script>window.__APP_VERSION__ = "{APP_VERSION}";</script>'
     html = html.replace("</head>", f"  {version_script}\n</head>", 1)
+
+    # Cache-bust local stylesheets the same way main.js gets ?v=Date.now() —
+    # otherwise browsers (especially Electron preview) hold stale CSS across
+    # restarts and gap/typography changes don't take effect until a manual
+    # cache clear. We only stamp our own /static/css/* hrefs; external
+    # stylesheets (Google Fonts, etc.) are left alone.
+    import re
+    def _stamp(match: "re.Match[str]") -> str:
+        href = match.group(1)
+        sep = "&" if "?" in href else "?"
+        return f'href="{href}{sep}v={APP_VERSION}"'
+
+    html = re.sub(
+        r'href="(/static/css/[^"]+)"',
+        _stamp,
+        html,
+    )
     return HTMLResponse(content=html)
 
 

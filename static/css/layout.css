@@ -325,31 +325,12 @@
 }
 
 /* ── Tabs ───────────────────────────────────────────────── */
-.tabs {
-  display: flex;
-  gap: 0;
-  border-bottom: 1px solid var(--ink-soft);
-  flex-shrink: 0;
-}
+/* Canonical .tabs / .tabs--line / .tabs--pill live in components.css
+   (audit 1.7). The older block here is intentionally removed — the
+   gap:0 rule overrode .tabs--line and squished the tabs together. */
 
-.tabs__item {
-  padding: 10px 16px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ink-fade);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  white-space: nowrap;
-  transition:
-    color var(--transition-fast),
-    border-color var(--transition-fast);
-}
-
-.tabs__item:hover {
-  color: var(--ink);
-}
-
+/* Legacy single-class state used by older screens — kept until those
+   screens are migrated to .tabs__item.is-active. */
 .tabs__item--active {
   color: var(--accent);
   border-bottom-color: var(--accent);
