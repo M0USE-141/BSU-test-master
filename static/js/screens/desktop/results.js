@@ -130,24 +130,70 @@ function buildResultsScreen(snap) {
   const reviewBtn = document.createElement('button');
   reviewBtn.type = 'button';
   reviewBtn.className = 'btn btn--small btn--ghost';
-  reviewBtn.textContent = t('results.review') || 'Review answers';
-  reviewBtn.addEventListener('click', () =>
-    navigate(`/test/${testId}/take?review=true&attemptId=${attemptId}`));
+  reviewBtn.textContent = t('results.review') || 'Разобрать ответы';
+  reviewBtn.addEventListener('click', () => {
+    // First wrong (or first question) → per-question drilldown.
+    const firstWrongIdx = (() => {
+      for (let i = 0; i < questions.length; i++) {
+        const qid = questions[i].id;
+        const ans = answersLocal[qid] || (answers.find(a => a.questionId === qid) || {});
+        if (ans.isCorrect === false) return i;
+      }
+      return 0;
+    })();
+    navigate(`/test/${testId}/results/${attemptId}/q/${firstWrongIdx + 1}`);
+  });
 
   const retryBtn = document.createElement('button');
   retryBtn.type = 'button';
   retryBtn.className = 'btn btn--small btn--ghost';
   retryBtn.appendChild(iconEl('redo', 14));
-  retryBtn.appendChild(document.createTextNode(` ${t('results.try_again') || 'Try again'}`));
-  retryBtn.addEventListener('click', () => navigate(`/test/${testId}/take`));
+  retryBtn.appendChild(document.createTextNode(` ${t('results.try_again') || 'Пройти снова'}`));
+  retryBtn.addEventListener('click', () => navigate(`/test/${testId}/start`));
+
+  // ── "Только ошибки · N" — launch a mistake-review attempt ──
+  // Counts wrong answers from the snap and seeds the pre-test handoff
+  // so taking.js's pretest-handoff branch (phase 4) starts an attempt
+  // pre-filtered to those question ids.
+  const wrongIds = [];
+  if (answers && answers.length) {
+    for (const a of answers) if (a.isCorrect === false && !a.isSkipped) wrongIds.push(a.questionId);
+  } else {
+    for (const [qId, ans] of Object.entries(answersLocal)) {
+      if (ans && ans.isCorrect === false) wrongIds.push(Number(qId));
+    }
+  }
+  const mistakeBtn = document.createElement('button');
+  mistakeBtn.type = 'button';
+  mistakeBtn.className = 'btn btn--small btn--primary';
+  mistakeBtn.textContent = `${t('results.only_mistakes') || 'Только ошибки'} · ${wrongIds.length}`;
+  if (wrongIds.length === 0) {
+    mistakeBtn.disabled = true;
+    mistakeBtn.title = t('results.no_mistakes') || 'Все ответы верные';
+  }
+  mistakeBtn.addEventListener('click', () => {
+    try {
+      sessionStorage.setItem(`pretest:${testId}`, JSON.stringify({
+        mode: 'mistake_review',
+        count: wrongIds.length,
+        shuffle: false,
+        source: 'mistake_review',
+        revealImmediately: true,    // mistake review = anki-style instant feedback
+        timeLimitMin: 0,
+        filterIds: wrongIds,
+        mistakeSourceAttemptId: attemptId,
+      }));
+    } catch {}
+    navigate(`/test/${testId}/take`);
+  });
 
   const doneBtn = document.createElement('button');
   doneBtn.type = 'button';
-  doneBtn.className = 'btn btn--small btn--primary';
-  doneBtn.textContent = t('results.done') || 'Done';
+  doneBtn.className = 'btn btn--small btn--ghost';
+  doneBtn.textContent = t('results.done') || 'Готово';
   doneBtn.addEventListener('click', () => navigate('/home'));
 
-  topActions.append(reviewBtn, retryBtn, doneBtn);
+  topActions.append(reviewBtn, retryBtn, mistakeBtn, doneBtn);
   topbar.append(topLeft, topActions);
   rs.appendChild(topbar);
 
@@ -263,10 +309,10 @@ function buildResultsScreen(snap) {
       }</span>`;
     cell.title = `Q${i + 1}`;
 
-    // Click → jump to this question in review mode
+    // Click → drill into per-question review (Phase 4).
     if (testId && attemptId) {
       cell.addEventListener('click', () =>
-        navigate(`/test/${testId}/take?review=true&attemptId=${attemptId}&startIdx=${i}`));
+        navigate(`/test/${testId}/results/${attemptId}/q/${i + 1}`));
     }
     qgrid.appendChild(cell);
   }

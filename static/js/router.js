@@ -126,6 +126,10 @@ const ROUTES = [
       : import(`./screens/desktop/results.js?v=${_V}`),
   },
   {
+    pattern: '/test/:id/results/:attemptId/q/:n',
+    module: () => import(`./screens/desktop/per-question.js?v=${_V}`),
+  },
+  {
     pattern: '/profile',
     module: () => isMobile()
       ? import(`./screens/mobile/profile.js?v=${_V}`)

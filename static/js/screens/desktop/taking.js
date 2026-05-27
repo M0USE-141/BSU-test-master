@@ -908,6 +908,47 @@ export default async function render(root, params = {}) {
     }
   }
 
+  // ── Pre-test handoff: when the user launched from the new pre-test
+  //    screen (/test/:id/start) we have settings + an optional filter
+  //    id-set sitting in sessionStorage under "pretest:<testId>".
+  //    Consume it once → skip the in-screen pretest modal and go
+  //    straight into the attempt. Falls back to the modal for direct
+  //    /take deep-links (where the storage key isn't set).
+  try {
+    const handoffKey = `pretest:${params.id}`;
+    const handoffRaw = sessionStorage.getItem(handoffKey);
+    if (handoffRaw) {
+      sessionStorage.removeItem(handoffKey); // single-use
+      const hand = JSON.parse(handoffRaw);
+      // Apply settings.
+      _s.settings.count = Math.max(1, parseInt(hand.count, 10) || _s.settings.count);
+      _s.settings.order = hand.shuffle ? 'random' : 'sequential';
+      _s.settings.timeLimitMin = parseInt(hand.timeLimitMin, 10) || 0;
+      _s.settings.showAnswers = !!hand.revealImmediately;
+      _s.settings.allowSkip = true;
+      _s.settings.mode = hand.mode || 'training';
+      _s.settings.source = hand.source || 'all';
+      // Filter the question pool if a source produced an id list.
+      if (Array.isArray(hand.filterIds) && hand.filterIds.length > 0) {
+        const allow = new Set(hand.filterIds.map(Number));
+        const filtered = _s.allQuestions.filter(q => allow.has(Number(q.id)));
+        if (filtered.length > 0) {
+          _s.allQuestions = filtered;
+          // Re-clamp count to filtered pool size.
+          _s.settings.count = Math.min(_s.settings.count, filtered.length);
+        }
+      }
+      // Stash mistake-review source attempt for the topbar variant + later API metadata.
+      if (hand.mode === 'mistake_review' && hand.mistakeSourceAttemptId) {
+        _s.mistakeSourceAttemptId = hand.mistakeSourceAttemptId;
+      }
+      await beginAttempt();
+      return;
+    }
+  } catch (e) {
+    console.warn('[taking] pretest handoff failed, falling back to modal:', e);
+  }
+
   _s.phase = 'pretest';
   _mount();
 }
