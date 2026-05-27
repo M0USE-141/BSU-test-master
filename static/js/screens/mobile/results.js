@@ -8,20 +8,8 @@ import { getAttempt } from '../../api/attempts.js';
 import { navigate } from '../../router.js';
 import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
-
-// ── Utilities ─────────────────────────────────────────────────
-
-function esc(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function formatDuration(ms) {
-  if (!ms) return '—';
-  const totalSec = Math.floor(ms / 1000);
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
-}
+import { escHtml as esc } from '../../utils/escape.js';
+import { formatDuration } from '../../utils/format.js';
 
 // ── SVG Score Ring ────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 """Service layer for test operations."""
-from api.utils import json_load, payload_path, read_json_file, write_json_atomic
+from api.utils import json_load, payload_path, write_json_atomic
 
 
 def load_test_payload(test_id: str) -> dict[str, object]:

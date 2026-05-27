@@ -136,20 +136,3 @@ def invalidate_session(db: DbSession, token_jti: str) -> None:
         db.commit()
 
 
-def invalidate_all_user_sessions(db: DbSession, user_id: int) -> int:
-    """Invalidate all sessions for a user."""
-    result = (
-        db.query(Session)
-        .filter(Session.user_id == user_id, Session.is_active == True)  # noqa: E712
-        .update({Session.is_active: False})
-    )
-    db.commit()
-    return result
-
-
-def cleanup_expired_sessions(db: DbSession) -> int:
-    """Remove expired sessions from database."""
-    now = datetime.now(timezone.utc)
-    result = db.query(Session).filter(Session.expires_at < now).delete()
-    db.commit()
-    return result

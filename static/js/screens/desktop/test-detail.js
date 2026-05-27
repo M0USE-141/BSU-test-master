@@ -8,10 +8,7 @@ import { navigate } from '../../router.js';
 import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
 import { getState } from '../../state.js';
-
-function esc(s) {
-  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+import { escHtml as esc } from '../../utils/escape.js';
 
 function accessChip(level) {
   const map = { public: 'public', shared: 'shared', private: 'private' };

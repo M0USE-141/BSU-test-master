@@ -73,12 +73,8 @@ export function buildTopBar({ title, back = false, backHref = '#/home', actions 
   return bar;
 }
 
-/** Escape HTML to prevent XSS. */
-export function esc(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+/** Escape HTML to prevent XSS. Delegates to shared utils/escape.js. */
+export { escHtml as esc } from '../../utils/escape.js';
 
 /** Format ISO date to short string. */
 export function fmtDate(iso) {

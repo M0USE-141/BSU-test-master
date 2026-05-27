@@ -10,6 +10,9 @@ import { navigate } from '../../router.js';
 import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
 import { renderContent, typesetMath } from '../../utils/render-blocks.js';
+import { escHtml as esc } from '../../utils/escape.js';
+import { getClientId } from '../../utils/client-id.js';
+import { formatSeconds as formatTime } from '../../utils/format.js';
 
 // ── Module state ──────────────────────────────────────────────
 /** @type {HTMLElement|null} */
@@ -38,26 +41,6 @@ const _s = {
   timerHandle:  /** @type {any} */ (null),
   advanceTimer: /** @type {any} */ (null),
 };
-
-// ── Utilities ─────────────────────────────────────────────────
-
-function esc(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function formatTime(seconds) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-function getClientId() {
-  let id = localStorage.getItem('client_id');
-  if (!id) { id = crypto.randomUUID(); localStorage.setItem('client_id', id); }
-  return id;
-}
 
 // ── Block renderer (shared utility with MathJax support) ─────
 

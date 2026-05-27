@@ -12,6 +12,8 @@ import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
 import { openSearchPalette } from '../../search-palette.js';
 import { getResolvedTheme, setTheme } from '../../utils/theme.js';
+import { escHtml } from '../../utils/escape.js';
+import { formatSeconds, formatDuration } from '../../utils/format.js';
 
 // ─── Module-level screen state ────────────────────────────────
 /** @type {HTMLElement|null} */
@@ -1715,21 +1717,9 @@ function _buildShareRow(username, role, onRemove) {
 }
 
 // ─── Utilities ────────────────────────────────────────────────
-
-function escHtml(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function formatDuration(seconds) {
-  if (!seconds) return '—';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+// escHtml and formatSeconds imported at top.
+// home.js passes seconds (not ms) to formatDuration → alias to formatSeconds.
+const formatDuration = formatSeconds;
 
 function formatRelative(dateStr) {
   if (!dateStr) return '—';
