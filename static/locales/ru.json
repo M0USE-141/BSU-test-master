@@ -336,5 +336,15 @@
   "pretest.opt.reveal": "Показывать правильный ответ сразу",
   "pretest.estimate": "Ориентировочно —",
   "pretest.start": "Начать тест",
-  "pretest.empty_source": "Нет доступных вопросов в выбранном источнике"
+  "pretest.empty_source": "Нет доступных вопросов в выбранном источнике",
+
+  "discover.title": "Public-каталог",
+  "discover.subtitle": "Откройте тесты, которыми поделились другие.",
+  "discover.sort.popular": "Популярные",
+  "discover.sort.new": "Новые",
+  "discover.sort.best": "Лучшие",
+  "discover.empty": "Пока нет публичных тестов",
+  "discover.attempts_n": "{{n}} попыток",
+  "discover.avg_score": "средний {{n}}%",
+  "discover.by_owner": "автор @{{u}}"
 }

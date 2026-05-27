@@ -4,7 +4,12 @@
 import { apiFetch } from './_fetch.js';
 
 /**
- * @param {{ filter?: string, search?: string, page?: number, limit?: number }} [params]
+ * @param {{ filter?: string, search?: string, page?: number, limit?: number,
+ *           with_stats?: boolean, sort?: 'new'|'popular'|'best' }} [params]
+ *
+ * When `with_stats` is true (or `sort` is set), each returned test
+ * carries `attempts_count` and `avg_score` so the caller can render
+ * discover-style cards or sort client-side after the fact.
  */
 export async function listTests(params) {
   const qs = params ? '?' + new URLSearchParams(

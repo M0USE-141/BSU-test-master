@@ -9,6 +9,7 @@ import { navigate } from '../../router.js';
 import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
 import { escHtml as esc } from '../../utils/escape.js';
+import { mountAppShell } from '../../components/app-shell.js';
 
 function fmtDate(iso) {
   if (!iso) return '';
@@ -17,7 +18,8 @@ function fmtDate(iso) {
 }
 
 export default async function render(root) {
-  // Skeleton
+  // Render inside the AppShell main slot for a consistent topbar+rail.
+  root = mountAppShell(root);
   root.innerHTML = `
     <div class="screen" style="align-items:center;justify-content:center;">
       <div class="skeleton" style="width:160px;height:16px;border-radius:8px;"></div>

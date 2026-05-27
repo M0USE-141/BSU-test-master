@@ -10,6 +10,7 @@ import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
 import { getState } from '../../state.js';
 import { escHtml as esc } from '../../utils/escape.js';
+import { mountAppShell } from '../../components/app-shell.js';
 
 function fmtAgo(iso) {
   if (!iso) return '';
@@ -31,7 +32,10 @@ let _status = 'pending'; // 'pending' | 'approved' | 'rejected'
 let _selectedIdx = 0;
 
 export default async function render(root, params = {}) {
-  _root = root;
+  _root = mountAppShell(root);
+  // Shadow the parameter so any local refs below render into the shell
+  // main slot too (the skeleton, etc.).
+  root = _root;
   _testId = params.testId;
   if (!_testId) { navigate('/home'); return; }
 

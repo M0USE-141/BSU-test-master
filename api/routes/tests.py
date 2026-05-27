@@ -12,9 +12,11 @@ from api.config import DATA_DIR
 from api.database import get_db
 from api.dependencies.auth import get_current_user, get_optional_user
 from api.models import TestCreate, TestUpdate
+from api.models.db.attempt import Attempt, AttemptStatus
 from api.models.db.user import User
 from api.models.db.test_collection import AccessLevel, TestCollection
 from api.services import access_service
+from sqlalchemy import func
 from api.utils import assets_dir, json_load, payload_path, test_dir, write_json_atomic
 from api.utils.validation import TEST_ID_PATTERN
 from api.services.test_service import load_test_payload, save_test_payload
@@ -31,6 +33,8 @@ def list_tests(
     filter_type: str | None = Query(None, alias="filter"),
     limit: int | None = Query(None, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    with_stats: bool = Query(False, alias="with_stats"),
+    sort: str | None = Query(None, pattern="^(new|popular|best)$"),
 ) -> dict[str, object]:
     """List all tests accessible to the current user."""
     # Collect test directories from disk
@@ -98,6 +102,55 @@ def list_tests(
                 continue
 
         tests.append(metadata)
+
+    # Optional per-test attempt aggregates — drives Discover sort by
+    # popular / best. Single bulk query keyed by test_id avoids N+1.
+    if with_stats or sort in {"popular", "best"}:
+        # Compute COUNT(completed) and AVG(percent_correct) per test_id.
+        # SQLite/SA cast keeps avg as float; round to int for display.
+        accessed_ids = [t["id"] for t in tests]
+        if accessed_ids:
+            stats_rows = db.execute(
+                select(
+                    Attempt.test_id,
+                    func.count(Attempt.id).label("attempts_count"),
+                    func.avg(
+                        (Attempt.correct_count * 100.0) /
+                        func.nullif(Attempt.question_count, 0)
+                    ).label("avg_score"),
+                )
+                .where(
+                    Attempt.test_id.in_(accessed_ids),
+                    Attempt.status == AttemptStatus.COMPLETED.value,
+                )
+                .group_by(Attempt.test_id)
+            ).all()
+            stats_map = {
+                r.test_id: {
+                    "attempts_count": int(r.attempts_count or 0),
+                    "avg_score": round(float(r.avg_score)) if r.avg_score is not None else None,
+                }
+                for r in stats_rows
+            }
+        else:
+            stats_map = {}
+        for t in tests:
+            s = stats_map.get(t["id"], {"attempts_count": 0, "avg_score": None})
+            t["attempts_count"] = s["attempts_count"]
+            t["avg_score"] = s["avg_score"]
+
+    # Sort. Default order is whatever the disk listing returned (mtime-ish).
+    if sort == "popular":
+        tests.sort(key=lambda t: t.get("attempts_count", 0), reverse=True)
+    elif sort == "best":
+        # Tests with no completed attempts sink to the bottom rather than
+        # being treated as zero.
+        tests.sort(key=lambda t: (t.get("avg_score") is None, -(t.get("avg_score") or 0)))
+    elif sort == "new":
+        # Sort newest first — assumes test directories carry creation order.
+        # No-op here since list_tests already iterates sorted dirs; could
+        # be extended later with a created_at column on TestCollection.
+        pass
 
     # Apply pagination
     total = len(tests)

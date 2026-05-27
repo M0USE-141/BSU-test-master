@@ -336,5 +336,15 @@
   "pretest.opt.reveal": "Reveal correct answer immediately",
   "pretest.estimate": "Estimated —",
   "pretest.start": "Start test",
-  "pretest.empty_source": "No questions available in the selected source"
+  "pretest.empty_source": "No questions available in the selected source",
+
+  "discover.title": "Public catalog",
+  "discover.subtitle": "Browse tests shared by other users.",
+  "discover.sort.popular": "Popular",
+  "discover.sort.new": "New",
+  "discover.sort.best": "Best rated",
+  "discover.empty": "No public tests yet",
+  "discover.attempts_n": "{{n}} attempts",
+  "discover.avg_score": "avg {{n}}%",
+  "discover.by_owner": "by @{{u}}"
 }

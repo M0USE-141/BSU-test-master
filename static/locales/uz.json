@@ -336,5 +336,15 @@
   "pretest.opt.reveal": "Toʻgʻri javobni darhol koʻrsatish",
   "pretest.estimate": "Taxminan —",
   "pretest.start": "Boshlash",
-  "pretest.empty_source": "Tanlangan manbada savollar yoʻq"
+  "pretest.empty_source": "Tanlangan manbada savollar yoʻq",
+
+  "discover.title": "Public katalog",
+  "discover.subtitle": "Boshqa foydalanuvchilar ulashgan testlar.",
+  "discover.sort.popular": "Mashhur",
+  "discover.sort.new": "Yangi",
+  "discover.sort.best": "Eng yaxshi",
+  "discover.empty": "Hozircha ochiq testlar yoʻq",
+  "discover.attempts_n": "{{n}} ta urinish",
+  "discover.avg_score": "oʻrtacha {{n}}%",
+  "discover.by_owner": "muallif @{{u}}"
 }

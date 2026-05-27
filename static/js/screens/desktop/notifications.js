@@ -5,13 +5,14 @@
 import { t } from '../../utils/locale.js';
 import { icon, iconEl } from '../../icons.js';
 import { escHtml as esc } from '../../utils/escape.js';
+import { mountAppShell } from '../../components/app-shell.js';
 
 const TABS = ['all', 'change_requests', 'results'];
 
 let _tab = 'all';
 
 export default async function render(root) {
-  _mount(root);
+  _mount(mountAppShell(root));
 }
 
 function _mount(root) {

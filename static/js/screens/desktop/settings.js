@@ -11,6 +11,7 @@ import { navigate } from '../../router.js';
 import { icon, iconEl } from '../../icons.js';
 import { t } from '../../utils/locale.js';
 import { escHtml as esc } from '../../utils/escape.js';
+import { mountAppShell } from '../../components/app-shell.js';
 
 const SECTIONS = ['account', 'appearance', 'language'];
 
@@ -29,7 +30,11 @@ let _section = 'appearance';
 let _profile = null;
 
 export default async function render(root, params = {}) {
-  _root = root;
+  // Render inside the AppShell main slot so the topbar + rail stay
+  // consistent. The screen's own back-button + title strip is kept
+  // for now (slightly redundant but lets us land this without a full
+  // redesign).
+  _root = mountAppShell(root);
   if (params.section && SECTIONS.includes(params.section)) {
     _section = params.section;
   }
