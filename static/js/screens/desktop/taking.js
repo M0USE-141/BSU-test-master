@@ -337,7 +337,16 @@ async function beginAttempt() {
       if (_s.timeLeft <= 60) timerText?.closest('.tk-topbar__timer')?.classList.add('tk-topbar__timer--warn');
       if (_s.timeLeft === 0) {
         clearInterval(_s.timerHandle); _s.timerHandle = null;
-        finishUp(true);
+        // Mode-aware expiry:
+        //   - exam:     hard auto-submit (existing behaviour)
+        //   - timed:    soft cap — keep the screen open in error state,
+        //               user must click "Сдать" manually
+        //   - training: no timer set at all, this branch unreachable
+        if (_s.settings.mode === 'exam') {
+          finishUp(true);
+        }
+        // For 'timed' we leave the user in place — taking screen keeps
+        // working; the topbar timer just stays at 00:00 in warn state.
       }
     }, 1000);
   }
@@ -417,6 +426,10 @@ function buildTopBar() {
 
   const currentQ = _s.questions[_s.currentIdx];
   const isFlagged = currentQ && _s.flagged.has(currentQ.id);
+
+  // Exam mode: flags are not allowed. Skip the button entirely so users
+  // can't even see the affordance.
+  const examMode = _s.settings.mode === 'exam';
   const flagBtn = document.createElement('button');
   flagBtn.type = 'button';
   flagBtn.className = 'btn btn--small btn--ghost';
@@ -431,7 +444,7 @@ function buildTopBar() {
     else _s.flagged.add(currentQ.id);
     _mount();
   });
-  right.appendChild(flagBtn);
+  if (!examMode) right.appendChild(flagBtn);
 
   bar.append(left, progress, right);
   return bar;
@@ -525,6 +538,9 @@ function buildRail() {
   const pad = document.createElement('div');
   pad.className = 'tk-pad';
 
+  // Exam mode locks navigation forward-only — pad cells become read-only
+  // status indicators rather than jump-to controls.
+  const examMode = _s.settings.mode === 'exam';
   for (let i = 0; i < _s.questions.length; i++) {
     const q = _s.questions[i];
     const cell = document.createElement('button');
@@ -534,7 +550,13 @@ function buildRail() {
     if (i === _s.currentIdx) cell.classList.add('tk-pad__cell--current');
     else if (_s.answers[q.id] !== undefined) cell.classList.add('tk-pad__cell--done');
     if (_s.flagged.has(q.id) && i !== _s.currentIdx) cell.classList.add('tk-pad__cell--flagged');
-    cell.addEventListener('click', () => { _s.currentIdx = i; _mount(); });
+    if (examMode) {
+      cell.style.cursor = 'default';
+      cell.style.opacity = i <= _s.currentIdx ? '1' : '0.55';
+      cell.title = 'В режиме экзамена нельзя возвращаться к предыдущим вопросам';
+    } else {
+      cell.addEventListener('click', () => { _s.currentIdx = i; _mount(); });
+    }
     pad.appendChild(cell);
   }
 
@@ -565,12 +587,20 @@ function buildBottomBar() {
   const bar = document.createElement('div');
   bar.className = 'tk__bottombar';
 
+  // Exam mode: no looking back.
+  const examMode = _s.settings.mode === 'exam';
   const prevBtn = document.createElement('button');
   prevBtn.type = 'button';
   prevBtn.className = 'btn btn--ghost';
-  prevBtn.disabled = _s.currentIdx === 0;
+  prevBtn.disabled = _s.currentIdx === 0 || examMode;
+  if (examMode) {
+    prevBtn.title = 'В режиме экзамена нельзя возвращаться к предыдущим вопросам';
+  }
   prevBtn.append(iconEl('chevL', 14), document.createTextNode(` ${t('taking.previous') || 'Previous'}`));
-  prevBtn.addEventListener('click', () => { if (_s.currentIdx > 0) { _s.currentIdx--; _mount(); } });
+  prevBtn.addEventListener('click', () => {
+    if (examMode) return;
+    if (_s.currentIdx > 0) { _s.currentIdx--; _mount(); }
+  });
 
   const isLast = _s.currentIdx >= _s.questions.length - 1;
   const nextBtn = document.createElement('button');

@@ -128,8 +128,41 @@ export default async function render(root, params) {
   title.textContent = t('pretest.title') || 'Запустить тест';
   card.appendChild(title);
 
-  // ── Mode ──
-  card.appendChild(section('pretest.mode', 'Режим', renderModeChips(state)));
+  // ── Mode + description ──
+  // Description text updates when the mode changes. We pass refreshFromMode
+  // down to the chip handler so it can re-paint dependent fields.
+  let timeCtl, optionsCtl;
+  function refreshFromMode() {
+    // Update mode description.
+    modeDesc.textContent = MODE_DESC[state.mode] || '';
+    // Time limit: timed/exam disallow 0, enforce a minimum and a cap.
+    if (state.mode === 'timed' || state.mode === 'exam') {
+      // Promote `0` to a sensible default snapped to a preset chip so
+      // the UI looks clean (count·0.7 → nearest of 5/10/20/40/60).
+      if (state.timeLimitMin === 0) {
+        const target = Math.max(5, Math.round(state.count * 0.7));
+        const presets = [5, 10, 20, 40, 60];
+        state.timeLimitMin = presets.reduce(function (best, p) {
+          return Math.abs(p - target) < Math.abs(best - target) ? p : best;
+        }, presets[0]);
+        state.timeMode = 'preset';
+      }
+    }
+    if (timeCtl)    timeCtl.applyMode(state.mode);
+    if (optionsCtl) optionsCtl.applyMode(state.mode);
+    refreshHint();
+  }
+  const modeSection = section('pretest.mode', 'Режим', renderModeChips(state, function () {
+    refreshFromMode();
+  }));
+  // Short description (prototype copy) — slotted under the chips.
+  const modeDesc = document.createElement('div');
+  modeDesc.style.fontSize = 'var(--fs-sm)';
+  modeDesc.style.color = 'var(--ink-secondary)';
+  modeDesc.style.marginTop = '8px';
+  modeDesc.style.lineHeight = '1.5';
+  modeSection.appendChild(modeDesc);
+  card.appendChild(modeSection);
 
   // ── Count (preset chips + custom number input) ──
   const countCtl = renderCountField(state, totalQs);
@@ -143,11 +176,16 @@ export default async function render(root, params) {
   card.appendChild(section('pretest.source', 'Источник вопросов', sourceCtl));
 
   // ── Time limit (preset chips + custom input) ──
-  const timeCtl = renderTimeField(state);
+  timeCtl = renderTimeField(state);
   card.appendChild(section('pretest.time_limit', 'Ограничение времени', timeCtl.el));
 
   // ── Options (3 toggles) ──
-  card.appendChild(section('pretest.options', 'Опции', renderOptions(state)));
+  optionsCtl = renderOptions(state);
+  card.appendChild(section('pretest.options', 'Опции', optionsCtl.el));
+
+  // (Initial paint of mode-dependent controls runs after `hint` /
+  // `refreshHint` are defined below — refreshFromMode() reaches into
+  // both via closure and would otherwise hit the TDZ.)
 
   // ── Estimate hint ──
   const hint = document.createElement('div');
@@ -170,6 +208,9 @@ export default async function render(root, params) {
   refreshHint();
   countCtl.onChange = refreshHint;
   card.appendChild(hint);
+
+  // Now safe to paint mode-dependent controls (hint + refreshHint are live).
+  refreshFromMode();
 
   // ── Action buttons ──
   const btnRow = document.createElement('div');
@@ -231,7 +272,13 @@ function section(key, fallback, body) {
   return wrap;
 }
 
-function renderModeChips(state) {
+const MODE_DESC = {
+  training: 'Без ограничения времени, можно ставить флаги и возвращаться.',
+  timed:    'С таймером — мягкое ограничение, не сдаёт автоматически.',
+  exam:     'Жёсткий таймер, без возврата к ответам, без флагов.',
+};
+
+function renderModeChips(state, onChange) {
   const row = document.createElement('div');
   row.style.display = 'flex';
   row.style.gap = '6px';
@@ -251,15 +298,15 @@ function renderModeChips(state) {
       row.querySelectorAll('.chip').forEach(function (c) {
         c.classList.toggle('chip--active', c.dataset.mode === m.key);
       });
-      // Mode-driven defaults: 'exam' enforces no reveal + shuffled;
-      // 'timed' bumps the timer if none was chosen.
+      // Exam locks reveal-immediately off and shuffle-questions on; the
+      // option toggles for those are then visually disabled by
+      // optionsCtl.applyMode(). Timed only forces a non-zero timer
+      // (handled in refreshFromMode for symmetry across callers).
       if (m.key === 'exam') {
         state.revealImmediately = false;
         state.shuffleQuestions = true;
       }
-      if (m.key === 'timed' && state.timeLimitMin === 0) {
-        state.timeLimitMin = 20;
-      }
+      onChange && onChange();
     });
     row.appendChild(chip);
   });
@@ -437,6 +484,12 @@ function renderTimeField(state) {
     { value: 60, label: '60'  },
   ];
 
+  // applyMode controls the "Без" disable + custom-input cap. Recomputed
+  // every time the mode changes; rebuilds the chip row so styling stays
+  // in sync.
+  let zeroDisabled = false;
+  let customCapMin = 600;
+
   function renderChips() {
     chipsWrap.innerHTML = '';
     presets.forEach(function (p) {
@@ -445,7 +498,15 @@ function renderTimeField(state) {
       const isActive = state.timeMode === 'preset' && state.timeLimitMin === p.value;
       chip.className = 'chip chip--small' + (isActive ? ' chip--active' : '');
       chip.textContent = p.label;
+      // Disable "Без" (value=0) in timed/exam modes.
+      if (p.value === 0 && zeroDisabled) {
+        chip.disabled = true;
+        chip.style.opacity = '0.4';
+        chip.style.cursor = 'not-allowed';
+        chip.title = 'Этот режим требует ограничения времени';
+      }
       chip.addEventListener('click', function () {
+        if (chip.disabled) return;
         state.timeLimitMin = p.value;
         state.timeMode = 'preset';
         customInput.value = '';
@@ -458,7 +519,7 @@ function renderTimeField(state) {
 
   customInput.addEventListener('input', function () {
     const v = parseInt(customInput.value, 10);
-    if (!isNaN(v) && v >= 1 && v <= 600) {
+    if (!isNaN(v) && v >= 1 && v <= customCapMin) {
       state.timeLimitMin = v;
       state.timeMode = 'custom';
       renderChips();
@@ -468,7 +529,26 @@ function renderTimeField(state) {
   wrap.appendChild(chipsWrap);
   wrap.appendChild(customInput);
 
-  return { el: wrap };
+  return {
+    el: wrap,
+    /** Tighten/loosen the picker based on the active mode. */
+    applyMode: function (mode) {
+      zeroDisabled = (mode === 'timed' || mode === 'exam');
+      // Cap custom input. Exam is the strictest — never more than ~2× the
+      // question pace (count * 1 minute should be more than enough). Timed
+      // is laxer — count * 2. Training is unrestricted (600).
+      if (mode === 'exam')        customCapMin = Math.max(5, Math.min(180, state.count * 1));
+      else if (mode === 'timed')  customCapMin = Math.max(10, Math.min(300, state.count * 2));
+      else                        customCapMin = 600;
+      customInput.max = String(customCapMin);
+      // If the current value violates the new cap, clamp it.
+      if (state.timeLimitMin > customCapMin) {
+        state.timeLimitMin = customCapMin;
+        if (state.timeMode === 'custom') customInput.value = String(customCapMin);
+      }
+      renderChips();
+    },
+  };
 }
 
 /**
@@ -483,10 +563,30 @@ function renderOptions(state) {
   wrap.style.display = 'flex';
   wrap.style.flexDirection = 'column';
   wrap.style.gap = '8px';
-  wrap.appendChild(buildToggle('Случайный порядок вопросов', state, 'shuffleQuestions'));
-  wrap.appendChild(buildToggle('Случайный порядок ответов', state, 'shuffleAnswers'));
-  wrap.appendChild(buildToggle('Показывать правильный ответ', state, 'revealImmediately'));
-  return wrap;
+
+  const shuffleQ = buildToggle('Случайный порядок вопросов', state, 'shuffleQuestions');
+  const shuffleA = buildToggle('Случайный порядок ответов', state, 'shuffleAnswers');
+  const reveal   = buildToggle('Показывать правильный ответ', state, 'revealImmediately');
+  wrap.appendChild(shuffleQ.el);
+  wrap.appendChild(shuffleA.el);
+  wrap.appendChild(reveal.el);
+
+  return {
+    el: wrap,
+    /** Exam locks shuffle-questions ON and reveal-immediately OFF. */
+    applyMode: function (mode) {
+      const isExam = mode === 'exam';
+      // Shuffle questions: forced on in exam, user-choice otherwise.
+      if (isExam) state.shuffleQuestions = true;
+      shuffleQ.setDisabled(isExam, isExam ? 'В режиме экзамена вопросы всегда перемешиваются' : '');
+      shuffleQ.setChecked(state.shuffleQuestions);
+      // Reveal correct answer: forced off in exam.
+      if (isExam) state.revealImmediately = false;
+      reveal.setDisabled(isExam, isExam ? 'В режиме экзамена нельзя видеть правильные ответы во время теста' : '');
+      reveal.setChecked(state.revealImmediately);
+      // Shuffle-answers: stays user-controlled in all modes.
+    },
+  };
 }
 
 function buildToggle(label, state, key) {
@@ -508,7 +608,16 @@ function buildToggle(label, state, key) {
   txt.textContent = label;
   row.appendChild(cb);
   row.appendChild(txt);
-  return row;
+  return {
+    el: row,
+    setDisabled: function (disabled, title) {
+      cb.disabled = !!disabled;
+      row.style.opacity = disabled ? '0.5' : '1';
+      row.style.cursor = disabled ? 'not-allowed' : 'pointer';
+      row.title = title || '';
+    },
+    setChecked: function (v) { cb.checked = !!v; },
+  };
 }
 
 function handleStart(testId, state, flaggedIds, weakIds) {
