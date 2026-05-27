@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session as DbSession
 
@@ -11,7 +11,10 @@ from api.database import get_db
 from api.dependencies.auth import get_current_user
 from api.models.auth import (
     ChangePasswordRequest,
+    ForgotPasswordRequest,
     MessageResponse,
+    PasswordRulesResponse,
+    ResetPasswordRequest,
     TokenResponse,
     UserLogin,
     UserRegister,
@@ -30,9 +33,22 @@ from api.services.auth_service import (
     verify_password,
     verify_token,
 )
+from api.services.password_reset_service import (
+    consume_reset_token,
+    issue_reset_token,
+    password_rules,
+    reset_user_password,
+    validate_password,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 security = HTTPBearer(auto_error=False)
+
+
+@router.get("/password-rules", response_model=PasswordRulesResponse)
+def get_password_rules() -> PasswordRulesResponse:
+    """Public password rules — frontend renders a live checklist from these."""
+    return PasswordRulesResponse(**password_rules())
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -41,6 +57,15 @@ def register(
     db: Annotated[DbSession, Depends(get_db)],
 ) -> User:
     """Register a new user."""
+    # Validate password against shared rules. Detail uses an underscored key
+    # the frontend can map to localized strings.
+    pw_errors = validate_password(data.password)
+    if pw_errors:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "weak_password", "failed_rules": pw_errors},
+        )
+
     # Check if username or email already exists — unified message to avoid enumeration
     if get_user_by_username(db, data.username) or get_user_by_email(db, data.email):
         raise HTTPException(
@@ -51,6 +76,52 @@ def register(
     # Create user
     user = create_user(db, data.username, data.email, data.password)
     return user
+
+
+@router.post("/forgot-password", response_model=MessageResponse)
+def forgot_password(
+    data: ForgotPasswordRequest,
+    request: Request,
+    db: Annotated[DbSession, Depends(get_db)],
+) -> MessageResponse:
+    """Issue a reset link for the email if it exists.
+
+    Always returns 200 with a generic message — never reveals whether the
+    address is registered. The link is emailed when SMTP is configured,
+    otherwise logged to the server console (see password_reset_service).
+    """
+    user = get_user_by_email(db, data.email)
+    if user is not None and user.is_active:
+        base = str(request.base_url).rstrip("/")
+        issue_reset_token(db, user, base_url=base)
+
+    return MessageResponse(
+        message="If that email is registered, a reset link has been sent."
+    )
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+def reset_password(
+    data: ResetPasswordRequest,
+    db: Annotated[DbSession, Depends(get_db)],
+) -> MessageResponse:
+    """Consume a single-use reset token and set a new password."""
+    pw_errors = validate_password(data.new_password)
+    if pw_errors:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "weak_password", "failed_rules": pw_errors},
+        )
+
+    user = consume_reset_token(db, data.token)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    reset_user_password(db, user, data.new_password)
+    return MessageResponse(message="Password updated. You can log in now.")
 
 
 @router.post("/login", response_model=TokenResponse)

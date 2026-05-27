@@ -5,6 +5,7 @@ from api.models.db.change_request import ChangeRequest, ChangeRequestType, Chang
 from api.models.db.attempt import Attempt, AttemptAnswer, AttemptStatus
 from api.models.db.question_performance import QuestionPerformance
 from api.models.db.notification import Notification
+from api.models.db.password_reset import PasswordResetToken
 
 __all__ = [
     "User",
@@ -20,4 +21,5 @@ __all__ = [
     "AttemptStatus",
     "QuestionPerformance",
     "Notification",
+    "PasswordResetToken",
 ]

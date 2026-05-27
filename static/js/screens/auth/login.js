@@ -304,6 +304,17 @@ export default async function render(root, params = {}) {
   linkRow.appendChild(linkText);
   linkRow.appendChild(registerLink);
 
+  // Forgot-password link
+  const forgotRow = document.createElement('div');
+  forgotRow.className = 'auth-form__link';
+  forgotRow.style.marginTop = '-8px';
+  const forgotLink = document.createElement('button');
+  forgotLink.type = 'button';
+  forgotLink.className = 'auth-link-btn';
+  forgotLink.textContent = t('auth.forgot.link');
+  forgotLink.addEventListener('click', () => navigate('/auth/forgot'));
+  forgotRow.appendChild(forgotLink);
+
   // ── Form submission logic ──
   async function handleSubmit() {
     clearFieldError(usernameInput, usernameError);
@@ -363,6 +374,7 @@ export default async function render(root, params = {}) {
   card.appendChild(fieldsWrap);
   card.appendChild(generalError);
   card.appendChild(submitBtn);
+  card.appendChild(forgotRow);
   card.appendChild(linkRow);
 
   // ── Footer (lang + theme) ──

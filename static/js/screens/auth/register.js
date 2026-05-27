@@ -3,6 +3,7 @@
  * Full DOM-based implementation with client-side validation and auto-login.
  */
 import { register, login, getMe } from '../../api/auth.js';
+import { buildPasswordChecklist } from './_password-checklist.js';
 import { navigate } from '../../router.js';
 import { setState } from '../../state.js';
 import { t, setLocale, getLocale } from '../../utils/locale.js';
@@ -356,7 +357,9 @@ export default async function render(root, params = {}) {
     if (!password) {
       showFieldError(passwordInput, passwordError, t('auth.error.invalid'));
       valid = false;
-    } else if (password.length < 6) {
+    } else if (checklist && !checklist.isValid()) {
+      // Live rules surface specific failures; mark the field but rely on
+      // the visible checklist for "which rule" feedback.
       showFieldError(passwordInput, passwordError, t('auth.error.invalid'));
       valid = false;
     }
@@ -431,11 +434,18 @@ export default async function render(root, params = {}) {
     }
   }
 
+  // ── Live password checklist (rules from /api/auth/password-rules) ──
+  const checklist = await buildPasswordChecklist({
+    passwordInput,
+    confirmInput,
+  });
+
   // ── Assemble form ──
   form.appendChild(usernameField);
   form.appendChild(emailField);
   form.appendChild(passwordField);
   form.appendChild(confirmField);
+  form.appendChild(checklist.el);
   form.appendChild(generalError);
   form.appendChild(submitBtn);
   form.appendChild(linkRow);

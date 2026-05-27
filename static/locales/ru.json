@@ -281,5 +281,38 @@
   "cheatsheet.taking.submit": "Сдать тест",
   "cheatsheet.editor.save": "Сохранить вопрос",
   "cheatsheet.editor.delete": "Удалить",
-  "cheatsheet.editor.undo": "Отменить действие"
+  "cheatsheet.editor.undo": "Отменить действие",
+
+  "auth.forgot.link": "Забыли пароль?",
+  "auth.forgot.title": "Восстановление пароля",
+  "auth.forgot.desc": "Введите email — пришлём ссылку для сброса.",
+  "auth.forgot.cta": "Отправить ссылку",
+  "auth.forgot.sent_title": "Проверьте почту",
+  "auth.forgot.sent_desc": "Если email зарегистрирован, мы отправили ссылку для сброса пароля. Ссылка действует 30 минут.",
+  "auth.forgot.back_to_login": "← Назад ко входу",
+
+  "auth.reset.title": "Новый пароль",
+  "auth.reset.desc": "Придумайте новый пароль для вашего аккаунта.",
+  "auth.reset.new_password": "Новый пароль",
+  "auth.reset.confirm_password": "Повторите пароль",
+  "auth.reset.cta": "Сохранить пароль",
+  "auth.reset.no_token": "Ссылка для сброса недействительна или истекла.",
+  "auth.reset.success_title": "Пароль обновлён",
+  "auth.reset.success_desc": "Теперь можно войти с новым паролем.",
+  "auth.reset.go_login": "Войти",
+
+  "auth.pwrule.min_length": "минимум {{n}} символов",
+  "auth.pwrule.require_digit": "содержит цифру",
+  "auth.pwrule.require_upper": "содержит заглавную букву",
+  "auth.pwrule.match": "пароли совпадают",
+
+  "error.403.title": "Этот тест приватный",
+  "error.403.desc": "Автор открыл доступ только определённым пользователям. Вы можете запросить доступ — автор увидит запрос в уведомлениях.",
+  "error.403.go_home": "← На главную",
+  "error.403.request_access": "Запросить доступ",
+  "error.403.requested": "Запрос отправлен автору",
+
+  "error.404.title": "Страница не найдена",
+  "error.404.desc": "Возможно, ссылка устарела или тест был удалён.",
+  "error.404.go_home": "На главную"
 }

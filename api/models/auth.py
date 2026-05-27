@@ -92,3 +92,24 @@ class AvatarUploadResponse(BaseModel):
 
     avatar_url: str
     avatar_size: int
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Forgot-password request (always returns success to avoid enumeration)."""
+
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Reset-password request."""
+
+    token: str = Field(..., min_length=10, max_length=200)
+    new_password: str = Field(..., min_length=8, max_length=100)
+
+
+class PasswordRulesResponse(BaseModel):
+    """Public password rules — frontend uses these to render a live checklist."""
+
+    min_length: int
+    require_digit: bool
+    require_upper: bool

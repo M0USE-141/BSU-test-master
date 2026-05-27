@@ -281,5 +281,38 @@
   "cheatsheet.taking.submit": "Submit test",
   "cheatsheet.editor.save": "Save question",
   "cheatsheet.editor.delete": "Delete",
-  "cheatsheet.editor.undo": "Undo"
+  "cheatsheet.editor.undo": "Undo",
+
+  "auth.forgot.link": "Forgot password?",
+  "auth.forgot.title": "Reset password",
+  "auth.forgot.desc": "Enter your email — we'll send a reset link.",
+  "auth.forgot.cta": "Send reset link",
+  "auth.forgot.sent_title": "Check your email",
+  "auth.forgot.sent_desc": "If that email is registered, we've sent a password-reset link. It expires in 30 minutes.",
+  "auth.forgot.back_to_login": "← Back to login",
+
+  "auth.reset.title": "New password",
+  "auth.reset.desc": "Pick a new password for your account.",
+  "auth.reset.new_password": "New password",
+  "auth.reset.confirm_password": "Repeat password",
+  "auth.reset.cta": "Save password",
+  "auth.reset.no_token": "This reset link is invalid or has expired.",
+  "auth.reset.success_title": "Password updated",
+  "auth.reset.success_desc": "You can now log in with your new password.",
+  "auth.reset.go_login": "Log in",
+
+  "auth.pwrule.min_length": "at least {{n}} characters",
+  "auth.pwrule.require_digit": "contains a digit",
+  "auth.pwrule.require_upper": "contains an uppercase letter",
+  "auth.pwrule.match": "passwords match",
+
+  "error.403.title": "This test is private",
+  "error.403.desc": "The author has restricted access. You can request access — they'll see it in their notifications.",
+  "error.403.go_home": "← Back home",
+  "error.403.request_access": "Request access",
+  "error.403.requested": "Request sent to the author",
+
+  "error.404.title": "Page not found",
+  "error.404.desc": "The link may be outdated or the test was removed.",
+  "error.404.go_home": "Go home"
 }

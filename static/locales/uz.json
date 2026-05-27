@@ -281,5 +281,38 @@
   "cheatsheet.taking.submit": "Testni topshirish",
   "cheatsheet.editor.save": "Savolni saqlash",
   "cheatsheet.editor.delete": "Oʻchirish",
-  "cheatsheet.editor.undo": "Bekor qilish"
+  "cheatsheet.editor.undo": "Bekor qilish",
+
+  "auth.forgot.link": "Parolni unutdingizmi?",
+  "auth.forgot.title": "Parolni tiklash",
+  "auth.forgot.desc": "Emailni kiriting — tiklash havolasini yuboramiz.",
+  "auth.forgot.cta": "Havola yuborish",
+  "auth.forgot.sent_title": "Pochtangizni tekshiring",
+  "auth.forgot.sent_desc": "Agar email roʻyxatdan oʻtgan boʻlsa, biz tiklash havolasini yubordik. Havola 30 daqiqa amal qiladi.",
+  "auth.forgot.back_to_login": "← Kirishga qaytish",
+
+  "auth.reset.title": "Yangi parol",
+  "auth.reset.desc": "Hisobingiz uchun yangi parol oʻylab toping.",
+  "auth.reset.new_password": "Yangi parol",
+  "auth.reset.confirm_password": "Parolni takrorlang",
+  "auth.reset.cta": "Parolni saqlash",
+  "auth.reset.no_token": "Tiklash havolasi yaroqsiz yoki muddati tugagan.",
+  "auth.reset.success_title": "Parol yangilandi",
+  "auth.reset.success_desc": "Endi yangi parol bilan kirishingiz mumkin.",
+  "auth.reset.go_login": "Kirish",
+
+  "auth.pwrule.min_length": "kamida {{n}} ta belgi",
+  "auth.pwrule.require_digit": "raqam mavjud",
+  "auth.pwrule.require_upper": "katta harf mavjud",
+  "auth.pwrule.match": "parollar mos keladi",
+
+  "error.403.title": "Bu test maxfiy",
+  "error.403.desc": "Muallif faqat aniq foydalanuvchilarga ruxsat bergan. Siz ruxsat soʻrashingiz mumkin — muallif uni bildirishlarda koʻradi.",
+  "error.403.go_home": "← Bosh sahifaga",
+  "error.403.request_access": "Ruxsat soʻrash",
+  "error.403.requested": "Soʻrov muallifga yuborildi",
+
+  "error.404.title": "Sahifa topilmadi",
+  "error.404.desc": "Havola eskirgan boʻlishi yoki test oʻchirilgan boʻlishi mumkin.",
+  "error.404.go_home": "Bosh sahifaga"
 }

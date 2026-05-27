@@ -51,3 +51,32 @@ export async function refreshToken() {
   }
   return data;
 }
+
+/**
+ * Get public password rules (min length, require digit, require upper).
+ * Used by Register/Reset screens to render a live checklist.
+ * @returns {Promise<{min_length:number, require_digit:boolean, require_upper:boolean}>}
+ */
+export async function getPasswordRules() {
+  return apiFetch('GET', '/api/auth/password-rules');
+}
+
+/**
+ * Request a password-reset link for an email address.
+ * Always succeeds (200) regardless of whether the email exists, to avoid
+ * user enumeration. The link is emailed or — when SMTP isn't configured —
+ * logged on the server.
+ * @param {string} email
+ */
+export async function forgotPassword(email) {
+  return apiFetch('POST', '/api/auth/forgot-password', { email });
+}
+
+/**
+ * Consume a reset token and set a new password.
+ * @param {string} token
+ * @param {string} newPassword
+ */
+export async function resetPassword(token, newPassword) {
+  return apiFetch('POST', '/api/auth/reset-password', { token, new_password: newPassword });
+}

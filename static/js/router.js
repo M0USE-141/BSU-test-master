@@ -61,6 +61,26 @@ const ROUTES = [
     shell: false,
   },
   {
+    pattern: '/auth/forgot',
+    module: () => import(`./screens/auth/forgot.js?v=${_V}`),
+    shell: false,
+  },
+  {
+    pattern: '/auth/reset',
+    module: () => import(`./screens/auth/reset.js?v=${_V}`),
+    shell: false,
+  },
+  {
+    pattern: '/error/403',
+    module: () => import(`./screens/errors/403.js?v=${_V}`),
+    shell: false,
+  },
+  {
+    pattern: '/error/404',
+    module: () => import(`./screens/errors/404.js?v=${_V}`),
+    shell: false,
+  },
+  {
     pattern: '/home',
     module: () => isMobile()
       ? import(`./screens/mobile/home.js?v=${_V}`)
@@ -194,7 +214,7 @@ async function handleRoute(pathOrObj) {
   const effectivePath = (!rawPath || rawPath === '/' || rawPath === '') ? '/home' : rawPath;
 
   // Auth guard — redirect unauthenticated users to login
-  const publicRoutes = ['/auth/login', '/auth/register'];
+  const publicRoutes = ['/auth/login', '/auth/register', '/auth/forgot', '/auth/reset', '/error/403', '/error/404'];
   if (!publicRoutes.includes(effectivePath) && !localStorage.getItem('access_token')) {
     navigate('/auth/login');
     return;
@@ -227,13 +247,31 @@ async function handleRoute(pathOrObj) {
   }
 
   if (!matchedModule) {
-    _root.innerHTML = `
-      <div class="screen" style="align-items:center;justify-content:center;gap:12px;">
-        <p style="font-size:18px;font-weight:600;">404</p>
-        <p style="color:var(--ink-mute)">Page not found: ${escapeHtml(effectivePath)}</p>
-        <a href="#/home" class="btn btn--primary">Go home</a>
-      </div>
-    `;
+    // Route to the dedicated 404 screen with the path as a param so it can
+    // surface what the user tried to open.
+    try {
+      const mod = await import(`./screens/errors/404.js?v=${_V}`);
+      if (stale()) return;
+      await mod.default(_root, { path: effectivePath });
+    } catch (e) {
+      console.error('[router] failed to load 404 screen:', e);
+      _root.innerHTML = '';
+      const wrap = document.createElement('div');
+      wrap.className = 'screen';
+      wrap.style.cssText = 'align-items:center;justify-content:center;gap:12px;';
+      const p1 = document.createElement('p');
+      p1.style.cssText = 'font-size:18px;font-weight:600;';
+      p1.textContent = '404';
+      const p2 = document.createElement('p');
+      p2.style.color = 'var(--ink-mute)';
+      p2.textContent = 'Page not found: ' + effectivePath;
+      const a = document.createElement('a');
+      a.href = '#/home';
+      a.className = 'btn btn--primary';
+      a.textContent = 'Go home';
+      wrap.append(p1, p2, a);
+      _root.appendChild(wrap);
+    }
     return;
   }
 
