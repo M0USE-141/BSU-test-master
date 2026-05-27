@@ -42,12 +42,15 @@
   border-radius: var(--radius-lg);
   padding: 32px;
   box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
 .auth-card__title {
   font: 600 22px/1.2 'Inter', system-ui, sans-serif;
   color: var(--ink);
-  margin-bottom: 6px;
+  margin: 0 0 -4px; /* tighter than card gap — heading hugs the form */
 }
 
 .auth-card__subtitle {
