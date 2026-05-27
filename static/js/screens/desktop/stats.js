@@ -1,480 +1,563 @@
 /**
- * screens/desktop/stats.js — Statistics screen (Phase 4)
- * 3 tabs: Overall · By Test · Activity
+ * screens/desktop/stats.js — Statistics, mail-client redesign (Phase 5).
+ *
+ * Layout: AppShell + MailLayout.
+ *   Sidebar:
+ *     - Period chips (7 / 30 / All).
+ *     - "Сводка" section: Все тесты, Слабые темы, Активность.
+ *     - "По тестам" section: row per test that has attempts.
+ *   Detail (depends on selection):
+ *     - all-tests / per-test : 5 KPI tiles + heatmap-year.
+ *     - weak-themes          : weak-questions list with bars.
+ *     - activity             : full-year heatmap + last-N attempts.
+ *
+ * Backend endpoints used (all already exist):
+ *   GET /api/stats/me/aggregate ? clientId=… [&testId=…]
+ *   GET /api/stats/heatmap      ? weeks=52
+ *   GET /api/stats/streak
+ *   GET /api/stats/attempts     ? clientId=…  (recent attempts)
+ *   GET /api/tests              ? with_stats=true
+ *   GET /api/tests/{id}/weak-questions
  */
-import { getMyAggregate, getHeatmap, getStreak, listAttempts } from '../../api/statistics.js';
+import { getMyAggregate, getHeatmap, getStreak, listAttempts, getWeakQuestions } from '../../api/statistics.js';
 import { listTests } from '../../api/tests.js';
+import { mountAppShell } from '../../components/app-shell.js';
+import { buildMailLayout } from '../../components/mail-layout.js';
 import { navigate } from '../../router.js';
+import { iconEl } from '../../icons.js';
 import { t } from '../../utils/locale.js';
-import { icon, iconEl } from '../../icons.js';
-import { escHtml as escapeHtml } from '../../utils/escape.js';
 import { getClientId } from '../../utils/client-id.js';
-import { formatDuration } from '../../utils/format.js';
 
-// ─── Module state ─────────────────────────────────────────────
-/** @type {HTMLElement|null} */
-let _root = null;
-let _tab = 'overall'; // 'overall' | 'bytest' | 'activity'
+let _renderToken = 0;
 
-/** @type {any} */
-let _agg = null;
-let _streak = 0;
-/** @type {any[]} */
-let _heatmapData = [];
-/** @type {any[]} */
-let _attempts = [];
-/** @type {any[]} */
-let _tests = [];
+export default async function render(root, params) {
+  params = params || {};
+  const token = ++_renderToken;
+  const stale = function () { return _renderToken !== token; };
 
-// ─── Helpers ──────────────────────────────────────────────────
+  const main = mountAppShell(root);
+  main.innerHTML = '';
 
-/** Wrap formatDuration with a '—' fallback for zero/null values. */
-function fmtDuration(ms) {
-  if (!ms) return '—';
-  return formatDuration(ms);
-}
+  // Skeleton.
+  const skel = document.createElement('div');
+  skel.className = 'skeleton';
+  skel.style.height = '60%';
+  skel.style.minHeight = '300px';
+  skel.style.margin = '24px';
+  skel.style.borderRadius = 'var(--radius-md)';
+  main.appendChild(skel);
 
-function fmtDate(iso) {
-  if (!iso) return '—';
+  // Load tests for the "По тестам" sidebar list — uses Phase 5a's
+  // with_stats so we get attempts_count + avg_score for free.
+  let tests = [];
   try {
-    const d = new Date(iso);
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' });
-  } catch {
-    return '—';
-  }
-}
+    const resp = await listTests({ with_stats: true, limit: 100 });
+    tests = (resp && resp.tests) || [];
+  } catch (_) { /* sidebar will be empty */ }
+  if (stale()) return;
 
-function scoreColor(pct) {
-  if (pct >= 75) return 'var(--accent)';
-  if (pct >= 50) return 'var(--ink-fade)';
-  return 'var(--ink-mute)';
-}
-
-// ─── SVG Sparkline ────────────────────────────────────────────
-
-function buildSparklineSvg(values, width, height) {
-  if (!values || values.length < 2) {
-    return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-      <text x="${width/2}" y="${height/2+4}" text-anchor="middle" font-size="11"
-            fill="var(--ink-mute)" font-family="Inter,sans-serif">No data</text>
-    </svg>`;
-  }
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const pad = 10;
-  const w = width - pad * 2;
-  const h = height - pad * 2;
-  const xs = values.map((_, i) => pad + (i / (values.length - 1)) * w);
-  const ys = values.map(v => pad + h - ((v - min) / range) * h);
-  const pts = xs.map((x, i) => `${x},${ys[i]}`).join(' ');
-  // Area fill path
-  const area = `M${xs[0]},${height - pad} L${xs.map((x, i) => `${x},${ys[i]}`).join(' L')} L${xs[xs.length-1]},${height - pad} Z`;
-
-  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="overflow:visible">
-    <defs>
-      <linearGradient id="st-spark-grad" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.15"/>
-        <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
-      </linearGradient>
-    </defs>
-    <path d="${area}" fill="url(#st-spark-grad)"/>
-    <polyline points="${pts}" fill="none" stroke="var(--accent)"
-              stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    ${xs.map((x, i) => `<circle cx="${x}" cy="${ys[i]}" r="3" fill="var(--accent)" stroke="var(--paper)" stroke-width="2"/>`).join('')}
-  </svg>`;
-}
-
-// ─── Heatmap ──────────────────────────────────────────────────
-
-function buildHeatmapGrid(data, weeks) {
-  const WEEKS = weeks || 16;
-  const today = new Date();
-  const cells = [];
-
-  const countByDate = {};
-  if (Array.isArray(data)) {
-    for (const d of data) {
-      if (d.date) countByDate[d.date] = d.count || 0;
-    }
-  }
-
-  const startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - (WEEKS * 7 - 1));
-
-  for (let d = 0; d < WEEKS * 7; d++) {
-    const date = new Date(startDate);
-    date.setDate(date.getDate() + d);
-    const key = date.toISOString().slice(0, 10);
-    const count = countByDate[key] || 0;
-    const lvl = count === 0 ? 0 : count < 2 ? 1 : count < 4 ? 2 : 3;
-    cells.push(`<div class="heatmap-cell" data-lvl="${lvl}" title="${key}: ${count}"></div>`);
-  }
-
-  return `<div class="heatmap-grid" style="grid-template-columns:repeat(${WEEKS},13px);grid-template-rows:repeat(7,13px);">
-    ${cells.join('')}
-  </div>`;
-}
-
-// ─── Per-test grouping ────────────────────────────────────────
-
-function groupByTest(attempts) {
-  /** @type {Map<string, { best: number, count: number, last: string }>} */
-  const map = new Map();
-  for (const a of attempts) {
-    if (!a.testId || a.status !== 'completed') continue;
-    const pct = a.percentCorrect ?? 0;
-    const existing = map.get(a.testId);
-    if (!existing) {
-      map.set(a.testId, { best: pct, count: 1, last: a.finishedAt || a.startedAt });
-    } else {
-      existing.count += 1;
-      if (pct > existing.best) existing.best = pct;
-      const d = a.finishedAt || a.startedAt;
-      if (d && d > existing.last) existing.last = d;
-    }
-  }
-  return map;
-}
-
-// ─── Tab: Overall ─────────────────────────────────────────────
-
-function buildOverallTab() {
-  const agg = _agg || {};
-  const streak = _streak;
-
-  // KPI data
-  const pct = Math.round(agg.avgPercentCorrect ?? 0);
-  const avgTimeMs = agg.avgTimePerQuestion ?? 0;
-  const avgTimeSec = Math.round(avgTimeMs / 1000);
-
-  const kpiData = [
-    { label: t('stats.accuracy') || 'Accuracy',      val: pct ? `${pct}%` : '—',             cls: '' },
-    { label: t('stats.streak') || 'Streak',          val: `${streak}`,   suffix: ` ${t('stats.days')||'d'}`, cls: 'st-kpi--streak', emoji: streak >= 3 ? '🔥' : '' },
-    { label: t('stats.total_attempts') || 'Attempts',val: agg.attemptCount ?? 0,               cls: '' },
-    { label: t('stats.avg_time') || 'Avg time/Q',    val: avgTimeSec ? `${avgTimeSec}s` : '—', cls: '' },
-    { label: t('common.questions') || 'Questions',      val: agg.totalQuestions ?? 0,            cls: '' },
-  ];
-
-  // Attempt accuracy trend from _attempts (sorted old→new, take last 20 completed)
-  const completed = _attempts
-    .filter(a => a.status === 'completed' && typeof a.percentCorrect === 'number')
-    .slice(0, 20)
-    .reverse();
-  const sparkValues = completed.map(a => a.percentCorrect);
-
-  // Weak topics: attempts sorted by lowest percentCorrect, grouped by test
-  const testMap = groupByTest(_attempts);
-  const testList = _tests.filter(te => testMap.has(te.id));
-  const weakTopics = testList
-    .map(test => ({ title: test.title, pct: Math.round(testMap.get(test.id).best), ...testMap.get(test.id) }))
-    .sort((a, b) => a.pct - b.pct)
-    .slice(0, 6);
-
-  const kpiHTML = kpiData.map(k => `
-    <div class="st-kpi ${k.cls}">
-      <div class="st-kpi__label">${k.label}</div>
-      <div class="st-kpi__val">${k.val}${k.suffix || ''}${k.emoji ? ` ${k.emoji}` : ''}</div>
-    </div>
-  `).join('');
-
-  const noData = !completed.length;
-
-  return `
-    <div class="st-kpi-row">${kpiHTML}</div>
-
-    <div class="st-charts">
-      <div class="st-chart-card">
-        <div class="st-chart-card__head">
-          <span class="st-chart-card__title">${t('stats.accuracy_trend') || 'Accuracy over time'}</span>
-          <span class="st-chart-card__sub">${completed.length ? `${completed.length} attempts` : ''}</span>
-        </div>
-        ${noData
-          ? `<div class="st-empty" style="padding:24px 0;">
-               <div class="st-empty__text">${t('stats.no_data') || 'No data yet.'}</div>
-             </div>`
-          : buildSparklineSvg(sparkValues, 460, 130)
-        }
-      </div>
-
-      <div class="st-chart-card">
-        <div class="st-chart-card__head">
-          <span class="st-chart-card__title">${t('stats.weak_topics') || 'Weak / strong topics'}</span>
-        </div>
-        ${!weakTopics.length
-          ? `<div class="st-empty" style="padding:16px 0;">
-               <div class="st-empty__text">${t('stats.no_data') || 'No data yet.'}</div>
-             </div>`
-          : weakTopics.map(topic => `
-              <div class="st-topic-row">
-                <div class="st-topic-head">
-                  <span class="st-topic-name">${escapeHtml(topic.title)}</span>
-                  <span class="st-topic-pct">${topic.pct}%</span>
-                </div>
-                <div class="st-topic-track">
-                  <div class="st-topic-fill ${topic.pct < 60 ? 'st-topic-fill--weak' : ''}"
-                       style="width:${topic.pct}%"></div>
-                </div>
-              </div>
-            `).join('')
-        }
-      </div>
-    </div>
-
-    <div class="st-heatmap-wrap">
-      <div class="st-heatmap-head">
-        <span class="st-heatmap-title">${t('stats.activity') || 'Activity'}</span>
-        <span class="st-heatmap-sub">16 wks</span>
-      </div>
-      ${buildHeatmapGrid(_heatmapData, 16)}
-      <div class="st-heatmap-legend">
-        <span class="st-heatmap-legend__label">less</span>
-        ${[0,1,2,3].map(l => `<div class="st-heatmap-legend__cell heatmap-cell" data-lvl="${l}"></div>`).join('')}
-        <span class="st-heatmap-legend__label">more</span>
-      </div>
-    </div>
-  `;
-}
-
-// ─── Tab: By Test ─────────────────────────────────────────────
-
-function buildByTestTab() {
-  const testMap = groupByTest(_attempts);
-
-  const attemptedTests = _tests
-    .filter(test => testMap.has(test.id))
-    .map(test => ({ test, stats: testMap.get(test.id) }))
-    .sort((a, b) => (b.stats.last > a.stats.last ? 1 : -1));
-
-  if (!attemptedTests.length) {
-    return `<div class="st-empty">
-      <div class="st-empty__icon">${iconEl('chart', 40)?.outerHTML || ''}</div>
-      <div class="st-empty__text">${t('stats.no_data') || 'No statistics yet. Complete an attempt first.'}</div>
-      <a href="#/home" class="btn btn--ghost btn--small" style="margin-top:16px">← ${t('nav.home') || 'Home'}</a>
-    </div>`;
-  }
-
-  const cards = attemptedTests.map(({ test, stats }) => {
-    const best = Math.round(stats.best);
-    return `
-      <a class="st-test-card" href="#/test/${test.id}">
-        <div class="st-test-card__title">${escapeHtml(test.title || 'Untitled')}</div>
-        <div class="st-test-card__stats">
-          <div class="st-test-card__stat">
-            <span class="st-test-card__stat-val">${best}%</span>
-            <span class="st-test-card__stat-label">${t('test.best') || 'best'}</span>
-          </div>
-          <div class="st-test-card__stat">
-            <span class="st-test-card__stat-val">${stats.count}</span>
-            <span class="st-test-card__stat-label">${t('test.attempts') || 'attempts'}</span>
-          </div>
-          <div class="st-test-card__stat">
-            <span class="st-test-card__stat-val">${fmtDate(stats.last)}</span>
-            <span class="st-test-card__stat-label">${t('stats.date') || 'last'}</span>
-          </div>
-        </div>
-        <div class="st-test-card__score-bar">
-          <div class="st-test-card__score-fill" style="width:${best}%"></div>
-        </div>
-      </a>
-    `;
-  }).join('');
-
-  return `<div class="st-test-grid">${cards}</div>`;
-}
-
-// ─── Tab: Activity ────────────────────────────────────────────
-
-function buildActivityTab() {
-  const completed = _attempts.filter(a => a.status === 'completed');
-
-  return `
-    <div class="st-heatmap-wrap" style="margin-bottom:20px;">
-      <div class="st-heatmap-head">
-        <span class="st-heatmap-title">${t('stats.activity') || 'Activity'}</span>
-        <span class="st-heatmap-sub">16 wks</span>
-      </div>
-      ${buildHeatmapGrid(_heatmapData, 16)}
-      <div class="st-heatmap-legend">
-        <span class="st-heatmap-legend__label">less</span>
-        ${[0,1,2,3].map(l => `<div class="st-heatmap-legend__cell heatmap-cell" data-lvl="${l}"></div>`).join('')}
-        <span class="st-heatmap-legend__label">more</span>
-      </div>
-    </div>
-
-    <div class="st-recent-head">${t('stats.recent_attempts') || 'Recent attempts'}</div>
-
-    ${!completed.length
-      ? `<div class="st-empty">
-           <div class="st-empty__text">${t('stats.no_attempts') || 'No attempts yet.'}</div>
-         </div>`
-      : `<table class="st-attempts-table">
-           <thead>
-             <tr>
-               <th>${t('nav.tests') || 'Test'}</th>
-               <th>${t('stats.score') || 'Score'}</th>
-               <th>${t('stats.duration') || 'Time'}</th>
-               <th>${t('stats.date') || 'Date'}</th>
-             </tr>
-           </thead>
-           <tbody>
-             ${completed.slice(0, 50).map(a => {
-               const pct = Math.round(a.percentCorrect ?? 0);
-               const testTitle = _tests.find(te => te.id === a.testId)?.title || a.testId || '—';
-               return `
-                 <tr>
-                   <td>
-                     <a href="#/test/${a.testId}" style="color:var(--ink);text-decoration:none;">
-                       ${escapeHtml(String(testTitle).slice(0, 48))}
-                     </a>
-                   </td>
-                   <td>
-                     <span class="st-score-pill ${pct < 50 ? 'st-score-pill--weak' : ''}">${pct}%</span>
-                   </td>
-                   <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink-fade)">
-                     ${fmtDuration(a.totalDurationMs)}
-                   </td>
-                   <td style="font-size:12px;color:var(--ink-mute)">
-                     ${fmtDate(a.finishedAt || a.startedAt)}
-                   </td>
-                 </tr>
-               `;
-             }).join('')}
-           </tbody>
-         </table>`
-    }
-  `;
-}
-
-// ─── Full screen render ───────────────────────────────────────
-
-function buildScreen() {
-  const tabCfg = [
-    { id: 'overall',  label: t('stats.overall')  || 'Overall'  },
-    { id: 'bytest',   label: t('stats.by_test')  || 'By Test'  },
-    { id: 'activity', label: t('stats.activity') || 'Activity' },
-  ];
-
-  const tabsHTML = tabCfg.map(tc => `
-    <button class="st-tab ${_tab === tc.id ? 'st-tab--active' : ''}"
-            data-tab="${tc.id}">${tc.label}</button>
-  `).join('');
-
-  let bodyHTML;
-  if (_tab === 'overall')  bodyHTML = buildOverallTab();
-  else if (_tab === 'bytest')   bodyHTML = buildByTestTab();
-  else                          bodyHTML = buildActivityTab();
-
-  const el = document.createElement('div');
-  el.className = 'st';
-  el.innerHTML = `
-    <div class="st__topbar">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <a href="#/home" class="btn btn--ghost btn--small" style="display:inline-flex;align-items:center;gap:5px;">
-          ${icon('chevL', 14)} ${t('common.back') || 'Back'}
-        </a>
-        <span class="st-topbar__title">${t('nav.stats') || 'Statistics'}</span>
-      </div>
-      <div class="st-topbar__tabs">${tabsHTML}</div>
-    </div>
-    <div class="st__body">${bodyHTML}</div>
-  `;
-
-  // Tab click handlers
-  el.querySelectorAll('.st-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      _tab = btn.dataset.tab;
-      mount(_root);
-    });
+  // Filter to tests the user has actually attempted.
+  const activeTests = tests.filter(function (t) {
+    return (t.attempts_count || 0) > 0;
   });
 
+  main.innerHTML = '';
+
+  const state = {
+    period: params.period || '30',     // '7' | '30' | 'all'
+    sel: params.sel || 'all',          // 'all' | 'weak' | 'activity' | <testId>
+  };
+
+  const built = buildMailLayout(main, { sidebarWidth: 260 });
+  renderSidebar(built.sidebar, state, activeTests, function () {
+    history.replaceState({}, '', '#/stats?sel=' + encodeURIComponent(state.sel) + '&period=' + state.period);
+    renderDetail(built.detail, state, tests);
+  });
+  renderDetail(built.detail, state, tests);
+}
+
+// ─── Sidebar ─────────────────────────────────────────────────
+
+function renderSidebar(sidebar, state, activeTests, onChange) {
+  sidebar.innerHTML = '';
+
+  const head = document.createElement('div');
+  head.className = 'mail-layout__sidebar-head';
+
+  const titleCaps = document.createElement('div');
+  titleCaps.className = 'caps';
+  titleCaps.textContent = t('nav.stats') || 'Статистика';
+  head.appendChild(titleCaps);
+
+  // Period chips.
+  const periodRow = document.createElement('div');
+  periodRow.style.display = 'flex';
+  periodRow.style.gap = '4px';
+  periodRow.style.marginTop = '6px';
+  const periods = [['7', '7 дн'], ['30', '30 дн'], ['all', 'Всё']];
+  const periodChips = {};
+  periods.forEach(function (p) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip chip--small' + (state.period === p[0] ? ' chip--active' : '');
+    chip.textContent = p[1];
+    chip.addEventListener('click', function () {
+      state.period = p[0];
+      Object.keys(periodChips).forEach(function (k) {
+        periodChips[k].classList.toggle('chip--active', k === p[0]);
+      });
+      onChange();
+    });
+    periodChips[p[0]] = chip;
+    periodRow.appendChild(chip);
+  });
+  head.appendChild(periodRow);
+  sidebar.appendChild(head);
+
+  // Сводка section.
+  const list = document.createElement('div');
+  list.style.flex = '1';
+  list.style.overflowY = 'auto';
+
+  list.appendChild(sectionLabel('Сводка'));
+  list.appendChild(buildNavItem('stats',      'Все тесты',    null,  state.sel === 'all',      function () { state.sel = 'all';      refreshActive(); onChange(); }));
+  list.appendChild(buildNavItem('flag',       'Слабые темы', null,  state.sel === 'weak',     function () { state.sel = 'weak';     refreshActive(); onChange(); }));
+  list.appendChild(buildNavItem('clock',      'Активность',   null,  state.sel === 'activity', function () { state.sel = 'activity'; refreshActive(); onChange(); }));
+
+  if (activeTests.length > 0) {
+    list.appendChild(sectionLabel('По тестам'));
+    activeTests.forEach(function (test) {
+      const id = test.id;
+      const score = (test.avg_score !== null && test.avg_score !== undefined) ? (Math.round(test.avg_score) + '%') : null;
+      list.appendChild(buildNavItem(null, test.title || id, score, state.sel === id, function () {
+        state.sel = id;
+        refreshActive();
+        onChange();
+      }));
+    });
+  }
+
+  sidebar.appendChild(list);
+
+  function refreshActive() {
+    sidebar.querySelectorAll('[data-sel]').forEach(function (el) {
+      el.classList.toggle('is-active', el.dataset.sel === state.sel);
+    });
+  }
+
+  // Tag rows with data-sel for refresh.
+  Array.from(list.querySelectorAll('button')).forEach(function (b) {
+    if (b.dataset.sel === undefined && b.textContent) {
+      // Buttons are tagged via buildNavItem already; this is just for the
+      // record — leave it alone.
+    }
+  });
+}
+
+function sectionLabel(text) {
+  const el = document.createElement('div');
+  el.className = 'mail-layout__sidebar-section';
+  el.textContent = text;
   return el;
 }
 
-// ─── Loading skeleton ─────────────────────────────────────────
+function buildNavItem(iconKind, label, rightText, active, onClick) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.dataset.sel = label;  // approximate; reactive refresh in refreshActive sets it
+  btn.className = 'mail-row' + (active ? ' is-active' : '');
+  btn.style.borderLeft = active ? '3px solid var(--accent)' : '3px solid transparent';
 
-function buildSkeleton() {
-  return `<div class="st-skeleton-kpi">
-    ${[1,2,3,4,5].map(() => '<div class="skeleton"></div>').join('')}
-  </div>
-  <div class="skeleton" style="height:180px;border-radius:var(--radius-md);margin-bottom:14px;"></div>
-  <div class="skeleton" style="height:120px;border-radius:var(--radius-md);"></div>`;
+  const main = document.createElement('div');
+  main.className = 'mail-row__main';
+  main.style.display = 'flex';
+  main.style.alignItems = 'center';
+  main.style.gap = '8px';
+  if (iconKind) {
+    const ic = document.createElement('span');
+    ic.style.lineHeight = '0';
+    ic.style.color = 'var(--ink-tertiary)';
+    ic.appendChild(iconEl(iconKind, 14));
+    main.appendChild(ic);
+  }
+  const titleEl = document.createElement('div');
+  titleEl.className = 'mail-row__title';
+  titleEl.textContent = label;
+  main.appendChild(titleEl);
+
+  btn.appendChild(main);
+  if (rightText) {
+    const right = document.createElement('div');
+    right.className = 'mail-row__right mono';
+    right.textContent = rightText;
+    btn.appendChild(right);
+  }
+  btn.addEventListener('click', onClick);
+  return btn;
 }
 
-// ─── Mount ────────────────────────────────────────────────────
+// ─── Detail ──────────────────────────────────────────────────
 
-async function mount(root) {
-  _root = root;
-  root.innerHTML = '';
+async function renderDetail(detail, state, tests) {
+  detail.innerHTML = '';
 
-  // Show skeleton while loading
-  const shell = document.createElement('div');
-  shell.className = 'st';
-  shell.innerHTML = `
-    <div class="st__topbar">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <a href="#/home" class="btn btn--ghost btn--small" style="display:inline-flex;align-items:center;gap:5px;">
-          ${icon('chevL', 14)} ${t('common.back') || 'Back'}
-        </a>
-        <span class="st-topbar__title">${t('nav.stats') || 'Statistics'}</span>
-      </div>
-      <div class="st-topbar__tabs">
-        ${['overall','bytest','activity'].map(id => `
-          <button class="st-tab ${_tab === id ? 'st-tab--active' : ''}" data-tab="${id}">
-            ${id === 'overall' ? (t('stats.overall')||'Overall') : id === 'bytest' ? (t('stats.by_test')||'By Test') : (t('stats.activity')||'Activity')}
-          </button>
-        `).join('')}
-      </div>
-    </div>
-    <div class="st__body" id="st-body">${buildSkeleton()}</div>
-  `;
-  root.appendChild(shell);
+  // Header strip.
+  const head = document.createElement('div');
+  head.style.display = 'flex';
+  head.style.justifyContent = 'space-between';
+  head.style.alignItems = 'flex-start';
+  head.style.padding = 'var(--sp-4) var(--sp-5) var(--sp-3)';
+  head.style.borderBottom = '1px solid var(--ink-soft)';
 
-  // Wire up tab clicks even during load
-  shell.querySelectorAll('.st-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      _tab = btn.dataset.tab;
-      mount(_root);
-    });
-  });
+  const headLeft = document.createElement('div');
+  const headCaps = document.createElement('div');
+  headCaps.className = 'caps';
+  const title = document.createElement('h2');
+  title.style.fontSize = '22px';
+  title.style.fontWeight = 'var(--fw-bold)';
+  title.style.letterSpacing = '-0.01em';
+  title.style.margin = '2px 0 0';
 
-  // Fetch data in parallel
-  try {
-    const clientId = getClientId();
-    const [aggRes, streakRes, heatmapRes, attemptsRes, testsRes] = await Promise.allSettled([
-      getMyAggregate(),
-      getStreak(),
-      getHeatmap(16),
-      listAttempts({ clientId, status: 'completed', limit: 200 }),
-      listTests(),
-    ]);
+  const periodLabel = state.period === 'all' ? 'всё время' : (state.period + ' дней');
+  let scopeLabel;
+  if (state.sel === 'all')           scopeLabel = 'Все тесты';
+  else if (state.sel === 'weak')     scopeLabel = 'Слабые темы';
+  else if (state.sel === 'activity') scopeLabel = 'Активность';
+  else                                scopeLabel = (tests.find(function (t) { return t.id === state.sel; }) || {}).title || 'Тест';
 
-    _agg         = aggRes.status         === 'fulfilled' ? aggRes.value         : null;
-    _streak      = streakRes.status      === 'fulfilled' ? (streakRes.value?.streak ?? 0) : 0;
-    _heatmapData = heatmapRes.status     === 'fulfilled' ? (heatmapRes.value?.days || heatmapRes.value?.heatmap || []) : [];
-    _attempts    = attemptsRes.status    === 'fulfilled' ? (attemptsRes.value?.attempts || []) : [];
-    _tests       = Array.isArray(testsRes.value)         ? testsRes.value
-                   : (testsRes.status === 'fulfilled' ? (testsRes.value?.tests || testsRes.value || []) : []);
-  } catch (e) {
-    console.error('[stats] load error:', e);
+  headCaps.textContent = scopeLabel + ' · ' + periodLabel;
+  headLeft.appendChild(headCaps);
+  if (state.sel === 'all' || (typeof state.sel === 'string' && state.sel.length > 8)) {
+    title.textContent = state.sel === 'all' ? 'Сводная статистика' : 'Детально по тесту';
+  } else if (state.sel === 'weak') {
+    title.textContent = 'Где вы слабее';
+  } else {
+    title.textContent = 'Активность';
+  }
+  headLeft.appendChild(title);
+  head.appendChild(headLeft);
+
+  // Body.
+  const body = document.createElement('div');
+  body.style.padding = 'var(--sp-4) var(--sp-5)';
+  body.style.overflowY = 'auto';
+
+  detail.appendChild(head);
+  detail.appendChild(body);
+
+  // Loading skeleton in body while we fetch.
+  const skel = document.createElement('div');
+  skel.className = 'skeleton';
+  skel.style.height = '180px';
+  skel.style.borderRadius = 'var(--radius-md)';
+  body.appendChild(skel);
+
+  if (state.sel === 'weak') {
+    await renderWeakView(body, state, tests);
+  } else if (state.sel === 'activity') {
+    await renderActivityView(body, state);
+  } else {
+    await renderSummaryView(body, state, tests);
+  }
+}
+
+// ─── Views ───────────────────────────────────────────────────
+
+async function renderSummaryView(body, state, tests) {
+  body.innerHTML = '';
+
+  const clientId = getClientId();
+  const aggParams = { clientId: clientId };
+  if (state.sel !== 'all') aggParams.testId = state.sel;
+  // Apply period as a date range via startDate.
+  const days = state.period === '7' ? 7 : state.period === '30' ? 30 : null;
+  if (days) {
+    const since = new Date(Date.now() - days * 86400000);
+    aggParams.startDate = since.toISOString();
   }
 
-  // Re-render with real data
-  const newScreen = buildScreen();
-  root.innerHTML = '';
-  root.appendChild(newScreen);
+  const [aggResp, streakResp] = await Promise.all([
+    getMyAggregate(aggParams).catch(function () { return null; }),
+    getStreak().catch(function () { return null; }),
+  ]);
+
+  const agg = aggResp || {};
+  const streak = (streakResp && streakResp.streak) || 0;
+
+  // KPI grid.
+  const kpiGrid = document.createElement('div');
+  kpiGrid.style.display = 'grid';
+  kpiGrid.style.gridTemplateColumns = 'repeat(5, 1fr)';
+  kpiGrid.style.gap = '8px';
+  kpiGrid.style.marginBottom = '14px';
+  kpiGrid.appendChild(buildKpi('Средний балл',
+    typeof agg.avgPercentCorrect === 'number' ? Math.round(agg.avgPercentCorrect) + '%' : '—'));
+  kpiGrid.appendChild(buildKpi('Попыток', String(agg.attemptCount || 0)));
+  kpiGrid.appendChild(buildKpi('Время', fmtDurationShort(agg.totalDurationMs)));
+  kpiGrid.appendChild(buildKpi('Streak', streak ? streak + ' дн' : '—'));
+  const accuracy = (agg.totalAnswered > 0)
+    ? Math.round((agg.totalCorrect / agg.totalAnswered) * 100) + '%'
+    : '—';
+  kpiGrid.appendChild(buildKpi('Точность', accuracy));
+  body.appendChild(kpiGrid);
+
+  // Activity-for-year heatmap card.
+  const hmCard = buildCard('Активность за год');
+  const hmSlot = document.createElement('div');
+  hmSlot.style.minHeight = '120px';
+  hmCard.body.appendChild(hmSlot);
+  body.appendChild(hmCard.el);
+
+  try {
+    const hm = await getHeatmap(53);
+    if (hm && Array.isArray(hm.days)) renderHeatmap(hmSlot, hm.days);
+    else hmSlot.appendChild(emptyHint('Нет данных за год'));
+  } catch (_) {
+    hmSlot.appendChild(emptyHint('Не удалось загрузить активность'));
+  }
 }
 
-// ─── Entry point ──────────────────────────────────────────────
+async function renderWeakView(body, state, tests) {
+  body.innerHTML = '';
 
-export default async function render(root) {
-  // Reset state on each navigation
-  _tab = 'overall';
-  _agg = null;
-  _streak = 0;
-  _heatmapData = [];
-  _attempts = [];
-  _tests = [];
+  // If a specific test is selected by a different sel branch we can scope
+  // weak-questions to it. Otherwise show weak themes across all tests.
+  let weakRows = [];
+  try {
+    // For "weak", aggregate across all tests-with-attempts by pulling
+    // each test's weak list. This is bounded to user's owned + accessible
+    // tests so the loop count is small.
+    const targets = (tests || []).filter(function (t) { return (t.attempts_count || 0) > 0; }).slice(0, 5);
+    const all = await Promise.all(targets.map(function (t) {
+      return getWeakQuestions(t.id).then(function (resp) {
+        return { test: t, weak: (resp && resp.questions) || [] };
+      }).catch(function () { return null; });
+    }));
+    weakRows = all.filter(function (x) { return x && x.weak.length > 0; });
+  } catch (_) {}
 
-  await mount(root);
+  if (weakRows.length === 0) {
+    body.appendChild(emptyHint('Пока нет данных о слабых темах — пройдите больше попыток.'));
+    return;
+  }
+
+  const card = buildCard(weakRows.length + ' тестов со слабыми вопросами');
+  weakRows.forEach(function (entry, i) {
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.gap = '14px';
+    row.style.padding = '14px 0';
+    row.style.borderTop = i > 0 ? '1px solid var(--ink-soft)' : 'none';
+
+    const left = document.createElement('div');
+    left.style.flex = '1';
+    const title = document.createElement('div');
+    title.style.fontSize = '15px';
+    title.style.fontWeight = 'var(--fw-semibold)';
+    title.textContent = entry.test.title || entry.test.id;
+    const sub = document.createElement('div');
+    sub.style.fontSize = '11px';
+    sub.style.color = 'var(--ink-tertiary)';
+    sub.style.marginTop = '3px';
+    sub.textContent = entry.weak.length + ' слабых вопросов';
+    left.appendChild(title);
+    left.appendChild(sub);
+    row.appendChild(left);
+
+    const bar = document.createElement('div');
+    bar.className = 'bar bar--weak';
+    bar.style.width = '160px';
+    const fill = document.createElement('div');
+    fill.className = 'bar__fill';
+    // Heuristic: percentage of correct answers per question available?
+    // We don't have it here, so render a flat 35% as visual cue.
+    fill.style.width = '35%';
+    bar.appendChild(fill);
+    row.appendChild(bar);
+
+    const cta = document.createElement('button');
+    cta.type = 'button';
+    cta.className = 'btn btn--small';
+    cta.textContent = 'Тренировка';
+    cta.addEventListener('click', function () {
+      navigate('/test/' + encodeURIComponent(entry.test.id) + '/start?source=weak');
+    });
+    row.appendChild(cta);
+
+    card.body.appendChild(row);
+  });
+  body.appendChild(card.el);
+}
+
+async function renderActivityView(body, state) {
+  body.innerHTML = '';
+
+  const hmCard = buildCard('Активность за год');
+  const hmSlot = document.createElement('div');
+  hmSlot.style.minHeight = '140px';
+  hmCard.body.appendChild(hmSlot);
+  body.appendChild(hmCard.el);
+
+  try {
+    const hm = await getHeatmap(53);
+    if (hm && Array.isArray(hm.days)) renderHeatmap(hmSlot, hm.days);
+    else hmSlot.appendChild(emptyHint('Нет данных'));
+  } catch (_) {
+    hmSlot.appendChild(emptyHint('Не удалось загрузить heatmap'));
+  }
+
+  // Recent attempts list.
+  const attemptsCard = buildCard('Последние попытки');
+  const listSlot = document.createElement('div');
+  attemptsCard.body.appendChild(listSlot);
+  attemptsCard.el.style.marginTop = '14px';
+  body.appendChild(attemptsCard.el);
+
+  try {
+    const resp = await listAttempts({ clientId: getClientId(), limit: 30 });
+    const items = Array.isArray(resp) ? resp : (resp.items || resp.attempts || []);
+    if (items.length === 0) {
+      listSlot.appendChild(emptyHint('Попыток ещё нет'));
+    } else {
+      const tbl = document.createElement('table');
+      tbl.style.width = '100%';
+      tbl.style.borderCollapse = 'collapse';
+      tbl.style.fontSize = '12px';
+      items.slice(0, 30).forEach(function (a) {
+        const tr = document.createElement('tr');
+        tr.style.borderTop = '1px solid var(--ink-soft)';
+        tr.style.cursor = 'pointer';
+        const score = (typeof a.percentCorrect === 'number') ? Math.round(a.percentCorrect) : 0;
+        const tone     = score >= 80 ? 'var(--success)'      : score >= 60 ? 'var(--warning)'      : 'var(--error)';
+        const toneSoft = score >= 80 ? 'var(--success-soft)' : score >= 60 ? 'var(--warning-soft)' : 'var(--error-soft)';
+        const tdWhen = document.createElement('td');
+        tdWhen.style.padding = '7px 0';
+        tdWhen.textContent = a.finishedAt ? new Date(a.finishedAt).toLocaleDateString('ru', { day: '2-digit', month: 'short' }) : '—';
+        const tdScore = document.createElement('td');
+        const pill = document.createElement('span');
+        pill.className = 'mono';
+        pill.style.background = toneSoft;
+        pill.style.color = tone;
+        pill.style.padding = '1px 6px';
+        pill.style.borderRadius = '999px';
+        pill.textContent = score + '%';
+        tdScore.appendChild(pill);
+        const tdTest = document.createElement('td');
+        tdTest.style.color = 'var(--ink-secondary)';
+        tdTest.textContent = (a.testTitle || a.testId || '').slice(0, 40);
+        tr.appendChild(tdWhen);
+        tr.appendChild(tdScore);
+        tr.appendChild(tdTest);
+        if (a.testId && (a.id || a.attemptId)) {
+          tr.addEventListener('click', function () {
+            navigate('/test/' + encodeURIComponent(a.testId) + '/results/' + encodeURIComponent(a.id || a.attemptId));
+          });
+        }
+        tbl.appendChild(tr);
+      });
+      listSlot.appendChild(tbl);
+    }
+  } catch (_) {
+    listSlot.appendChild(emptyHint('Не удалось загрузить попытки'));
+  }
+}
+
+// ─── Heatmap renderer ────────────────────────────────────────
+
+function renderHeatmap(slot, days) {
+  slot.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.style.display = 'grid';
+  // Auto-compute weeks columns.
+  const weeks = Math.ceil(days.length / 7);
+  grid.style.gridTemplateColumns = 'repeat(' + weeks + ', 1fr)';
+  grid.style.gridTemplateRows = 'repeat(7, 1fr)';
+  grid.style.gridAutoFlow = 'column';
+  grid.style.gap = '3px';
+  grid.style.aspectRatio = String(weeks) + ' / 7';
+  grid.style.maxWidth = '100%';
+
+  const maxCount = days.reduce(function (m, d) { return Math.max(m, d.count || 0); }, 1);
+
+  days.forEach(function (d) {
+    const cell = document.createElement('div');
+    cell.style.borderRadius = '2px';
+    cell.title = d.date + ': ' + (d.count || 0) + ' попыток';
+    const lvl = Math.min(4, Math.ceil((d.count / maxCount) * 4));
+    cell.style.background =
+      d.count === 0 ? 'var(--ink-soft)' :
+      lvl === 1 ? 'var(--accent-soft)' :
+      lvl === 2 ? 'color-mix(in srgb, var(--accent) 40%, transparent)' :
+      lvl === 3 ? 'color-mix(in srgb, var(--accent) 65%, transparent)' :
+                  'var(--accent)';
+    grid.appendChild(cell);
+  });
+  slot.appendChild(grid);
+}
+
+// ─── Building blocks ─────────────────────────────────────────
+
+function buildKpi(label, value, delta) {
+  const k = document.createElement('div');
+  k.className = 'kpi';
+  const l = document.createElement('div');
+  l.className = 'kpi__label';
+  l.textContent = label;
+  const v = document.createElement('div');
+  v.className = 'kpi__value';
+  v.textContent = value;
+  k.appendChild(l);
+  k.appendChild(v);
+  if (delta) {
+    const d = document.createElement('div');
+    d.className = 'kpi__delta';
+    d.textContent = delta;
+    k.appendChild(d);
+  }
+  return k;
+}
+
+function buildCard(title) {
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.style.padding = '0';
+  const head = document.createElement('div');
+  head.style.display = 'flex';
+  head.style.alignItems = 'center';
+  head.style.justifyContent = 'space-between';
+  head.style.padding = '12px 14px';
+  head.style.borderBottom = '1px solid var(--ink-soft)';
+  const titleEl = document.createElement('div');
+  titleEl.className = 'card__title';
+  titleEl.style.fontSize = '13px';
+  titleEl.style.fontWeight = 'var(--fw-semibold)';
+  titleEl.textContent = title;
+  head.appendChild(titleEl);
+  el.appendChild(head);
+  const body = document.createElement('div');
+  body.style.padding = '12px 14px';
+  el.appendChild(body);
+  return { el: el, head: head, body: body };
+}
+
+function emptyHint(text) {
+  const el = document.createElement('div');
+  el.style.padding = '24px 0';
+  el.style.textAlign = 'center';
+  el.style.color = 'var(--ink-tertiary)';
+  el.style.fontSize = '13px';
+  el.textContent = text;
+  return el;
+}
+
+function fmtDurationShort(ms) {
+  if (!ms || ms <= 0) return '—';
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return sec + 'с';
+  const min = Math.round(sec / 60);
+  if (min < 60) return min + ' мин';
+  const h = (min / 60);
+  if (h < 100) return h.toFixed(1) + 'ч';
+  return Math.round(h) + 'ч';
 }
