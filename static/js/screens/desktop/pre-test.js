@@ -187,27 +187,11 @@ export default async function render(root, params) {
   // `refreshHint` are defined below — refreshFromMode() reaches into
   // both via closure and would otherwise hit the TDZ.)
 
-  // ── Estimate hint ──
-  const hint = document.createElement('div');
-  hint.style.background = 'var(--ink-soft)';
-  hint.style.padding = '10px 12px';
-  hint.style.borderRadius = 'var(--radius-sm)';
-  hint.style.fontSize = 'var(--fs-sm)';
-  hint.style.color = 'var(--ink-secondary)';
-  hint.style.marginTop = 'var(--sp-3)';
-  function refreshHint() {
-    const mins = Math.max(1, Math.round(state.count * 0.35));
-    hint.innerHTML = '';
-    hint.appendChild(document.createTextNode((t('pretest.estimate') || 'Ориентировочно — ') + ' '));
-    const b = document.createElement('b');
-    b.style.color = 'var(--ink)';
-    b.textContent = '~' + mins + ' мин';
-    hint.appendChild(b);
-    hint.appendChild(document.createTextNode(' для ' + state.count + ' вопросов'));
-  }
-  refreshHint();
+  // No estimate hint — removed per user request. refreshFromMode() and
+  // refreshHint() were doing the same work; the latter is now a no-op
+  // so existing wiring stays valid without dead code.
+  function refreshHint() { /* intentionally empty */ }
   countCtl.onChange = refreshHint;
-  card.appendChild(hint);
 
   // Now safe to paint mode-dependent controls (hint + refreshHint are live).
   refreshFromMode();

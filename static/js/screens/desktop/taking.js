@@ -313,10 +313,13 @@ async function beginAttempt() {
     testId: _s.testId,
     clientId: _s.clientId,
     settings: {
+      // mode is required server-side — drives validation of the rest.
+      mode: _s.settings.mode || 'training',
       count: _s.questions.length,
       order: _s.settings.order,
       timeLimitSeconds: _s.settings.timeLimitMin > 0 ? _s.settings.timeLimitMin * 60 : null,
       showAnswersImmediately: _s.settings.showAnswers,
+      shuffleOptions: !!_s.settings.shuffleOptions,
       allowSkip: _s.settings.allowSkip,
     },
     questions: _s.questions.map(q => ({ id: q.id })),

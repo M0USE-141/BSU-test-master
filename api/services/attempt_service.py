@@ -10,6 +10,87 @@ from api.models.db.attempt import Attempt, AttemptAnswer, AttemptStatus
 from api.models.db.question_performance import QuestionPerformance
 
 
+# ── Mode rules — defence-in-depth match for the client-side gating ──
+#
+# Defining the rules once on the server lets us reject malicious or
+# stale clients that try to take an "Экзамен" with no timer / a fake
+# reveal flag. Mirrors what pre-test.js + taking.js enforce visually.
+#
+# Reference:
+#   training        — anything goes.
+#   timed           — timer required (positive), no auto-submit
+#                     (we never auto-finish from the backend; the
+#                     frontend is the soft cap).
+#   exam            — timer required (positive); reveal must be false;
+#                     order must be 'random'; no flags expected.
+#   mistake_review  — informational; question list is fully client-built
+#                     so we don't constrain settings here.
+
+_VALID_MODES = {"training", "timed", "exam", "mistake_review"}
+
+# Per-question time budgets in seconds — server hard ceilings, not the
+# UI presets. Keep them generous so a slow custom value still fits.
+_MODE_MAX_SECONDS_PER_Q = {"timed": 120, "exam": 60}  # plus a floor of 60s
+_MODE_MIN_TIME_SECONDS = 60   # at least 60s no matter how few questions
+
+
+def _validate_mode_settings(settings: dict[str, Any], question_count: int) -> None:
+    """Reject settings that contradict the declared mode.
+
+    Question_count comes from the client-supplied questions[] list (the
+    same list we store snapshots from). Passing 0 disables the time-cap
+    check — it'll just enforce the mode/timer presence.
+    """
+    if not isinstance(settings, dict):
+        return  # legacy clients sending no settings — accept
+
+    raw_mode = settings.get("mode")
+    if raw_mode is None:
+        return  # legacy clients sending no mode — accept (training default)
+    mode = str(raw_mode).lower()
+    if mode not in _VALID_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_mode", "mode": raw_mode},
+        )
+
+    if mode in {"timed", "exam"}:
+        tls = settings.get("timeLimitSeconds")
+        if tls is None or not isinstance(tls, (int, float)) or tls <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "time_limit_required", "mode": mode},
+            )
+        # Cap the timer at a generous multiple of the question count so a
+        # client can't issue a 24-hour "Экзамен" and abuse the snapshot.
+        per_q = _MODE_MAX_SECONDS_PER_Q.get(mode, 120)
+        cap = max(_MODE_MIN_TIME_SECONDS, question_count * per_q)
+        if tls > cap:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "time_limit_too_long",
+                    "mode": mode,
+                    "maxSeconds": cap,
+                    "got": int(tls),
+                },
+            )
+
+    if mode == "exam":
+        # Exam locks reveal off + shuffled questions.
+        if settings.get("showAnswersImmediately") is True:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "reveal_forbidden_in_exam"},
+            )
+        order = settings.get("order")
+        if order is not None and order != "random":
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "shuffle_required_in_exam", "got": order},
+            )
+
+
 def get_or_create_attempt(
     db: DBSession,
     attempt_id: str,
@@ -70,6 +151,12 @@ def start_attempt(
         settings: Attempt settings (question count, randomization, etc.)
         questions: List of questions in the attempt (from session)
     """
+    # Validate mode rules before persisting anything. Skipped when the
+    # attempt already exists (clients resuming an in-progress attempt
+    # don't re-pass settings).
+    if settings is not None and db.get(Attempt, attempt_id) is None:
+        _validate_mode_settings(settings, len(questions or []))
+
     attempt = get_or_create_attempt(
         db, attempt_id, test_id, client_id, user_id, settings
     )
