@@ -473,7 +473,7 @@
   transition: width 600ms ease;
 }
 
-.topic-bar__fill--weak { background: #c4554a; }
+.topic-bar__fill--weak { background: var(--error); }
 
 /* Heatmap */
 .heatmap-wrap {

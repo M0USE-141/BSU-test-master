@@ -456,7 +456,7 @@
 
 /* ── Taking timer warning ────────────────────────────────── */
 .mob-tk__timer--warn {
-  color: #c4554a;
+  color: var(--error);
 }
 
 /* ── Badge on nav icons ──────────────────────────────────── */

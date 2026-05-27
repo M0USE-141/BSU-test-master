@@ -135,7 +135,7 @@
   font: 400 13px/1.5 'Inter', system-ui, sans-serif;
   color: var(--error);
   background: var(--error-soft);
-  border: 1px solid rgba(196, 85, 74, .25);
+  border: 1px solid color-mix(in srgb, var(--error) 25%, transparent);
   border-radius: var(--radius-sm);
   padding: 10px 14px;
 }

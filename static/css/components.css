@@ -66,12 +66,24 @@
 
 .btn--danger {
   background: transparent;
-  color: #d9534f;
-  border-color: #d9534f;
+  color: var(--error);
+  border-color: var(--error);
 }
 
 .btn--danger:hover {
-  background: rgba(217, 83, 79, .08);
+  background: var(--error-soft);
+}
+
+.btn--danger-solid {
+  background: var(--error);
+  color: #fff;
+  border-color: var(--error);
+}
+
+.btn--danger-solid:hover {
+  background: var(--error-strong);
+  border-color: var(--error-strong);
+  box-shadow: var(--shadow-md);
 }
 
 .btn--small {
@@ -469,6 +481,14 @@
   padding: 0;
 }
 
+/* Audit 4.5 — badge over icon-btn needs paper outline to not clip */
+.badge--float {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  border: 1.5px solid var(--paper);
+}
+
 /* ── Divider ────────────────────────────────────────────── */
 .divider {
   width: 100%;
@@ -513,9 +533,34 @@
   white-space: nowrap;
 }
 
-.toast--success { background: var(--accent); color: #fff; }
-.toast--error   { background: #d9534f; color: #fff; }
-.toast--warning { background: #e6b54a; color: #1c1a18; }
+.toast--success { background: var(--success); color: #fff; }
+.toast--error   { background: var(--error); color: #fff; }
+.toast--warning { background: var(--warning); color: var(--ink); }
+.toast--info    { background: var(--info); color: #fff; }
+
+/* Toast with action button (undo) — audit 3.3 */
+.toast__action {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  opacity: .9;
+}
+.toast__action:hover { opacity: 1; background: rgba(255,255,255,.15); }
+.toast__close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px;
+  opacity: .7;
+  line-height: 0;
+}
+.toast__close:hover { opacity: 1; }
 
 @keyframes toast-in {
   from {
@@ -719,4 +764,257 @@
 
 .switch input:checked + .switch__track::after {
   left: calc(100% - 18px);
+}
+
+/* ── Autofill — kill the 5000s background-color transition that
+   freezes color when theme changes (audit 4.6) ──────────────── */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ink);
+  -webkit-box-shadow: 0 0 0 1000px var(--paper) inset;
+  transition: background-color 0s 600000s;
+  caret-color: var(--ink);
+}
+
+/* ── Unified KPI tile (audit 1.1) ────────────────────────────
+   Replaces .kpi-tile / .st-kpi / .mob-kpi / .rs-stat. */
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--sp-3) var(--sp-4);
+  border: var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+.kpi__label {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-tertiary);
+}
+.kpi__value {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: var(--fw-bold);
+  font-size: 26px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.kpi__delta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: var(--fs-xs);
+  color: var(--ink-secondary);
+}
+.kpi__delta--up   { color: var(--success); }
+.kpi__delta--down { color: var(--error); }
+.kpi--sm .kpi__value { font-size: 22px; }
+.kpi--lg .kpi__value { font-size: 32px; }
+
+/* ── Unified bar (audit 1.4) ──────────────────────────────────
+   Replaces .tk-progress-bar, .topic-bar, .st-topic-track,
+   .st-test-card__score-bar. .progress kept for legacy code. */
+.bar {
+  width: 100%;
+  height: 6px;
+  background: var(--ink-soft);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  position: relative;
+}
+.bar__fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  transition: width 400ms ease, background var(--transition-fast);
+}
+.bar--thin  { height: 4px; }
+.bar--thick { height: 10px; }
+.bar--weak    .bar__fill { background: var(--error); }
+.bar--warn    .bar__fill { background: var(--warning); }
+.bar--success .bar__fill { background: var(--success); }
+
+/* Progressive timer bar — fades ink → warning → error (audit 4.8) */
+.bar--timer .bar__fill { background: var(--ink-secondary); }
+.bar--timer[data-warn="1"] .bar__fill { background: var(--warning); }
+.bar--timer[data-warn="2"] .bar__fill {
+  background: var(--error);
+  animation: bar-pulse 1.2s ease-in-out infinite;
+}
+@keyframes bar-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .55; }
+}
+
+/* ── App bar — slot-based topbar (audit 1.2) ─────────────── */
+.app-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  height: 52px;
+  padding: 0 var(--sp-4);
+  border-bottom: var(--border);
+  background: var(--paper);
+  flex-shrink: 0;
+}
+.app-bar__brand {
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-lg);
+  letter-spacing: -0.02em;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 0;
+}
+.app-bar__search {
+  flex: 1;
+  max-width: 340px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 7px 12px;
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--ink-tertiary);
+  font-size: var(--fs-sm);
+  background: var(--paper);
+  cursor: pointer;
+  text-align: left;
+}
+.app-bar__search:hover { background: var(--ink-soft); }
+.app-bar__progress { flex: 1; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.app-bar__title    { flex: 1; font-weight: var(--fw-semibold); font-size: var(--fs-md); }
+.app-bar__actions  { margin-left: auto; display: flex; align-items: center; gap: var(--sp-1); }
+.app-bar__kbd {
+  margin-left: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: var(--fs-xs);
+  opacity: .6;
+}
+
+/* ── Tabs — two canonical styles (audit 1.7) ─────────────── */
+.tabs {
+  display: flex;
+  gap: var(--sp-1);
+  align-items: center;
+  min-height: 36px;
+}
+
+/* Underline tabs — used as section dividers (Обзор/Вопросы/...) */
+.tabs--line {
+  border-bottom: 1px solid var(--ink-soft);
+  gap: var(--sp-5);
+  padding-bottom: 0;
+}
+.tabs--line .tabs__item {
+  padding: 8px 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--ink-secondary);
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.tabs--line .tabs__item:hover { color: var(--ink); }
+.tabs--line .tabs__item.is-active {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+/* Pill tabs — used as filters / time-range */
+.tabs--pill {
+  gap: var(--sp-1);
+  padding: 3px;
+  background: var(--ink-soft);
+  border-radius: var(--radius-pill);
+  align-self: flex-start;
+}
+.tabs--pill .tabs__item {
+  padding: 5px 12px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--ink-secondary);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.tabs--pill .tabs__item:hover { color: var(--ink); }
+.tabs--pill .tabs__item.is-active {
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Unified empty state with CTA slot (audit 1.6) ──────── */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-7) var(--sp-4);
+  text-align: center;
+  color: var(--ink-secondary);
+  min-height: 200px;
+}
+.empty__icon {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  background: var(--ink-soft);
+  color: var(--ink-tertiary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--sp-2);
+}
+.empty__title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--ink);
+}
+.empty__desc {
+  font-size: var(--fs-sm);
+  color: var(--ink-secondary);
+  max-width: 360px;
+  line-height: 1.55;
+}
+.empty__cta { margin-top: var(--sp-3); }
+
+/* ── Tag — semantic variants ───────────────────────────── */
+.tag--success { background: var(--success-soft); color: var(--success); }
+.tag--warning { background: var(--warning-soft); color: #8a6a17; }
+.tag--info    { background: var(--info-soft);    color: var(--info); }
+.tag--error   { background: var(--error-soft);   color: var(--error); }
+
+/* ── Caps text utility (small uppercase labels) ─────────── */
+.caps {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-tertiary);
+}
+
+/* ── Mono utility ──────────────────────────────────────── */
+.mono { font-family: 'JetBrains Mono', monospace; }
+
+/* ── Touch targets on coarse pointers (audit 4.4) ───────── */
+@media (pointer: coarse) {
+  .btn--small,
+  .btn--icon,
+  .chip--small {
+    min-height: var(--touch-min);
+    min-width: var(--touch-min);
+  }
 }
