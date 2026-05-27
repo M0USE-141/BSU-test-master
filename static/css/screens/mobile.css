@@ -412,6 +412,29 @@
   font: 500 15px/1.5 'Inter', sans-serif;
 }
 
+/* ── Attempt history rows (collection tabs) ──────────────── */
+.mob-att-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ink-soft);
+  cursor: pointer;
+}
+
+.mob-att-row:last-child { border-bottom: none; }
+.mob-att-row:active { opacity: 0.7; }
+
+.mob-att-badge {
+  display: inline-block;
+  min-width: 52px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  text-align: center;
+  font: 700 12px/1.6 'JetBrains Mono', monospace;
+  flex-shrink: 0;
+}
+
 /* ── Dashboard activity rows ─────────────────────────────── */
 .mob-activity-row {
   display: flex;

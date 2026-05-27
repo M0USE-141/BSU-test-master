@@ -229,5 +229,17 @@
   "time.min_ago": "мин назад",
   "time.h_ago": "ч назад",
   "time.yesterday": "вчера",
-  "time.days_ago": "дн. назад"
+  "time.days_ago": "дн. назад",
+  "common.overview": "Обзор",
+  "stats.history": "История",
+  "stats.last": "посл.",
+  "stats.oldest": "старые",
+  "stats.recent_label": "новые",
+  "profile.joined": "вступил(а)",
+  "profile.edit_profile": "Редактировать",
+  "profile.display_name": "Отображаемое имя",
+  "profile.upload_avatar": "Изменить фото",
+  "profile.edit_success": "Профиль обновлён!",
+  "profile.saving": "Сохранение…",
+  "settings.email": "Электронная почта"
 }

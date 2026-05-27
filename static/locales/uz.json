@@ -229,5 +229,17 @@
   "time.min_ago": "daq. oldin",
   "time.h_ago": "soat oldin",
   "time.yesterday": "kecha",
-  "time.days_ago": "kun oldin"
+  "time.days_ago": "kun oldin",
+  "common.overview": "Umumiy",
+  "stats.history": "Tarix",
+  "stats.last": "oxirgi",
+  "stats.oldest": "eng eski",
+  "stats.recent_label": "yangi",
+  "profile.joined": "qo'shilgan",
+  "profile.edit_profile": "Tahrirlash",
+  "profile.display_name": "Ko'rsatma nomi",
+  "profile.upload_avatar": "Rasmni o'zgartirish",
+  "profile.edit_success": "Profil yangilandi!",
+  "profile.saving": "Saqlanmoqda…",
+  "settings.email": "Elektron pochta"
 }
