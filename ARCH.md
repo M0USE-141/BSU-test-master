@@ -491,3 +491,69 @@ index.html
 | `/api/tests/{id}/questions` — GET отдаёт вопросы без auth (публичный контент) | Низкая (known gap) |
 | Тесты хранятся как JSON-файлы на диске — два источника правды с БД | Архитектурный долг |
 | `nul` файл в Windows при некоторых операциях — добавлен в `.gitignore` | Ничтожная |
+
+---
+
+## Roadmap — архитектурные предложения
+
+> Это концепции для дальнейшей разработки. Ни одна из них не реализована в текущем коде.
+
+### R1. Перенос payload вопросов в БД
+
+Сейчас вопросы живут как `data/tests/{uuid}/test.json` + мета-строка в `test_collections` — два источника правды. Предложение: добавить колонку `payload_json TEXT` в `test_collections`. Один транзакционный UPDATE вместо двойной записи (файл + БД), что устранит race condition при параллельном одобрении CR и позволит переписать `list_tests` и `search` на чистый SQL без дискового I/O.
+
+Миграция: `alembic revision --autogenerate` + single-time backfill из существующих `test.json`.
+
+### R2. Тестовая инфраструктура (pytest)
+
+- `pytest` + `httpx.AsyncClient` с `tmp_path` conftest для `DATA_DIR`.
+- Покрыть: auth-flow, attempts lifecycle, access matrix (owner/shared/public × view/edit), CR approve/reject.
+- `tests/smoke/test_attempts_smoke.py` — переводит ручной `attempts_smoke.md` в автотесты.
+- Цель: ≥70% покрытие `api/routes/`.
+
+### R3. CI / pre-commit
+
+- GitHub Actions: `ruff check`, `mypy api/`, `python scripts/check_locales.py`, базовые unit-тесты.
+- pre-commit: `ruff format`, `ruff check`, `mypy api/`, локаль-паритет.
+
+### R4. Refresh-токены как отдельная сущность
+
+Текущая схема: один JWT со скользящей сессией в таблице `sessions`. Безопаснее: short-lived access (15 мин) + long-lived refresh (30 дней) в `httpOnly cookie`. Устраняет длинное окно компрометации украденного токена.
+
+### R5. Server-side пагинация
+
+`GET /api/tests`, `GET /api/notifications`, `GET /api/stats/attempts` — добавить `?limit=&offset=` (или cursor) и `X-Total-Count`. Сейчас фронт получает все записи без ограничения.
+
+### R6. WebSocket для уведомлений
+
+Заменить polling на WS-канал `/ws/notifications` для real-time доставки CR-нотификаций. Реализация: `fastapi.WebSocket` + `asyncio.Queue` per user.
+
+### R7. RBAC: роль admin
+
+Поле `User.role = enum('user', 'admin')`. Admin-эндпоинты: просмотр всех тестов, бан пользователей, системная статистика.
+
+### R8. Audit-лог
+
+Таблица `audit_events (id, actor_id, action, target_type, target_id, payload_json, created_at)`. Фиксировать: login, change_password, delete_test, approve_cr, ban_user. Просмотр в admin-панели.
+
+### R9. Build-pipeline / TypeScript
+
+- Заменить `_V = window.__APP_VERSION__` + голый `Date.now()` на bundler (esbuild) с content-hashing файлов.
+- Постепенный переход к TypeScript: начать с `static/js/api/*` и `utils/*`, добавить `tsconfig.json` с `allowJs: true`.
+
+### R10. ICU plurals в i18n
+
+Текущий `t()` — плоская замена строк. Добавить `MessageFormat`-движок для корректных plural forms (`{n, plural, one {вопрос} few {вопроса} other {вопросов}}`). Актуально для русского и узбекского.
+
+### R11. A11y baseline
+
+`axe-core` в browser-тестах (Playwright). Запретить мёрж PR с регрессией по accessibility.
+
+### R12. Observability
+
+- `prometheus-client` + метрики: `request_count`, `request_latency_seconds`, `attempts_started_total`, `errors_total`.
+- Structured JSON logging вместо текстового (uvicorn `access_log_format`).
+
+### R13. Backup / disaster-recovery
+
+Cron-скрипт: ежедневный snapshot SQLite + архив тестов в S3 (или локальный rotated backup). Скрипт проверки восстановления.
