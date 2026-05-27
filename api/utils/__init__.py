@@ -3,9 +3,7 @@ from api.utils.file_utils import safe_asset_path, save_upload_file
 from api.utils.json_utils import (
     json_dump,
     json_load,
-    ndjson_dump,
-    read_json_file,
-    write_json_file,
+    write_json_atomic,
 )
 from api.utils.paths import (
     assets_dir,
@@ -13,16 +11,14 @@ from api.utils.paths import (
     test_dir,
 )
 from api.utils.time_utils import parse_iso_timestamp, utc_now
-from api.utils.validation import validate_id, validate_test_exists
+from api.utils.validation import validate_id, validate_test_exists, validate_test_id
 
 __all__ = [
     "safe_asset_path",
     "save_upload_file",
     "json_dump",
     "json_load",
-    "ndjson_dump",
-    "read_json_file",
-    "write_json_file",
+    "write_json_atomic",
     "assets_dir",
     "payload_path",
     "test_dir",
@@ -30,4 +26,5 @@ __all__ = [
     "utc_now",
     "validate_id",
     "validate_test_exists",
+    "validate_test_id",
 ]

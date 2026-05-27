@@ -3,14 +3,15 @@
 Data migration script to assign ownership to existing tests.
 
 This script:
-1. Finds the first user by created_at (admin/default user)
+1. Looks up the user specified by --owner-username
 2. For each test in data/tests/, creates a TestCollection with access_level=public
 3. Skips tests that already have collections
 
 Usage:
-    python scripts/migrate_test_ownership.py
+    python scripts/migrate_test_ownership.py --owner-username alice
 """
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -28,9 +29,9 @@ from api.models.db.user import User
 from api.models.db.test_collection import TestCollection, AccessLevel
 
 
-def get_first_user(db):
-    """Get the first user by created_at (oldest user)."""
-    stmt = select(User).order_by(User.created_at.asc()).limit(1)
+def get_user_by_username(db, username: str):
+    """Look up a user by username."""
+    stmt = select(User).where(User.username == username)
     return db.execute(stmt).scalar_one_or_none()
 
 
@@ -58,18 +59,18 @@ def get_file_based_test_ids():
     return test_ids
 
 
-def migrate_tests():
+def migrate_tests(owner_username: str):
     """Main migration function."""
     db = SessionLocal()
     try:
-        # Get default owner
-        default_owner = get_first_user(db)
+        # Resolve the specified owner
+        default_owner = get_user_by_username(db, owner_username)
         if not default_owner:
-            print("ERROR: No users found in database. Please create a user first.")
-            print("You can register a user through the web interface.")
+            print(f"ERROR: User '{owner_username}' not found in database.")
+            print("Register the user through the web interface first, then re-run this script.")
             return False
 
-        print(f"Using user '{default_owner.username}' (ID: {default_owner.id}) as default owner")
+        print(f"Using user '{default_owner.username}' (ID: {default_owner.id}) as owner")
 
         # Get existing collections
         existing_ids = get_existing_test_ids(db)
@@ -116,6 +117,16 @@ def migrate_tests():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Assign ownership to existing legacy tests that have no TestCollection row."
+    )
+    parser.add_argument(
+        "--owner-username",
+        required=True,
+        help="Username of the user who will become the owner of all unowned tests.",
+    )
+    args = parser.parse_args()
+
     print("=== Test Ownership Migration ===\n")
-    success = migrate_tests()
+    success = migrate_tests(args.owner_username)
     sys.exit(0 if success else 1)

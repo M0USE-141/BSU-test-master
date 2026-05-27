@@ -8,9 +8,9 @@ import { iconEl } from '../../icons.js';
 /** Returns the active nav tab id based on current hash. */
 export function activeNav() {
   const h = location.hash;
-  if (h.startsWith('#/stats'))         return 'stats';
-  if (h.startsWith('#/profile') || h.startsWith('#/settings')) return 'me';
-  if (h.startsWith('#/test') || h.startsWith('#/collection')) return 'tests';
+  if (h.startsWith('#/stats'))                                     return 'stats';
+  if (h.startsWith('#/profile') || h.startsWith('#/settings'))     return 'me';
+  if (h.startsWith('#/test') || h.startsWith('#/collection') || h.startsWith('#/tests')) return 'tests';
   return 'home';
 }
 
@@ -22,7 +22,7 @@ export function buildBottomNav(active) {
   const cur = active || activeNav();
   const items = [
     { id: 'home',  label: t('nav.home')  || 'Home',  icon: 'home',  href: '#/home' },
-    { id: 'tests', label: t('nav.tests') || 'Tests', icon: 'doc',   href: '#/home' },
+    { id: 'tests', label: t('nav.tests') || 'Tests', icon: 'doc',   href: '#/tests' },
     { id: 'stats', label: t('nav.stats') || 'Stats', icon: 'chart', href: '#/stats' },
     { id: 'me',    label: t('nav.profile') || 'Me',  icon: 'user',  href: '#/profile' },
   ];
@@ -73,12 +73,8 @@ export function buildTopBar({ title, back = false, backHref = '#/home', actions 
   return bar;
 }
 
-/** Escape HTML to prevent XSS. */
-export function esc(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+/** Escape HTML to prevent XSS. Delegates to shared utils/escape.js. */
+export { escHtml as esc } from '../../utils/escape.js';
 
 /** Format ISO date to short string. */
 export function fmtDate(iso) {

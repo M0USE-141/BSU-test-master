@@ -71,6 +71,18 @@ export function formatScore(correct, total) {
 }
 
 /**
+ * Format a duration in whole seconds as "M:SS" (for countdown timers / activity feeds).
+ * @param {number} seconds
+ * @returns {string}
+ */
+export function formatSeconds(seconds) {
+  if (!seconds) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/**
  * Russian pluralization.
  * @param {number} n
  * @param {string} one  — 1 день

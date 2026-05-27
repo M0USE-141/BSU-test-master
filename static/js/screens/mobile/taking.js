@@ -10,6 +10,9 @@ import { navigate } from '../../router.js';
 import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
 import { renderContent, typesetMath } from '../../utils/render-blocks.js';
+import { escHtml as esc } from '../../utils/escape.js';
+import { getClientId } from '../../utils/client-id.js';
+import { formatSeconds as formatTime } from '../../utils/format.js';
 
 // ── Module state ──────────────────────────────────────────────
 /** @type {HTMLElement|null} */
@@ -32,32 +35,13 @@ const _s = {
   currentIdx: 0,
   /** @type {{ [qId: number]: { optionIdx: number, isCorrect: boolean } }} */
   answers: {},
-  flagged: /** @type {Set<number>} */ (new Set()),
+  flagged:    /** @type {Set<number>} */ (new Set()),
+  drawerOpen: false,
   startTime:    /** @type {number|null} */ (null),
   timeLeft:     /** @type {number|null} */ (null),
   timerHandle:  /** @type {any} */ (null),
   advanceTimer: /** @type {any} */ (null),
 };
-
-// ── Utilities ─────────────────────────────────────────────────
-
-function esc(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function formatTime(seconds) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-function getClientId() {
-  let id = localStorage.getItem('client_id');
-  if (!id) { id = crypto.randomUUID(); localStorage.setItem('client_id', id); }
-  return id;
-}
 
 // ── Block renderer (shared utility with MathJax support) ─────
 
@@ -263,6 +247,39 @@ function buildPretest() {
           </button>
         </div>
       </div>
+
+      <!-- Show answers toggle -->
+      <div style="margin-bottom:20px;">
+        <div style="font:600 13px/1 Inter,sans-serif;color:var(--ink);margin-bottom:4px;">
+          ${t('taking.show_answers') || 'Feedback after answer'}
+        </div>
+        <div style="font:400 11px/1.4 Inter,sans-serif;color:var(--ink-mute);margin-bottom:8px;">
+          ${t('taking.show_answers_tip') || 'Shows ✓/✗ immediately after you pick an option'}
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button data-show="true"  class="chip chip--small ${cfg.showAnswers  ? 'chip--active' : ''}">
+            ${t('common.yes') || 'Yes'}
+          </button>
+          <button data-show="false" class="chip chip--small ${!cfg.showAnswers ? 'chip--active' : ''}">
+            ${t('common.no') || 'No'}
+          </button>
+        </div>
+      </div>
+
+      <!-- Time limit -->
+      <div style="margin-bottom:20px;">
+        <div style="font:600 13px/1 Inter,sans-serif;color:var(--ink);margin-bottom:8px;">
+          ${t('taking.time_limit') || 'Time limit'}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${[0, 5, 10, 15, 20, 30].map(n => `
+            <button data-timelimit="${n}" class="chip chip--small ${n === cfg.timeLimitMin ? 'chip--active' : ''}">
+              ${n === 0
+                ? (t('taking.no_limit') || 'None')
+                : `${n} ${t('stats.min_short') || 'min'}`}
+            </button>`).join('')}
+        </div>
+      </div>
     </div>
 
     <!-- Fixed start button -->
@@ -298,8 +315,122 @@ function buildPretest() {
     });
   });
 
+  screen.querySelectorAll('[data-show]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      cfg.showAnswers = btn.dataset.show === 'true';
+      screen.querySelectorAll('[data-show]').forEach(b => {
+        b.classList.toggle('chip--active', b.dataset.show === String(cfg.showAnswers));
+      });
+    });
+  });
+
+  screen.querySelectorAll('[data-timelimit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      cfg.timeLimitMin = parseInt(btn.dataset.timelimit, 10);
+      screen.querySelectorAll('[data-timelimit]').forEach(b => {
+        b.classList.toggle('chip--active', parseInt(b.dataset.timelimit, 10) === cfg.timeLimitMin);
+      });
+    });
+  });
+
   screen.querySelector('#mob-start-btn')?.addEventListener('click', () => beginAttempt());
   return screen;
+}
+
+// ── Question navigation drawer ────────────────────────────────
+
+function buildNavDrawer() {
+  const total = _s.questions.length;
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = [
+    'position:fixed;inset:0;z-index:200;',
+    'display:flex;flex-direction:column;justify-content:flex-end;',
+  ].join('');
+
+  const backdrop = document.createElement('div');
+  backdrop.style.cssText = 'position:absolute;inset:0;background:rgba(0,0,0,.45);';
+  backdrop.addEventListener('click', () => { _s.drawerOpen = false; _mount(); });
+
+  const sheet = document.createElement('div');
+  sheet.style.cssText = [
+    'position:relative;background:var(--paper);',
+    'border-radius:var(--radius-lg) var(--radius-lg) 0 0;',
+    'padding:12px 16px 16px;max-height:65vh;overflow-y:auto;',
+    'padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));',
+  ].join('');
+
+  // Handle
+  const handle = document.createElement('div');
+  handle.style.cssText = [
+    'width:36px;height:4px;border-radius:2px;',
+    'background:var(--ink-soft);margin:0 auto 12px;',
+  ].join('');
+
+  // Title row
+  const titleRow = document.createElement('div');
+  titleRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;';
+
+  const title = document.createElement('span');
+  title.style.cssText = 'font:600 13px/1 Inter,sans-serif;color:var(--ink);';
+  title.textContent = t('taking.jump_to') || 'Jump to question';
+
+  const legend = document.createElement('div');
+  legend.style.cssText = 'display:flex;gap:10px;font:400 10px/1 Inter,sans-serif;color:var(--ink-mute);';
+  legend.innerHTML = `
+    <span style="display:flex;align-items:center;gap:3px;">
+      <span style="width:10px;height:10px;border-radius:2px;background:var(--accent-soft);
+                   border:1px solid var(--accent);display:inline-block;"></span>✓
+    </span>
+    <span style="display:flex;align-items:center;gap:3px;">
+      <span style="width:10px;height:10px;border-radius:2px;
+                   background:rgba(196,85,74,.10);border:1px solid #c4554a;display:inline-block;"></span>✗
+    </span>`;
+  titleRow.append(title, legend);
+
+  // Grid of question cells
+  const grid = document.createElement('div');
+  grid.className = 'rs-qgrid';
+
+  for (let i = 0; i < total; i++) {
+    const q       = _s.questions[i];
+    const saved   = q ? _s.answers[q.id] : undefined;
+    const flagged = q && _s.flagged.has(q.id);
+    const current = i === _s.currentIdx;
+
+    let cls = 'rs-qcell';
+    let icon = '';
+    if (saved !== undefined) {
+      if (_s.settings.showAnswers) {
+        cls  += saved.isCorrect ? ' rs-qcell--correct' : ' rs-qcell--wrong';
+        icon  = saved.isCorrect ? '✓' : '✗';
+      } else {
+        cls  += ' rs-qcell--correct';  // answered, but correctness unknown yet
+        icon  = '·';
+      }
+    }
+    if (flagged) cls += ' rs-qcell--flagged';
+
+    const cell = document.createElement('div');
+    cell.className = cls;
+    if (current) cell.style.cssText = 'outline:2px solid var(--accent);outline-offset:2px;cursor:pointer;';
+    else          cell.style.cssText = 'cursor:pointer;';
+
+    cell.innerHTML = `
+      <span class="rs-qcell__num">${i + 1}</span>
+      <span class="rs-qcell__icon">${icon}</span>`;
+
+    cell.addEventListener('click', () => {
+      _s.currentIdx  = i;
+      _s.drawerOpen  = false;
+      _mount();
+    });
+    grid.appendChild(cell);
+  }
+
+  sheet.append(handle, titleRow, grid);
+  overlay.append(backdrop, sheet);
+  return overlay;
 }
 
 // ── Build taking screen ───────────────────────────────────────
@@ -337,22 +468,37 @@ function buildTaking() {
 
   const progressWrap = document.createElement('div');
   progressWrap.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:3px;min-width:0;';
-  progressWrap.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;
-                font:400 11px/1 Inter,sans-serif;color:var(--ink-mute);">
-      <span>${_s.currentIdx + 1} / ${total}</span>
-      ${_s.timeLeft !== null
-        ? `<span class="mob-tk__timer" style="display:flex;align-items:center;gap:3px;">
-             ${iconEl('clock', 11)?.outerHTML || ''}
-             <span class="mob-tk__timer-text">${formatTime(_s.timeLeft)}</span>
-           </span>`
-        : ''
-      }
-    </div>
-    <div style="height:4px;background:var(--ink-soft);border-radius:999px;overflow:hidden;">
-      <div style="width:${pct}%;height:100%;background:var(--accent);border-radius:999px;
-                  transition:width 200ms ease;"></div>
-    </div>`;
+
+  // Counter is tappable → opens question navigation drawer
+  const counterBtn = document.createElement('button');
+  counterBtn.type = 'button';
+  counterBtn.style.cssText = [
+    'background:none;border:none;padding:2px 6px;margin-left:-6px;',
+    'border-radius:var(--radius-sm);cursor:pointer;',
+    'font:400 11px/1 Inter,sans-serif;color:var(--ink-mute);',
+  ].join('');
+  counterBtn.setAttribute('aria-label', t('taking.jump_to') || 'Jump to question');
+  counterBtn.innerHTML = `${_s.currentIdx + 1} / ${total}`;
+  counterBtn.addEventListener('click', () => { _s.drawerOpen = !_s.drawerOpen; _mount(); });
+
+  const topRow = document.createElement('div');
+  topRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
+  topRow.appendChild(counterBtn);
+  if (_s.timeLeft !== null) {
+    const timerEl = document.createElement('span');
+    timerEl.className = 'mob-tk__timer';
+    timerEl.style.cssText = 'display:flex;align-items:center;gap:3px;';
+    timerEl.innerHTML = `${iconEl('clock', 11)?.outerHTML || ''}
+      <span class="mob-tk__timer-text">${formatTime(_s.timeLeft)}</span>`;
+    topRow.appendChild(timerEl);
+  }
+
+  const progressBar = document.createElement('div');
+  progressBar.style.cssText = 'height:4px;background:var(--ink-soft);border-radius:999px;overflow:hidden;';
+  progressBar.innerHTML = `<div style="width:${pct}%;height:100%;background:var(--accent);
+    border-radius:999px;transition:width 200ms ease;"></div>`;
+
+  progressWrap.append(topRow, progressBar);
 
   const flagBtn = document.createElement('button');
   flagBtn.type = 'button';
@@ -469,6 +615,12 @@ function buildTaking() {
 
   bottomBar.append(prevBtn, nextBtn);
   screen.append(topbar, qArea, bottomBar);
+
+  // Attach navigation drawer overlay (outside normal flow)
+  if (_s.drawerOpen) {
+    screen.appendChild(buildNavDrawer());
+  }
+
   return screen;
 }
 
@@ -514,6 +666,7 @@ export default async function render(root, params = {}) {
   Object.assign(_s, {
     phase: 'loading', test: null, allQuestions: [], questions: [],
     currentIdx: 0, answers: {}, flagged: new Set(),
+    drawerOpen: false,
     startTime: null, timeLeft: null,
     timerHandle: null, advanceTimer: null,
     attemptId: null, clientId: null,

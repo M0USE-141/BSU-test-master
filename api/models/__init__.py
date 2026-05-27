@@ -1,7 +1,6 @@
 """Pydantic models."""
 from api.models.auth import (
     MessageResponse,
-    RefreshTokenRequest,
     TokenResponse,
     UserLogin,
     UserRegister,
@@ -11,7 +10,6 @@ from api.models.tests import TestCreate, TestUpdate
 
 __all__ = [
     "MessageResponse",
-    "RefreshTokenRequest",
     "TestCreate",
     "TestUpdate",
     "TokenResponse",

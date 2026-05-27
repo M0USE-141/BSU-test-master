@@ -66,7 +66,18 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = get_user_by_id(db, int(user_id))
+    try:
+        uid = int(user_id)
+        if uid <= 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user = get_user_by_id(db, uid)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -115,7 +126,14 @@ async def get_optional_user(
     if user_id is None:
         return None
 
-    user = get_user_by_id(db, int(user_id))
+    try:
+        uid = int(user_id)
+        if uid <= 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        return None
+
+    user = get_user_by_id(db, uid)
     if user is None or not user.is_active:
         return None
 

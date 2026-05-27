@@ -11,9 +11,7 @@
  *   { type: "formula", latex: "x^2+y^2" }      ← plain LaTeX
  */
 
-function escHtml(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+import { escHtml } from './escape.js';
 
 /**
  * Render a single inline item to HTML string.

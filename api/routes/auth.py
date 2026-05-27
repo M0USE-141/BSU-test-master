@@ -22,6 +22,7 @@ from api.services.auth_service import (
     create_access_token,
     create_session,
     create_user,
+    get_active_session,
     get_user_by_email,
     get_user_by_username,
     hash_password,
@@ -35,23 +36,16 @@ security = HTTPBearer(auto_error=False)
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(
+def register(
     data: UserRegister,
     db: Annotated[DbSession, Depends(get_db)],
 ) -> User:
     """Register a new user."""
-    # Check if username already exists
-    if get_user_by_username(db, data.username):
+    # Check if username or email already exists — unified message to avoid enumeration
+    if get_user_by_username(db, data.username) or get_user_by_email(db, data.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered",
-        )
-
-    # Check if email already exists
-    if get_user_by_email(db, data.email):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered",
+            detail="Registration failed",
         )
 
     # Create user
@@ -60,7 +54,7 @@ async def register(
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(
+def login(
     data: UserLogin,
     db: Annotated[DbSession, Depends(get_db)],
 ) -> TokenResponse:
@@ -130,7 +124,7 @@ async def get_me(
 
 
 @router.post("/change-password", response_model=MessageResponse)
-async def change_password(
+def change_password(
     data: ChangePasswordRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
@@ -178,14 +172,30 @@ async def refresh_token(
             detail="Invalid token payload",
         )
 
-    # Invalidate old session if exists
+    try:
+        uid = int(user_id)
+        if uid <= 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
+
+    # Verify the old session is still active before issuing a new token
     if old_jti:
+        session = get_active_session(db, old_jti)
+        if session is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session expired or invalidated",
+            )
         invalidate_session(db, old_jti)
 
     # Create new token and session
-    new_token, new_jti = create_access_token(int(user_id))
+    new_token, new_jti = create_access_token(uid)
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    create_session(db, int(user_id), new_jti, expires_at)
+    create_session(db, uid, new_jti, expires_at)
 
     return TokenResponse(
         access_token=new_token,

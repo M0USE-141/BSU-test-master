@@ -118,9 +118,23 @@ def get_active_session(db: DbSession, token_jti: str) -> Session | None:
     )
 
 
+_SESSION_EXTEND_GAP_SECONDS = 60  # minimum gap between DB writes
+
+
 def extend_session(db: DbSession, session: Session) -> Session:
-    """Extend session expiration and update last activity."""
+    """Extend session expiration and update last activity.
+
+    Skips the DB write if last_activity was updated within the last 60 seconds
+    to avoid a commit on every authenticated request.
+    """
     now = datetime.now(timezone.utc)
+    last_activity = session.last_activity
+    # SQLite returns naive datetimes even for timezone=True columns; treat as UTC.
+    if last_activity.tzinfo is None:
+        last_activity = last_activity.replace(tzinfo=timezone.utc)
+    elapsed = (now - last_activity).total_seconds()
+    if elapsed < _SESSION_EXTEND_GAP_SECONDS:
+        return session  # already fresh — skip the DB round-trip
     session.last_activity = now
     session.expires_at = now + timedelta(minutes=SESSION_EXTEND_MINUTES)
     db.commit()
@@ -136,20 +150,3 @@ def invalidate_session(db: DbSession, token_jti: str) -> None:
         db.commit()
 
 
-def invalidate_all_user_sessions(db: DbSession, user_id: int) -> int:
-    """Invalidate all sessions for a user."""
-    result = (
-        db.query(Session)
-        .filter(Session.user_id == user_id, Session.is_active == True)  # noqa: E712
-        .update({Session.is_active: False})
-    )
-    db.commit()
-    return result
-
-
-def cleanup_expired_sessions(db: DbSession) -> int:
-    """Remove expired sessions from database."""
-    now = datetime.now(timezone.utc)
-    result = db.query(Session).filter(Session.expires_at < now).delete()
-    db.commit()
-    return result

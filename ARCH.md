@@ -108,7 +108,7 @@ static/
   assets/              # logo, favicon
 
 alembic/
-  versions/            # 6 миграций (5 схемных + 1 индексы + user_prefs/notifications)
+  versions/            # 7 миграций (см. раздел «БД и миграции»)
   env.py               # конфиг alembic, читает DATABASE_URL из api/config.py
   alembic.ini
 
@@ -145,7 +145,7 @@ data/                  # runtime-данные (в .gitignore)
 - На startup: `init_db()`, `validate_secret_key()`, `schedule_events_cleanup()`.
 - На shutdown: `stop_event.set()` + `thread.join(timeout=5)` — graceful shutdown фонового потока.
 - CORS middleware: `allow_origins` из env `ALLOWED_ORIGINS` (CSV), методы — `["GET","POST","PATCH","DELETE","OPTIONS"]`, заголовки — `["Authorization","Content-Type"]`.
-- `GET /` → `FileResponse("static/index.html")`.
+- `GET /` → `HTMLResponse` с `index.html` + инжект `window.__APP_VERSION__` для cache-bust ES-модулей.
 - `app.mount("/static", StaticFiles(...))`.
 
 ### `api/config.py`
@@ -161,8 +161,10 @@ data/                  # runtime-данные (в .gitignore)
 | `ALGORITHM` | `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `60` |
 | `SESSION_EXTEND_MINUTES` | `60` (sliding expiration) |
+| `ABANDONED_RETENTION_DAYS` | `90` (дней до удаления abandoned-попыток) |
 | `AVATARS_DIR` | `data/avatars` |
 | `ALLOWED_ORIGINS` | CSV допустимых Origin для CORS (`http://localhost:8000,http://127.0.0.1:8000`) |
+| `APP_VERSION` | строка версии для cache-bust (дефолт = timestamp запуска; в prod — git SHA) |
 | `CLOUDCONVERT_API_KEY` | для конвертации WMF/EMF на Linux |
 
 Поддерживает PyInstaller-сборку через `_resource_path()` (`sys._MEIPASS`).
@@ -370,10 +372,11 @@ Refresh: `POST /api/auth/refresh` выдаёт новый токен и инва
 | 2 | `e7309514da6f` | Поля профиля (`display_name`, `avatar_path`, `avatar_size`) |
 | 3 | `6d6221c278d9` | `test_collections`, `test_shares` |
 | 4 | `a8b5c3d7e9f1` | `change_requests` |
-| 5 | `f911293af21c` | Индексы производительности (9 индексов) |
-| 6 | `b2c4d6e8f0a2` | `notifications`, user prefs (`theme`, `language`, `accent`) |
+| 5 | `25d2b9dc70be` | Поле `correct_option_index` в `attempt_answers` (server-side правильность) |
+| 6 | `f911293af21c` | Индексы производительности (9 индексов) |
+| 7 | `b2c4d6e8f0a2` | `notifications`, user prefs (`theme`, `language`, `accent`) |
 
-Схема также создаётся через `Base.metadata.create_all()` при старте. При наличии существующей БД: `alembic upgrade head`.
+**Важно:** `alembic upgrade head` обязателен при первом запуске и после каждого обновления кода. `Base.metadata.create_all()` создаёт только недостающие таблицы и не применяет ALTER-миграции (новые колонки, индексы).
 
 ## Core
 
@@ -422,7 +425,7 @@ Paper/ink стиль (учебная атмосфера, не утомляет �
 
 Mobile vs desktop — отдельные шаблоны, переключение по `isMobile()` (`matchMedia`). Один URL → разный рендер.
 
-Каждый модуль экрана загружается с cache-bust параметром `?v=${_V}` (где `_V = Date.now()`), что гарантирует свежий код после деплоя. Общие зависимости (`icons.js`, `router.js` и др.) догружаются через `window.__iconsFresh`-паттерн.
+Каждый модуль экрана загружается с cache-bust параметром `?v=${_V}` (где `_V = window.__APP_VERSION__`, а значение инжектируется сервером при `GET /`). В production устанавливается через `APP_VERSION` env (git SHA деплоя); в dev — timestamp запуска сервера. Общие зависимости (`icons.js`, `router.js` и др.) догружаются через `window.__iconsFresh`-паттерн.
 
 ### Структура JS (граф загрузки)
 
@@ -481,9 +484,76 @@ index.html
 
 | Проблема | Серьёзность |
 |---|---|
-| Нет автотестов (pytest) | Высокая |
-| `ABANDONED_RETENTION_DAYS = 90` захардкожено в `cleanup_service.py` | Низкая |
+| Нет автотестов (pytest) — только ручной smoke-чеклист | Высокая |
 | `api/models/attempts.py` — Pydantic-модели не используются роутами (legacy) | Низкая |
 | MathJax 3 грузится с CDN без SRI-хешей | Низкая |
-| `/api/tests/{id}/assets`, `/api/tests/{id}/questions` — auth не проверяется на GET | Низкая (known gap) |
+| `/api/tests/{id}/assets` — GET открыт без auth (доступ к ассетам публичных тестов) | Низкая (known gap) |
+| `/api/tests/{id}/questions` — GET отдаёт вопросы без auth (публичный контент) | Низкая (known gap) |
+| Тесты хранятся как JSON-файлы на диске — два источника правды с БД | Архитектурный долг |
 | `nul` файл в Windows при некоторых операциях — добавлен в `.gitignore` | Ничтожная |
+
+---
+
+## Roadmap — архитектурные предложения
+
+> Это концепции для дальнейшей разработки. Ни одна из них не реализована в текущем коде.
+
+### R1. Перенос payload вопросов в БД
+
+Сейчас вопросы живут как `data/tests/{uuid}/test.json` + мета-строка в `test_collections` — два источника правды. Предложение: добавить колонку `payload_json TEXT` в `test_collections`. Один транзакционный UPDATE вместо двойной записи (файл + БД), что устранит race condition при параллельном одобрении CR и позволит переписать `list_tests` и `search` на чистый SQL без дискового I/O.
+
+Миграция: `alembic revision --autogenerate` + single-time backfill из существующих `test.json`.
+
+### R2. Тестовая инфраструктура (pytest)
+
+- `pytest` + `httpx.AsyncClient` с `tmp_path` conftest для `DATA_DIR`.
+- Покрыть: auth-flow, attempts lifecycle, access matrix (owner/shared/public × view/edit), CR approve/reject.
+- `tests/smoke/test_attempts_smoke.py` — переводит ручной `attempts_smoke.md` в автотесты.
+- Цель: ≥70% покрытие `api/routes/`.
+
+### R3. CI / pre-commit
+
+- GitHub Actions: `ruff check`, `mypy api/`, `python scripts/check_locales.py`, базовые unit-тесты.
+- pre-commit: `ruff format`, `ruff check`, `mypy api/`, локаль-паритет.
+
+### R4. Refresh-токены как отдельная сущность
+
+Текущая схема: один JWT со скользящей сессией в таблице `sessions`. Безопаснее: short-lived access (15 мин) + long-lived refresh (30 дней) в `httpOnly cookie`. Устраняет длинное окно компрометации украденного токена.
+
+### R5. Server-side пагинация
+
+`GET /api/tests`, `GET /api/notifications`, `GET /api/stats/attempts` — добавить `?limit=&offset=` (или cursor) и `X-Total-Count`. Сейчас фронт получает все записи без ограничения.
+
+### R6. WebSocket для уведомлений
+
+Заменить polling на WS-канал `/ws/notifications` для real-time доставки CR-нотификаций. Реализация: `fastapi.WebSocket` + `asyncio.Queue` per user.
+
+### R7. RBAC: роль admin
+
+Поле `User.role = enum('user', 'admin')`. Admin-эндпоинты: просмотр всех тестов, бан пользователей, системная статистика.
+
+### R8. Audit-лог
+
+Таблица `audit_events (id, actor_id, action, target_type, target_id, payload_json, created_at)`. Фиксировать: login, change_password, delete_test, approve_cr, ban_user. Просмотр в admin-панели.
+
+### R9. Build-pipeline / TypeScript
+
+- Заменить `_V = window.__APP_VERSION__` + голый `Date.now()` на bundler (esbuild) с content-hashing файлов.
+- Постепенный переход к TypeScript: начать с `static/js/api/*` и `utils/*`, добавить `tsconfig.json` с `allowJs: true`.
+
+### R10. ICU plurals в i18n
+
+Текущий `t()` — плоская замена строк. Добавить `MessageFormat`-движок для корректных plural forms (`{n, plural, one {вопрос} few {вопроса} other {вопросов}}`). Актуально для русского и узбекского.
+
+### R11. A11y baseline
+
+`axe-core` в browser-тестах (Playwright). Запретить мёрж PR с регрессией по accessibility.
+
+### R12. Observability
+
+- `prometheus-client` + метрики: `request_count`, `request_latency_seconds`, `attempts_started_total`, `errors_total`.
+- Structured JSON logging вместо текстового (uvicorn `access_log_format`).
+
+### R13. Backup / disaster-recovery
+
+Cron-скрипт: ежедневный snapshot SQLite + архив тестов в S3 (или локальный rotated backup). Скрипт проверки восстановления.

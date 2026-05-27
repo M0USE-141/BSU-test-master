@@ -10,12 +10,7 @@ import { getState, setState } from '../../state.js';
 import { navigate } from '../../router.js';
 import { icon, iconEl } from '../../icons.js';
 import { t } from '../../utils/locale.js';
-
-function esc(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+import { escHtml as esc } from '../../utils/escape.js';
 
 const SECTIONS = ['account', 'appearance', 'language'];
 

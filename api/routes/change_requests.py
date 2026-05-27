@@ -3,7 +3,7 @@
 import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session as DbSession
 
 from api.database import get_db
@@ -20,6 +20,7 @@ from api.models.change_request import (
 )
 from api.models.db.user import User
 from api.services import access_service, change_request_service
+from api.utils.validation import TEST_ID_PATTERN
 
 router = APIRouter(prefix="/api", tags=["change-requests"])
 
@@ -48,7 +49,7 @@ def _to_response(cr) -> ChangeRequestResponse:
     response_model=CanProposeResponse,
 )
 def check_can_propose(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> CanProposeResponse:
@@ -68,7 +69,7 @@ def check_can_propose(
     response_model=ChangeRequestResponse,
 )
 def create_change_request(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     payload: ChangeRequestCreate,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
@@ -109,7 +110,7 @@ def create_change_request(
     response_model=ChangeRequestListResponse,
 )
 def list_change_requests(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
     status: ChangeRequestStatus | None = Query(None),
@@ -139,7 +140,7 @@ def list_change_requests(
     response_model=ChangeRequestStats,
 )
 def get_change_request_stats(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> ChangeRequestStats:
@@ -159,7 +160,7 @@ def get_change_request_stats(
     response_model=ChangeRequestResponse,
 )
 def approve_change_request(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     request_id: int,
     payload: ChangeRequestReview,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -192,7 +193,7 @@ def approve_change_request(
     response_model=ChangeRequestResponse,
 )
 def reject_change_request(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     request_id: int,
     payload: ChangeRequestReview,
     current_user: Annotated[User, Depends(get_current_user)],

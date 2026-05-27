@@ -7,6 +7,9 @@ import { listTests } from '../../api/tests.js';
 import { navigate } from '../../router.js';
 import { t } from '../../utils/locale.js';
 import { icon, iconEl } from '../../icons.js';
+import { escHtml as escapeHtml } from '../../utils/escape.js';
+import { getClientId } from '../../utils/client-id.js';
+import { formatDuration } from '../../utils/format.js';
 
 // ─── Module state ─────────────────────────────────────────────
 /** @type {HTMLElement|null} */
@@ -25,19 +28,10 @@ let _tests = [];
 
 // ─── Helpers ──────────────────────────────────────────────────
 
-function getClientId() {
-  let id = localStorage.getItem('client_id');
-  if (!id) { id = crypto.randomUUID(); localStorage.setItem('client_id', id); }
-  return id;
-}
-
+/** Wrap formatDuration with a '—' fallback for zero/null values. */
 function fmtDuration(ms) {
   if (!ms) return '—';
-  const s = Math.round(ms / 1000);
-  const m = Math.floor(s / 60);
-  const rem = s % 60;
-  if (m === 0) return `${rem}${t('common.seconds') || 's'}`;
-  return `${m}${t('common.minutes')[0] || 'm'} ${rem}s`;
+  return formatDuration(ms);
 }
 
 function fmtDate(iso) {
@@ -350,16 +344,6 @@ function buildActivityTab() {
          </table>`
     }
   `;
-}
-
-// ─── HTML escaping ────────────────────────────────────────────
-
-function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 // ─── Full screen render ───────────────────────────────────────

@@ -4,12 +4,7 @@
  */
 import { t } from '../../utils/locale.js';
 import { icon, iconEl } from '../../icons.js';
-
-function esc(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+import { escHtml as esc } from '../../utils/escape.js';
 
 const TABS = ['all', 'change_requests', 'results'];
 
