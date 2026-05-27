@@ -128,7 +128,11 @@ def extend_session(db: DbSession, session: Session) -> Session:
     to avoid a commit on every authenticated request.
     """
     now = datetime.now(timezone.utc)
-    elapsed = (now - session.last_activity).total_seconds()
+    last_activity = session.last_activity
+    # SQLite returns naive datetimes even for timezone=True columns; treat as UTC.
+    if last_activity.tzinfo is None:
+        last_activity = last_activity.replace(tzinfo=timezone.utc)
+    elapsed = (now - last_activity).total_seconds()
     if elapsed < _SESSION_EXTEND_GAP_SECONDS:
         return session  # already fresh — skip the DB round-trip
     session.last_activity = now
