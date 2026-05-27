@@ -13,7 +13,7 @@ import { iconEl } from '../../icons.js';
 import { openSearchPalette } from '../../search-palette.js';
 import { getResolvedTheme, setTheme } from '../../utils/theme.js';
 import { escHtml } from '../../utils/escape.js';
-import { formatSeconds, formatDuration } from '../../utils/format.js';
+import { formatSeconds } from '../../utils/format.js';
 
 // ─── Module-level screen state ────────────────────────────────
 /** @type {HTMLElement|null} */
