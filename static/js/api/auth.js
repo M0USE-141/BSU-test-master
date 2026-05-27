@@ -80,3 +80,15 @@ export async function forgotPassword(email) {
 export async function resetPassword(token, newPassword) {
   return apiFetch('POST', '/api/auth/reset-password', { token, new_password: newPassword });
 }
+
+/**
+ * Change the current user's password. Requires authentication.
+ * @param {string} currentPassword
+ * @param {string} newPassword
+ */
+export async function changePassword(currentPassword, newPassword) {
+  return apiFetch('POST', '/api/auth/change-password', {
+    current_password: currentPassword,
+    new_password: newPassword,
+  });
+}

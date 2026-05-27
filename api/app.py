@@ -81,6 +81,27 @@ def index() -> HTMLResponse:
 # Mount static files
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+
+# Cache-Control on /static — force the browser to revalidate every fetch
+# via ETag instead of serving stale bytes from its HTTP cache. Without
+# this, a freshly-edited module sits in the browser cache across server
+# restarts and ES-module imports (which don't carry our APP_VERSION
+# query stamp on transitive imports) load the old file. The cost is one
+# conditional GET per asset per load — fine for a small SPA, especially
+# given StaticFiles already emits strong ETags so most requests respond
+# 304 Not Modified.
+@app.middleware("http")
+async def _static_no_cache(request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static/"):
+        # `no-cache` does NOT mean "don't cache" — it means "must
+        # revalidate before reuse". `must-revalidate` keeps proxies
+        # honest. Together they let the cache hold the bytes but force
+        # an If-None-Match round-trip every time.
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
+
 # Include routers
 app.include_router(auth.router)
 app.include_router(users.router)
