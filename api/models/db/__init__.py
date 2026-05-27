@@ -6,6 +6,8 @@ from api.models.db.attempt import Attempt, AttemptAnswer, AttemptStatus
 from api.models.db.question_performance import QuestionPerformance
 from api.models.db.notification import Notification
 from api.models.db.password_reset import PasswordResetToken
+from api.models.db.flagged_question import FlaggedQuestion
+from api.models.db.access_request import AccessRequest, AccessRequestStatus
 
 __all__ = [
     "User",
@@ -22,4 +24,7 @@ __all__ = [
     "QuestionPerformance",
     "Notification",
     "PasswordResetToken",
+    "FlaggedQuestion",
+    "AccessRequest",
+    "AccessRequestStatus",
 ]

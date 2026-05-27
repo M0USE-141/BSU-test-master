@@ -12,6 +12,7 @@ import { navigate } from '../../router.js';
 import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
 import { toast } from '../../components/toast.js';
+import { requestAccess } from '../../api/access-requests.js';
 
 export default async function render(root, params = {}) {
   const layout = document.createElement('div');
@@ -69,10 +70,15 @@ export default async function render(root, params = {}) {
     reqBtn.textContent = t('error.403.request_access');
     reqBtn.addEventListener('click', async () => {
       reqBtn.disabled = true;
-      // Phase 3 will wire this to POST /api/tests/{id}/request-access.
-      // For now we surface the affordance and confirm the user's intent
-      // so the redesign visibly works end-to-end before the backend lands.
-      toast(t('error.403.requested'), { tone: 'success' });
+      try {
+        await requestAccess(params.testId);
+        toast(t('error.403.requested'), { tone: 'success' });
+      } catch (e) {
+        // The endpoint is idempotent + 200-on-no-existence, so any error
+        // here is genuinely a transport problem.
+        reqBtn.disabled = false;
+        toast(t('common.error'), { tone: 'error' });
+      }
     });
     btnRow.appendChild(reqBtn);
   }

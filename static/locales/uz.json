@@ -314,5 +314,23 @@
 
   "error.404.title": "Sahifa topilmadi",
   "error.404.desc": "Havola eskirgan boʻlishi yoki test oʻchirilgan boʻlishi mumkin.",
-  "error.404.go_home": "Bosh sahifaga"
+  "error.404.go_home": "Bosh sahifaga",
+
+  "pretest.title": "Testni boshlash",
+  "pretest.mode": "Rejim",
+  "pretest.mode.training": "Trening",
+  "pretest.mode.timed": "Vaqtli",
+  "pretest.mode.exam": "Imtihon",
+  "pretest.count": "Savollar soni",
+  "pretest.source": "Savollar manbasi",
+  "pretest.source.all": "Hammasi",
+  "pretest.source.weak": "Faqat sustlar",
+  "pretest.source.flagged": "⚑ Belgilanganlar",
+  "pretest.source.untaken": "Hali yechilmaganlar",
+  "pretest.options": "Sozlamalar",
+  "pretest.opt.shuffle": "Tasodifiy tartib",
+  "pretest.opt.reveal": "Toʻgʻri javobni darhol koʻrsatish",
+  "pretest.estimate": "Taxminan —",
+  "pretest.start": "Boshlash",
+  "pretest.empty_source": "Tanlangan manbada savollar yoʻq"
 }

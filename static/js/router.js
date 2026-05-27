@@ -105,6 +105,10 @@ const ROUTES = [
       : import(`./screens/desktop/test-detail.js?v=${_V}`),
   },
   {
+    pattern: '/test/:id/start',
+    module: () => import(`./screens/desktop/pre-test.js?v=${_V}`),
+  },
+  {
     pattern: '/test/:id/take',
     module: () => isMobile()
       ? import(`./screens/mobile/taking.js?v=${_V}`)

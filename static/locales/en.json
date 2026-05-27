@@ -314,5 +314,23 @@
 
   "error.404.title": "Page not found",
   "error.404.desc": "The link may be outdated or the test was removed.",
-  "error.404.go_home": "Go home"
+  "error.404.go_home": "Go home",
+
+  "pretest.title": "Start test",
+  "pretest.mode": "Mode",
+  "pretest.mode.training": "Practice",
+  "pretest.mode.timed": "Timed",
+  "pretest.mode.exam": "Exam",
+  "pretest.count": "How many questions",
+  "pretest.source": "Question source",
+  "pretest.source.all": "All topics",
+  "pretest.source.weak": "Weak only",
+  "pretest.source.flagged": "⚑ Flagged",
+  "pretest.source.untaken": "Not yet seen",
+  "pretest.options": "Options",
+  "pretest.opt.shuffle": "Shuffle question order",
+  "pretest.opt.reveal": "Reveal correct answer immediately",
+  "pretest.estimate": "Estimated —",
+  "pretest.start": "Start test",
+  "pretest.empty_source": "No questions available in the selected source"
 }

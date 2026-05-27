@@ -314,5 +314,23 @@
 
   "error.404.title": "Страница не найдена",
   "error.404.desc": "Возможно, ссылка устарела или тест был удалён.",
-  "error.404.go_home": "На главную"
+  "error.404.go_home": "На главную",
+
+  "pretest.title": "Запустить тест",
+  "pretest.mode": "Режим",
+  "pretest.mode.training": "Тренировка",
+  "pretest.mode.timed": "На время",
+  "pretest.mode.exam": "Экзамен",
+  "pretest.count": "Сколько вопросов",
+  "pretest.source": "Источник вопросов",
+  "pretest.source.all": "Все темы",
+  "pretest.source.weak": "Только слабые",
+  "pretest.source.flagged": "⚑ Отмеченные",
+  "pretest.source.untaken": "Не пройденные",
+  "pretest.options": "Опции",
+  "pretest.opt.shuffle": "Случайный порядок вопросов",
+  "pretest.opt.reveal": "Показывать правильный ответ сразу",
+  "pretest.estimate": "Ориентировочно —",
+  "pretest.start": "Начать тест",
+  "pretest.empty_source": "Нет доступных вопросов в выбранном источнике"
 }

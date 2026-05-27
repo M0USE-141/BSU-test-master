@@ -79,7 +79,8 @@ export function mountAppShell(root) {
 }
 
 /**
- * Tear down the shell (used when routing to a non-shelled screen like /auth/* or /test/*/take).
+ * Tear down the shell (used when routing to a non-shelled screen like
+ * auth/login, auth/register, or test/{id}/take).
  */
 export function unmountAppShell(root) {
   const shell = root.querySelector(`[${SHELL_ATTR}]`);
