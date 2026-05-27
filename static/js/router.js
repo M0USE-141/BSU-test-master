@@ -10,10 +10,11 @@ import { isMobile, onBreakpointChange } from './utils/device.js';
 import { setState } from './state.js';
 
 /**
- * Cache-bust version: changes every page load so the browser fetches fresh
- * ES modules instead of serving stale cached versions after deploys.
+ * Cache-bust version: injected by the server as window.__APP_VERSION__ (stable
+ * within a deploy / server session). Falls back to Date.now() only when the
+ * server hasn't set it (e.g. opening index.html directly from disk).
  */
-const _V = Date.now();
+const _V = window.__APP_VERSION__ || Date.now();
 
 // Preload icons with a versioned URL so any module that calls icon() via
 // window.__iconsFresh gets the latest PATHS, bypassing the static-import cache.

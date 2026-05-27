@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, union
 from sqlalchemy.orm import Session as DbSession, joinedload
 
 from api.models.db.test_collection import AccessLevel, TestCollection, TestShare
@@ -175,24 +175,23 @@ def get_accessible_test_ids(
     access_filter: AccessLevel | None = None,
     owned_only: bool = False,
 ) -> list[str]:
-    """Get list of test_ids accessible by user."""
+    """Get list of test_ids accessible by user (single UNION query)."""
     if owned_only and not user:
         return []
 
-    result = set()
+    branches: list = []
 
     if user:
-        # Tests owned by user
-        stmt = select(TestCollection.test_id).where(TestCollection.owner_id == user.id)
+        # Branch 1: tests owned by this user
+        owned_q = select(TestCollection.test_id).where(TestCollection.owner_id == user.id)
         if access_filter:
-            stmt = stmt.where(TestCollection.access_level == access_filter.value)
-        owned = db.execute(stmt).scalars().all()
-        result.update(owned)
+            owned_q = owned_q.where(TestCollection.access_level == access_filter.value)
+        branches.append(owned_q)
 
         if not owned_only:
-            # Tests shared with user
+            # Branch 2: tests shared with this user (SHARED level only)
             if not access_filter or access_filter == AccessLevel.SHARED:
-                stmt = (
+                shared_q = (
                     select(TestCollection.test_id)
                     .join(TestShare, TestShare.test_collection_id == TestCollection.id)
                     .where(
@@ -200,19 +199,23 @@ def get_accessible_test_ids(
                         TestCollection.access_level == AccessLevel.SHARED.value,
                     )
                 )
-                shared = db.execute(stmt).scalars().all()
-                result.update(shared)
+                branches.append(shared_q)
 
     if not owned_only:
-        # Public tests (visible to everyone)
+        # Branch 3: public tests visible to everyone
         if not access_filter or access_filter == AccessLevel.PUBLIC:
-            stmt = select(TestCollection.test_id).where(
+            public_q = select(TestCollection.test_id).where(
                 TestCollection.access_level == AccessLevel.PUBLIC.value
             )
-            public = db.execute(stmt).scalars().all()
-            result.update(public)
+            branches.append(public_q)
 
-    return list(result)
+    if not branches:
+        return []
+
+    # Combine all branches in a single UNION (deduplicates automatically)
+    combined = union(*branches)
+    rows = db.execute(combined).scalars().all()
+    return list(rows)
 
 
 def delete_test_collection(db: DbSession, test_id: str) -> bool:

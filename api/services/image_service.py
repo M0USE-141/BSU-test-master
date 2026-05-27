@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from fastapi import HTTPException, UploadFile, status
+from starlette.concurrency import run_in_threadpool
 
 from api.config import (
     AVATAR_ALLOWED_EXTENSIONS,
@@ -104,16 +105,64 @@ def _resize_image(image_path: Path) -> None:
         # Don't raise - keep original image if resize fails
 
 
+_MAGIC = {
+    b"\xff\xd8\xff": ".jpg",
+    b"\x89PNG\r\n\x1a\n": ".png",
+    b"GIF87a": ".gif",
+    b"GIF89a": ".gif",
+}
+
+
+def _save_and_resize(content: bytes, user_id: int) -> tuple[str, int]:
+    """Write avatar bytes to disk and resize with PIL (runs in thread pool)."""
+    # Detect format from magic bytes
+    detected = next((ext for sig, ext in _MAGIC.items() if content[:len(sig)] == sig), None)
+    if detected is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File content does not match a supported image format",
+        )
+
+    filename = f"{user_id}_{uuid.uuid4().hex[:8]}{detected}"
+    avatar_path = AVATARS_DIR / filename
+    AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+
+    try:
+        with open(avatar_path, "wb") as f:
+            f.write(content)
+
+        _resize_image(avatar_path)
+
+        final_size = avatar_path.stat().st_size
+        logger.info(f"Saved avatar for user {user_id}: {filename}")
+        return filename, final_size
+
+    except HTTPException:
+        raise  # re-raise HTTP errors from _resize_image path
+    except Exception as e:
+        if avatar_path.exists():
+            avatar_path.unlink()
+        logger.error(f"Error saving avatar: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save avatar",
+        )
+
+
 async def process_avatar(file: UploadFile, user_id: int) -> tuple[str, int]:
     """
     Process and save uploaded avatar.
+
+    Validates the upload in the event loop (fast path), then offloads
+    disk I/O and PIL resizing to the default thread pool so the event
+    loop is not blocked by CPU-intensive work.
 
     Args:
         file: Uploaded file
         user_id: User ID for organizing files
 
     Returns:
-        Tuple of (avatar_path, avatar_size)
+        Tuple of (avatar_filename, avatar_size_bytes)
 
     Raises:
         HTTPException: If processing fails
@@ -126,62 +175,18 @@ async def process_avatar(file: UploadFile, user_id: int) -> tuple[str, int]:
 
     validate_avatar_file(file)
 
-    # Read file content
+    # Read file content (async I/O — stays on event loop)
     content = await file.read()
-    file_size = len(content)
 
-    # Check size
-    if file_size > AVATAR_MAX_SIZE_BYTES:
+    # Fast in-event-loop checks before we touch the thread pool
+    if len(content) > AVATAR_MAX_SIZE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"File too large. Maximum size: {AVATAR_MAX_SIZE_BYTES // (1024 * 1024)}MB",
         )
 
-    # Verify magic bytes to prevent extension-spoofed uploads
-    _MAGIC = {
-        b"\xff\xd8\xff": ".jpg",
-        b"\x89PNG\r\n\x1a\n": ".png",
-        b"GIF87a": ".gif",
-        b"GIF89a": ".gif",
-    }
-    detected = next((ext for sig, ext in _MAGIC.items() if content[:len(sig)] == sig), None)
-    if detected is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File content does not match a supported image format",
-        )
-
-    # Generate unique filename
-    ext = detected
-    filename = f"{user_id}_{uuid.uuid4().hex[:8]}{ext}"
-    avatar_path = AVATARS_DIR / filename
-
-    # Ensure directory exists
-    AVATARS_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Save file
-    try:
-        with open(avatar_path, "wb") as f:
-            f.write(content)
-
-        # Resize if needed
-        _resize_image(avatar_path)
-
-        # Get final file size after resize
-        final_size = avatar_path.stat().st_size
-
-        logger.info(f"Saved avatar for user {user_id}: {filename}")
-        return filename, final_size
-
-    except Exception as e:
-        # Clean up on error
-        if avatar_path.exists():
-            avatar_path.unlink()
-        logger.error(f"Error saving avatar: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to save avatar",
-        )
+    # Offload CPU-bound PIL work + disk writes to thread pool
+    return await run_in_threadpool(_save_and_resize, content, user_id)
 
 
 def delete_avatar(avatar_path: str | None) -> bool:

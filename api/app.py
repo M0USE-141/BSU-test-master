@@ -4,10 +4,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from api.config import ALLOWED_ORIGINS, STATIC_DIR, validate_secret_key
+from api.config import ALLOWED_ORIGINS, APP_VERSION, STATIC_DIR, validate_secret_key
 from api.database import init_db
 from api.routes import access, assets, attempts, auth, change_requests, notifications, questions, search, statistics, tests, users
 from api.services.cleanup_service import schedule_events_cleanup
@@ -46,15 +46,19 @@ app.add_middleware(
 )
 
 
-# Root endpoint — serves the SPA
+# Root endpoint — serves the SPA with the build version injected so the
+# browser's ES module cache is busted on each deploy (or server restart in dev).
 @app.get("/")
-def index() -> FileResponse:
-    """Serve frontend index.html."""
+def index() -> HTMLResponse:
+    """Serve frontend index.html with APP_VERSION injected as window.__APP_VERSION__."""
     index_path = STATIC_DIR / "index.html"
     if not index_path.exists():
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Frontend not found")
-    return FileResponse(index_path)
+    html = index_path.read_text(encoding="utf-8")
+    version_script = f'<script>window.__APP_VERSION__ = "{APP_VERSION}";</script>'
+    html = html.replace("</head>", f"  {version_script}\n</head>", 1)
+    return HTMLResponse(content=html)
 
 
 # Mount static files

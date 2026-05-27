@@ -36,7 +36,7 @@ security = HTTPBearer(auto_error=False)
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(
+def register(
     data: UserRegister,
     db: Annotated[DbSession, Depends(get_db)],
 ) -> User:
@@ -54,7 +54,7 @@ async def register(
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(
+def login(
     data: UserLogin,
     db: Annotated[DbSession, Depends(get_db)],
 ) -> TokenResponse:
@@ -124,7 +124,7 @@ async def get_me(
 
 
 @router.post("/change-password", response_model=MessageResponse)
-async def change_password(
+def change_password(
     data: ChangePasswordRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],

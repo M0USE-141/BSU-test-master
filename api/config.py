@@ -2,7 +2,15 @@
 import logging
 import os
 import sys
+import time
 from pathlib import Path
+
+# App version for frontend cache-busting.
+# In production: set APP_VERSION env var to the deploy hash (e.g. git short SHA).
+# In dev:        defaults to the server startup timestamp so each restart
+#                invalidates the browser's ES module cache automatically.
+_startup_ts = str(int(time.time()))
+APP_VERSION: str = os.environ.get("APP_VERSION") or _startup_ts
 
 _SECRET_KEY_PLACEHOLDER = "CHANGE_ME_IN_PRODUCTION_USE_openssl_rand_hex_32"
 

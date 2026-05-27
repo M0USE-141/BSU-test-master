@@ -118,9 +118,19 @@ def get_active_session(db: DbSession, token_jti: str) -> Session | None:
     )
 
 
+_SESSION_EXTEND_GAP_SECONDS = 60  # minimum gap between DB writes
+
+
 def extend_session(db: DbSession, session: Session) -> Session:
-    """Extend session expiration and update last activity."""
+    """Extend session expiration and update last activity.
+
+    Skips the DB write if last_activity was updated within the last 60 seconds
+    to avoid a commit on every authenticated request.
+    """
     now = datetime.now(timezone.utc)
+    elapsed = (now - session.last_activity).total_seconds()
+    if elapsed < _SESSION_EXTEND_GAP_SECONDS:
+        return session  # already fresh — skip the DB round-trip
     session.last_activity = now
     session.expires_at = now + timedelta(minutes=SESSION_EXTEND_MINUTES)
     db.commit()
