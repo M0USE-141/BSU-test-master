@@ -146,20 +146,34 @@
   border-radius: 4px;
 }
 
-/* Shared rich-block styles (render-blocks.js) */
-.rb-para { margin: 0 0 6px; line-height: 1.5; }
-.rb-para:last-child { margin-bottom: 0; }
+/* Shared rich-block styles (render-blocks.js).
+   Text + images + formulas flow inline so a question reads as one
+   continuous line instead of stacking. Multi-paragraph blocks collapse
+   their margins so consecutive paragraphs read tightly. */
+.rb-para { margin: 0; line-height: 1.7; display: inline; }
+.rb-para + .rb-para::before { content: " "; }
+/* Inline images: target ~50 % bigger than before so photos read clearly
+   without breaking the inline flow. Em-sized so the line box scales
+   automatically wherever the renderer is used (taking, review, editor,
+   preview). */
 .rb-image {
-  display: block;
+  display: inline-block;
+  vertical-align: middle;
   max-width: 100%;
-  border-radius: 6px;
-  margin: 6px 0;
+  max-height: 2.7em;
+  border-radius: 4px;
+  margin: 2px 4px;
   object-fit: contain;
 }
-/* MathJax formula wrapper — inline-block keeps it in text flow */
+.rb-image--large {
+  display: block;
+  max-height: 360px;
+  margin: 8px 0;
+}
 .rb-formula {
   display: inline;
   white-space: nowrap;
+  vertical-align: middle;
 }
 /* Correct/wrong option feedback — semantic, not accent (audit 4.1) */
 .tk-option--correct { border-color: var(--success) !important; background: var(--success-soft) !important; }

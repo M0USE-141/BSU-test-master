@@ -29,7 +29,11 @@ function renderInline(inline, assetsBaseUrl) {
       const src = assetsBaseUrl
         ? `${assetsBaseUrl}/${inline.src || ''}`
         : (inline.src || '');
-      return `<img src="${escHtml(src)}" alt="${escHtml(inline.alt || '')}" class="rb-image" loading="lazy">`;
+      // onerror="this.style.display='none'" — broken refs (e.g. material
+      // deleted after the question was authored) collapse silently
+      // instead of leaving a broken-image icon in the middle of a
+      // question.
+      return `<img src="${escHtml(src)}" alt="${escHtml(inline.alt || '')}" class="rb-image" loading="lazy" onerror="this.style.display='none'">`;
     }
     case 'formula': {
       if (inline.mathml) {
@@ -61,7 +65,11 @@ export function blocksToHtml(blocks, assetsBaseUrl) {
       const inner = (block.inlines || [])
         .map(il => renderInline(il, assetsBaseUrl))
         .join('');
-      return `<p class="rb-para">${inner || '&nbsp;'}</p>`;
+      // Render as inline <span> so paragraphs flow together with text,
+      // images and formulas all on the same line where possible. CSS
+      // turns .rb-para into display:inline; consecutive paragraphs are
+      // separated by a single space via ::before.
+      return `<span class="rb-para">${inner || '&nbsp;'}</span>`;
     }
     return '';
   }).join('');
