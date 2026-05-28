@@ -345,12 +345,19 @@ function buildResultsScreen(snap) {
     slipCard.appendChild(noSlips);
   } else {
     for (const q of wrongQIds) {
-      const item = document.createElement('div');
+      const qIdx = questions.findIndex(x => x.id === q.id);
+      const item = document.createElement('button');
+      item.type = 'button';
       item.className = 'rs-slip-item';
+      item.style.cursor = 'pointer';
       item.innerHTML = `
         <span class="rs-slip-item__num">#${q.id}</span>
         <span class="rs-slip-item__text">${escHtml(q.text || `Question ${q.id}`)}</span>
         <span class="rs-slip-item__link">${t('results.review_q') || 'review →'}</span>`;
+      if (testId && attemptId && qIdx >= 0) {
+        item.addEventListener('click', () =>
+          navigate(`/test/${testId}/results/${attemptId}/q/${qIdx + 1}`));
+      }
       slipCard.appendChild(item);
     }
   }

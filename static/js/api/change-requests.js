@@ -40,14 +40,14 @@ export async function getChangeRequestStats(testId) {
  * @param {string} testId
  * @param {string} crId
  */
-export async function approveChangeRequest(testId, crId) {
-  return apiFetch('POST', `/api/tests/${testId}/change-requests/${crId}/approve`);
+export async function approveChangeRequest(testId, crId, comment) {
+  return apiFetch('POST', `/api/tests/${testId}/change-requests/${crId}/approve`, { comment: comment || '' });
 }
 
 /**
  * @param {string} testId
  * @param {string} crId
  */
-export async function rejectChangeRequest(testId, crId) {
-  return apiFetch('POST', `/api/tests/${testId}/change-requests/${crId}/reject`);
+export async function rejectChangeRequest(testId, crId, comment) {
+  return apiFetch('POST', `/api/tests/${testId}/change-requests/${crId}/reject`, { comment: comment || '' });
 }

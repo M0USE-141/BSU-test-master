@@ -168,6 +168,12 @@ const ROUTES = [
       : import(`./screens/desktop/home.js?v=${_V}`),
   },
   {
+    pattern: '/change-requests',
+    module: () => isMobile()
+      ? import(`./screens/mobile/change-requests.js?v=${_V}`)
+      : import(`./screens/desktop/change-requests.js?v=${_V}`),
+  },
+  {
     pattern: '/change-requests/:testId',
     module: () => isMobile()
       ? import(`./screens/mobile/change-requests.js?v=${_V}`)

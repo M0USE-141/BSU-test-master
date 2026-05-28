@@ -88,7 +88,10 @@ async function beginAttempt() {
       timeLimitSeconds: _s.settings.timeLimitMin > 0 ? _s.settings.timeLimitMin * 60 : null,
       showAnswersImmediately: _s.settings.showAnswers,
     },
-    questions: _s.questions.map(q => ({ id: q.id })),
+    questions: _s.questions.map(q => ({
+      questionId: Number(q.id),
+      question: { question: q.question, options: q.options },
+    })),
   }).catch(e => console.warn('[mob-taking] startAttempt:', e));
 
   sessionStorage.setItem(`att:${_s.attemptId}:client`, _s.clientId);

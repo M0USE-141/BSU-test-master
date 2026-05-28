@@ -26,7 +26,7 @@ import {
   approveChangeRequest,
   rejectChangeRequest,
 } from '../../api/change-requests.js';
-import { getTest } from '../../api/tests.js';
+import { getTest, listTests } from '../../api/tests.js';
 import { navigate } from '../../router.js';
 import { mountAppShell } from '../../components/app-shell.js';
 import { buildMailLayout, buildListRow } from '../../components/mail-layout.js';
@@ -47,7 +47,10 @@ export default async function render(root, params) {
   main.innerHTML = '';
 
   const testId = params.testId;
-  if (!testId) { navigate('/home'); return; }
+  if (!testId) {
+    await renderTestPicker(main, stale);
+    return;
+  }
 
   // Skeleton.
   const skel = document.createElement('div');
@@ -97,6 +100,82 @@ export default async function render(root, params) {
   const built = buildMailLayout(main, { sidebarWidth: 320 });
   renderSidebar(built.sidebar, built.detail, state);
   renderDetail(built.detail, state);
+}
+
+// ─── Test picker (no testId in URL) ──────────────────────────
+
+async function renderTestPicker(main, stale) {
+  main.innerHTML = '';
+
+  let tests = [];
+  try {
+    const resp = await listTests({ limit: 100 });
+    tests = Array.isArray(resp) ? resp : (resp.items || resp.tests || []);
+  } catch (_) {
+    tests = [];
+  }
+  if (stale()) return;
+
+  // Only tests the user owns (CR review is owner-only).
+  const owned = tests.filter(function (x) { return !!x.is_owner; });
+
+  const built = buildMailLayout(main, { sidebarWidth: 320 });
+  const sidebar = built.sidebar;
+  const detail = built.detail;
+
+  // Sidebar header.
+  const head = document.createElement('div');
+  head.className = 'mail-layout__sidebar-head';
+  const caps = document.createElement('div');
+  caps.className = 'caps';
+  caps.textContent = t('test.change_requests') || 'Change Requests';
+  head.appendChild(caps);
+  const sub = document.createElement('div');
+  sub.style.fontSize = '12px';
+  sub.style.color = 'var(--ink-tertiary)';
+  sub.style.marginTop = '4px';
+  sub.textContent = owned.length
+    ? 'Выберите тест, чтобы увидеть его CR'
+    : 'У вас пока нет тестов, для которых можно принимать CR';
+  head.appendChild(sub);
+  sidebar.appendChild(head);
+
+  // List.
+  const listWrap = document.createElement('div');
+  listWrap.style.flex = '1';
+  listWrap.style.overflowY = 'auto';
+  sidebar.appendChild(listWrap);
+
+  if (owned.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.padding = '32px 16px';
+    empty.style.textAlign = 'center';
+    empty.style.fontSize = '13px';
+    empty.style.color = 'var(--ink-tertiary)';
+    empty.textContent = 'Пусто';
+    listWrap.appendChild(empty);
+  } else {
+    owned.forEach(function (test) {
+      const row = buildListRow({
+        title: test.title || '(без названия)',
+        sub: ((test.questions && test.questions.length) || test.question_count || 0) + ' вопросов',
+        right: '',
+        active: false,
+        onClick: function () {
+          navigate('/change-requests/' + encodeURIComponent(test.id));
+        },
+      });
+      listWrap.appendChild(row);
+    });
+  }
+
+  // Detail empty-state.
+  const empty = document.createElement('div');
+  empty.className = 'mail-detail__empty';
+  empty.textContent = owned.length
+    ? 'Выберите тест слева'
+    : 'CR появятся, когда соавторы предложат изменения';
+  detail.appendChild(empty);
 }
 
 // ─── Sidebar ─────────────────────────────────────────────────

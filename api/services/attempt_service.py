@@ -166,8 +166,12 @@ def start_attempt(
         attempt.question_count = len(questions)
 
         for index, q_data in enumerate(questions):
-            question_id = q_data.get("questionId")
-            if not isinstance(question_id, int):
+            raw_qid = q_data.get("questionId")
+            if raw_qid is None:
+                raw_qid = q_data.get("id")
+            try:
+                question_id = int(raw_qid)
+            except (TypeError, ValueError):
                 continue
 
             # Check if answer already exists
@@ -194,20 +198,19 @@ def start_attempt(
             # Store question snapshot for preview
             if isinstance(q_obj, dict):
                 answer.question_text = q_obj.get("question")
-                answer.options = q_obj.get("options", [])
+                options = q_obj.get("options", []) or []
+                answer.options = options
 
-                # Find correct option index
+                # Find correct option index — prefer per-option isCorrect flag
+                # (current frontend shape), falling back to legacy "correct" key.
                 correct_opt = q_obj.get("correct")
-                options = q_obj.get("options", [])
-                if correct_opt and options:
-                    for idx, opt in enumerate(options):
-                        if opt == correct_opt or (
-                            isinstance(opt, dict)
-                            and isinstance(correct_opt, dict)
-                            and opt.get("isCorrect")
-                        ):
-                            answer.correct_option_index = idx
-                            break
+                for idx, opt in enumerate(options):
+                    if isinstance(opt, dict) and opt.get("isCorrect"):
+                        answer.correct_option_index = idx
+                        break
+                    if correct_opt is not None and opt == correct_opt:
+                        answer.correct_option_index = idx
+                        break
 
             db.add(answer)
 
@@ -315,6 +318,11 @@ def finish_attempt(
     attempt.total_duration_ms = total_duration_ms
     attempt.answered_count = answered_count
     attempt.correct_count = correct_count
+    # Safety net: if start_attempt didn't get a usable snapshot (e.g. an
+    # older client that sent the legacy shape), backfill question_count
+    # from the answer rows so percent_correct doesn't divide by zero.
+    if not attempt.question_count and answers:
+        attempt.question_count = len(answers)
 
     db.commit()
     db.refresh(attempt)

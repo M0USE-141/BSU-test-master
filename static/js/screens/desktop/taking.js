@@ -322,7 +322,10 @@ async function beginAttempt() {
       shuffleOptions: !!_s.settings.shuffleOptions,
       allowSkip: _s.settings.allowSkip,
     },
-    questions: _s.questions.map(q => ({ id: q.id })),
+    questions: _s.questions.map(q => ({
+      questionId: Number(q.id),
+      question: { question: q.question, options: q.options },
+    })),
   }).catch(e => console.warn('[taking] startAttempt:', e));
 
   sessionStorage.setItem(`att:${_s.attemptId}:client`, _s.clientId);

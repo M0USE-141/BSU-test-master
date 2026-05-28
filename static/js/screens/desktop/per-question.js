@@ -67,12 +67,14 @@ export default async function render(root, params) {
   // Build mail-layout: narrow sidebar (220px) for the question grid.
   const built = buildMailLayout(main, { sidebarWidth: 240 });
 
-  renderSidebar(built.sidebar, data, qIdx, function (newIdx) {
+  function step(newIdx) {
     qIdx = newIdx;
     history.replaceState({}, '', `#/test/${encodeURIComponent(testId)}/results/${encodeURIComponent(attemptId)}/q/${qIdx + 1}`);
-    renderSidebar(built.sidebar, data, qIdx, arguments.callee);
+    renderSidebar(built.sidebar, data, qIdx, step);
     renderDetail(built.detail, data, qIdx, flaggedIds, testId);
-  });
+  }
+
+  renderSidebar(built.sidebar, data, qIdx, step);
   renderDetail(built.detail, data, qIdx, flaggedIds, testId);
 
   // Hotkeys.
@@ -87,12 +89,6 @@ export default async function render(root, params) {
     } else if (e.key === 'Escape') {
       navigate(`/test/${encodeURIComponent(testId)}/results/${encodeURIComponent(attemptId)}`);
     }
-  }
-  function step(newIdx) {
-    qIdx = newIdx;
-    history.replaceState({}, '', `#/test/${encodeURIComponent(testId)}/results/${encodeURIComponent(attemptId)}/q/${qIdx + 1}`);
-    renderSidebar(built.sidebar, data, qIdx, function (n) { step(n); });
-    renderDetail(built.detail, data, qIdx, flaggedIds, testId);
   }
   window.addEventListener('keydown', onKey);
   // Clean up on navigation away — the router clears _root content but
