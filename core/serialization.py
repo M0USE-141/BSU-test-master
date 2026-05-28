@@ -127,5 +127,6 @@ def serialize_metadata(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": payload.get("id"),
         "title": payload.get("title"),
+        "description": payload.get("description", ""),
         "questionCount": len(payload.get("questions", [])),
     }

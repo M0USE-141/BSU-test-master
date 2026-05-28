@@ -10,6 +10,87 @@ from api.models.db.attempt import Attempt, AttemptAnswer, AttemptStatus
 from api.models.db.question_performance import QuestionPerformance
 
 
+# ── Mode rules — defence-in-depth match for the client-side gating ──
+#
+# Defining the rules once on the server lets us reject malicious or
+# stale clients that try to take an "Экзамен" with no timer / a fake
+# reveal flag. Mirrors what pre-test.js + taking.js enforce visually.
+#
+# Reference:
+#   training        — anything goes.
+#   timed           — timer required (positive), no auto-submit
+#                     (we never auto-finish from the backend; the
+#                     frontend is the soft cap).
+#   exam            — timer required (positive); reveal must be false;
+#                     order must be 'random'; no flags expected.
+#   mistake_review  — informational; question list is fully client-built
+#                     so we don't constrain settings here.
+
+_VALID_MODES = {"training", "timed", "exam", "mistake_review"}
+
+# Per-question time budgets in seconds — server hard ceilings, not the
+# UI presets. Keep them generous so a slow custom value still fits.
+_MODE_MAX_SECONDS_PER_Q = {"timed": 120, "exam": 60}  # plus a floor of 60s
+_MODE_MIN_TIME_SECONDS = 60   # at least 60s no matter how few questions
+
+
+def _validate_mode_settings(settings: dict[str, Any], question_count: int) -> None:
+    """Reject settings that contradict the declared mode.
+
+    Question_count comes from the client-supplied questions[] list (the
+    same list we store snapshots from). Passing 0 disables the time-cap
+    check — it'll just enforce the mode/timer presence.
+    """
+    if not isinstance(settings, dict):
+        return  # legacy clients sending no settings — accept
+
+    raw_mode = settings.get("mode")
+    if raw_mode is None:
+        return  # legacy clients sending no mode — accept (training default)
+    mode = str(raw_mode).lower()
+    if mode not in _VALID_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_mode", "mode": raw_mode},
+        )
+
+    if mode in {"timed", "exam"}:
+        tls = settings.get("timeLimitSeconds")
+        if tls is None or not isinstance(tls, (int, float)) or tls <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "time_limit_required", "mode": mode},
+            )
+        # Cap the timer at a generous multiple of the question count so a
+        # client can't issue a 24-hour "Экзамен" and abuse the snapshot.
+        per_q = _MODE_MAX_SECONDS_PER_Q.get(mode, 120)
+        cap = max(_MODE_MIN_TIME_SECONDS, question_count * per_q)
+        if tls > cap:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "time_limit_too_long",
+                    "mode": mode,
+                    "maxSeconds": cap,
+                    "got": int(tls),
+                },
+            )
+
+    if mode == "exam":
+        # Exam locks reveal off + shuffled questions.
+        if settings.get("showAnswersImmediately") is True:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "reveal_forbidden_in_exam"},
+            )
+        order = settings.get("order")
+        if order is not None and order != "random":
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "shuffle_required_in_exam", "got": order},
+            )
+
+
 def get_or_create_attempt(
     db: DBSession,
     attempt_id: str,
@@ -70,6 +151,12 @@ def start_attempt(
         settings: Attempt settings (question count, randomization, etc.)
         questions: List of questions in the attempt (from session)
     """
+    # Validate mode rules before persisting anything. Skipped when the
+    # attempt already exists (clients resuming an in-progress attempt
+    # don't re-pass settings).
+    if settings is not None and db.get(Attempt, attempt_id) is None:
+        _validate_mode_settings(settings, len(questions or []))
+
     attempt = get_or_create_attempt(
         db, attempt_id, test_id, client_id, user_id, settings
     )
@@ -79,8 +166,12 @@ def start_attempt(
         attempt.question_count = len(questions)
 
         for index, q_data in enumerate(questions):
-            question_id = q_data.get("questionId")
-            if not isinstance(question_id, int):
+            raw_qid = q_data.get("questionId")
+            if raw_qid is None:
+                raw_qid = q_data.get("id")
+            try:
+                question_id = int(raw_qid)
+            except (TypeError, ValueError):
                 continue
 
             # Check if answer already exists
@@ -107,20 +198,19 @@ def start_attempt(
             # Store question snapshot for preview
             if isinstance(q_obj, dict):
                 answer.question_text = q_obj.get("question")
-                answer.options = q_obj.get("options", [])
+                options = q_obj.get("options", []) or []
+                answer.options = options
 
-                # Find correct option index
+                # Find correct option index — prefer per-option isCorrect flag
+                # (current frontend shape), falling back to legacy "correct" key.
                 correct_opt = q_obj.get("correct")
-                options = q_obj.get("options", [])
-                if correct_opt and options:
-                    for idx, opt in enumerate(options):
-                        if opt == correct_opt or (
-                            isinstance(opt, dict)
-                            and isinstance(correct_opt, dict)
-                            and opt.get("isCorrect")
-                        ):
-                            answer.correct_option_index = idx
-                            break
+                for idx, opt in enumerate(options):
+                    if isinstance(opt, dict) and opt.get("isCorrect"):
+                        answer.correct_option_index = idx
+                        break
+                    if correct_opt is not None and opt == correct_opt:
+                        answer.correct_option_index = idx
+                        break
 
             db.add(answer)
 
@@ -135,15 +225,14 @@ def record_answer(
     attempt_id: str,
     question_id: int,
     answer_index: int | None,
-    is_correct: bool | None,
     duration_ms: int = 0,
     is_skipped: bool = False,
     canonical_answer_index: int | None = None,
 ) -> AttemptAnswer:
     """
     Record or update an answer for a question in an attempt.
+    is_correct is computed server-side from the stored correct_option_index snapshot.
     """
-    # Get or create answer record
     answer = db.execute(
         select(AttemptAnswer).where(
             AttemptAnswer.attempt_id == attempt_id,
@@ -152,19 +241,25 @@ def record_answer(
     ).scalar_one_or_none()
 
     if not answer:
-        # This shouldn't happen normally - answers are pre-created in start_attempt
-        # But handle gracefully for backwards compatibility
         answer = AttemptAnswer(
             attempt_id=attempt_id,
             question_id=question_id,
-            question_index=0,  # Unknown index
+            question_index=0,
         )
         db.add(answer)
 
-    # Update answer data
+    # Compute correctness server-side — never trust client-sent value
+    if is_skipped or answer_index is None:
+        computed_correct = None
+    elif answer.correct_option_index is not None:
+        computed_correct = answer_index == answer.correct_option_index
+    else:
+        # No snapshot available (legacy attempt); fall back to None (unknown)
+        computed_correct = None
+
     answer.answer_index = answer_index
     answer.canonical_answer_index = canonical_answer_index
-    answer.is_correct = is_correct
+    answer.is_correct = computed_correct
     answer.is_skipped = is_skipped
     answer.duration_ms = duration_ms
     answer.answered_at = datetime.now(timezone.utc)
@@ -186,7 +281,6 @@ def skip_question(
         attempt_id,
         question_id,
         answer_index=None,
-        is_correct=None,
         duration_ms=duration_ms,
         is_skipped=True,
     )
@@ -224,12 +318,36 @@ def finish_attempt(
     attempt.total_duration_ms = total_duration_ms
     attempt.answered_count = answered_count
     attempt.correct_count = correct_count
+    # Safety net: if start_attempt didn't get a usable snapshot (e.g. an
+    # older client that sent the legacy shape), backfill question_count
+    # from the answer rows so percent_correct doesn't divide by zero.
+    if not attempt.question_count and answers:
+        attempt.question_count = len(answers)
 
     db.commit()
     db.refresh(attempt)
 
     # Upsert per-question performance aggregates
     upsert_question_performance(db, attempt)
+
+    # Log to the activity feed — best-effort; never raises (Phase 5 final).
+    if attempt.user_id is not None:
+        try:
+            from api.services import activity_service
+            pct = round((correct_count / attempt.question_count) * 100) if attempt.question_count else 0
+            activity_service.log(
+                db, attempt.user_id, "attempt_completed",
+                test_id=attempt.test_id,
+                attempt_id=attempt.id,
+                payload={
+                    "correct": correct_count,
+                    "total": attempt.question_count,
+                    "percent": pct,
+                    "durationMs": total_duration_ms,
+                },
+            )
+        except Exception:
+            pass
 
     return attempt
 

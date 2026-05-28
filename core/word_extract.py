@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 from pathlib import Path
 
 from docx import Document
@@ -40,7 +41,10 @@ class WordTestExtractor:
         self._omml_xslt_missing_logged = False
 
     def cleanup(self) -> None:
-        return None
+        """Remove the temporary image extraction directory."""
+        if self.extract_dir.exists():
+            shutil.rmtree(self.extract_dir, ignore_errors=True)
+            log.debug(f"Cleaned up extract dir: {self.extract_dir}")
 
     def _load_document(self) -> tuple[Document, Path]:
         if self.file_path.suffix.lower() != ".docx":

@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session as DbSession
 
@@ -10,7 +10,11 @@ from api.config import ACCESS_TOKEN_EXPIRE_MINUTES
 from api.database import get_db
 from api.dependencies.auth import get_current_user
 from api.models.auth import (
+    ChangePasswordRequest,
+    ForgotPasswordRequest,
     MessageResponse,
+    PasswordRulesResponse,
+    ResetPasswordRequest,
     TokenResponse,
     UserLogin,
     UserRegister,
@@ -21,35 +25,52 @@ from api.services.auth_service import (
     create_access_token,
     create_session,
     create_user,
+    get_active_session,
     get_user_by_email,
     get_user_by_username,
+    hash_password,
     invalidate_session,
     verify_password,
     verify_token,
+)
+from api.services.password_reset_service import (
+    consume_reset_token,
+    issue_reset_token,
+    password_rules,
+    reset_user_password,
+    validate_password,
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 security = HTTPBearer(auto_error=False)
 
 
+@router.get("/password-rules", response_model=PasswordRulesResponse)
+def get_password_rules() -> PasswordRulesResponse:
+    """Public password rules — frontend renders a live checklist from these."""
+    return PasswordRulesResponse(**password_rules())
+
+
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(
+def register(
     data: UserRegister,
     db: Annotated[DbSession, Depends(get_db)],
 ) -> User:
     """Register a new user."""
-    # Check if username already exists
-    if get_user_by_username(db, data.username):
+    # Validate password against shared rules. Detail uses an underscored key
+    # the frontend can map to localized strings.
+    pw_errors = validate_password(data.password)
+    if pw_errors:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered",
+            detail={"code": "weak_password", "failed_rules": pw_errors},
         )
 
-    # Check if email already exists
-    if get_user_by_email(db, data.email):
+    # Check if username or email already exists — unified message to avoid enumeration
+    if get_user_by_username(db, data.username) or get_user_by_email(db, data.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered",
+            detail="Registration failed",
         )
 
     # Create user
@@ -57,8 +78,54 @@ async def register(
     return user
 
 
+@router.post("/forgot-password", response_model=MessageResponse)
+def forgot_password(
+    data: ForgotPasswordRequest,
+    request: Request,
+    db: Annotated[DbSession, Depends(get_db)],
+) -> MessageResponse:
+    """Issue a reset link for the email if it exists.
+
+    Always returns 200 with a generic message — never reveals whether the
+    address is registered. The link is emailed when SMTP is configured,
+    otherwise logged to the server console (see password_reset_service).
+    """
+    user = get_user_by_email(db, data.email)
+    if user is not None and user.is_active:
+        base = str(request.base_url).rstrip("/")
+        issue_reset_token(db, user, base_url=base)
+
+    return MessageResponse(
+        message="If that email is registered, a reset link has been sent."
+    )
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+def reset_password(
+    data: ResetPasswordRequest,
+    db: Annotated[DbSession, Depends(get_db)],
+) -> MessageResponse:
+    """Consume a single-use reset token and set a new password."""
+    pw_errors = validate_password(data.new_password)
+    if pw_errors:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "weak_password", "failed_rules": pw_errors},
+        )
+
+    user = consume_reset_token(db, data.token)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    reset_user_password(db, user, data.new_password)
+    return MessageResponse(message="Password updated. You can log in now.")
+
+
 @router.post("/login", response_model=TokenResponse)
-async def login(
+def login(
     data: UserLogin,
     db: Annotated[DbSession, Depends(get_db)],
 ) -> TokenResponse:
@@ -127,6 +194,23 @@ async def get_me(
     return current_user
 
 
+@router.post("/change-password", response_model=MessageResponse)
+def change_password(
+    data: ChangePasswordRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
+) -> MessageResponse:
+    """Change the current user's password."""
+    if not verify_password(data.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    current_user.hashed_password = hash_password(data.new_password)
+    db.commit()
+    return MessageResponse(message="Password changed successfully")
+
+
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
@@ -159,14 +243,30 @@ async def refresh_token(
             detail="Invalid token payload",
         )
 
-    # Invalidate old session if exists
+    try:
+        uid = int(user_id)
+        if uid <= 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
+
+    # Verify the old session is still active before issuing a new token
     if old_jti:
+        session = get_active_session(db, old_jti)
+        if session is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session expired or invalidated",
+            )
         invalidate_session(db, old_jti)
 
     # Create new token and session
-    new_token, new_jti = create_access_token(int(user_id))
+    new_token, new_jti = create_access_token(uid)
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    create_session(db, int(user_id), new_jti, expires_at)
+    create_session(db, uid, new_jti, expires_at)
 
     return TokenResponse(
         access_token=new_token,

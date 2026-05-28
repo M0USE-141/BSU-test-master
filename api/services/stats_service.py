@@ -104,6 +104,7 @@ def get_attempts_list(
     db: DBSession,
     client_id: str | None = None,
     user_id: int | None = None,
+    match_any: bool = False,
     test_id: str | None = None,
     status: str | None = None,
     start_date: datetime | None = None,
@@ -114,17 +115,27 @@ def get_attempts_list(
     """
     Get list of attempts with basic stats (for attempt list view).
     Returns tuple of (attempts_list, total_count).
+
+    When ``match_any=True`` and both client_id and user_id are supplied,
+    rows matching *either* are returned (a logged-in user sees attempts
+    they made before logging in via client_id, plus attempts already
+    bound to their user_id from another device).
     """
+    from sqlalchemy import or_
+
     # Build base query
     query = select(Attempt)
     count_query = select(func.count(Attempt.id))
 
     # Apply filters
     conditions = []
-    if client_id:
-        conditions.append(Attempt.client_id == client_id)
-    if user_id:
-        conditions.append(Attempt.user_id == user_id)
+    if match_any and client_id and user_id:
+        conditions.append(or_(Attempt.client_id == client_id, Attempt.user_id == user_id))
+    else:
+        if client_id:
+            conditions.append(Attempt.client_id == client_id)
+        if user_id:
+            conditions.append(Attempt.user_id == user_id)
     if test_id:
         conditions.append(Attempt.test_id == test_id)
     if status:
@@ -196,7 +207,9 @@ def get_aggregate_stats(
         func.coalesce(func.sum(Attempt.answered_count), 0).label("total_answered"),
         func.coalesce(func.sum(Attempt.correct_count), 0).label("total_correct"),
         func.coalesce(func.sum(Attempt.total_duration_ms), 0).label("total_duration"),
-        func.avg(Attempt.percent_correct).label("avg_percent"),
+        func.avg(
+            Attempt.correct_count * 100.0 / func.nullif(Attempt.question_count, 0)
+        ).label("avg_percent"),
     ).where(and_(*conditions))
 
     row = db.execute(agg_stmt).one()
@@ -264,7 +277,9 @@ def get_test_owner_stats(
         agg_stmt = select(
             func.coalesce(func.sum(Attempt.correct_count), 0).label("total_correct"),
             func.coalesce(func.sum(Attempt.question_count), 0).label("total_questions"),
-            func.avg(Attempt.percent_correct).label("avg_percent"),
+            func.avg(
+                Attempt.correct_count * 100.0 / func.nullif(Attempt.question_count, 0)
+            ).label("avg_percent"),
         ).where(and_(*base_conditions))
         agg = db.execute(agg_stmt).one()
         total_correct = int(agg.total_correct or 0)
@@ -450,6 +465,35 @@ def get_score_distribution(db: DBSession, test_id: str) -> list[dict]:
         {"bucket": f"{i*10}-{(i+1)*10}%", "count": buckets[i]}
         for i in range(10)
     ]
+
+
+def get_activity_heatmap(db: DBSession, user_id: int, weeks: int = 12) -> dict:
+    """Return daily attempt counts for the last N weeks (for heatmap rendering)."""
+    from datetime import date, timedelta
+
+    total_days = weeks * 7
+    today = date.today()
+    start_date = today - timedelta(days=total_days - 1)
+
+    rows = db.execute(
+        text(
+            "SELECT DATE(finished_at) as day, COUNT(*) as cnt "
+            "FROM attempts "
+            "WHERE user_id = :uid AND status = 'completed' "
+            "  AND finished_at >= :start "
+            "GROUP BY DATE(finished_at)"
+        ),
+        {"uid": user_id, "start": start_date.isoformat()}
+    ).fetchall()
+
+    counts = {r[0]: r[1] for r in rows}
+
+    days = []
+    for i in range(total_days):
+        d = (start_date + timedelta(days=i)).isoformat()
+        days.append({"date": d, "count": counts.get(d, 0)})
+
+    return {"days": days, "weeks": weeks}
 
 
 def get_activity_by_week(db: DBSession, test_id: str, weeks: int = 4) -> list[dict]:

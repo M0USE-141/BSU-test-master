@@ -6,6 +6,7 @@ class TestCreate(BaseModel):
     """Model for creating a new test."""
 
     title: str
+    description: str | None = None
     access_level: str | None = None
 
 
@@ -13,3 +14,4 @@ class TestUpdate(BaseModel):
     """Model for updating test metadata."""
 
     title: str
+    description: str | None = None

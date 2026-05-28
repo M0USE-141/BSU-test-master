@@ -1,0 +1,145 @@
+/* ============================================================
+   Design Tokens — TestMaster
+   All CSS custom properties (light, dark, accent variants)
+   ============================================================ */
+
+:root {
+  /* ── Palette ─────────────────────────────────────────────── */
+  --paper:       #f9f6ef;
+  --ink:         #1c1a18;
+
+  /* Ink opacities. Legacy names preserved as aliases; prefer the
+     `--ink-secondary / --ink-tertiary / --ink-disabled` names in new code
+     (the legacy "mute"/"fade" naming was misleading — fade is actually
+     darker than mute). */
+  --ink-mute:      rgba(28, 26, 24, .35); /* alias of --ink-tertiary */
+  --ink-soft:      rgba(28, 26, 24, .06); /* surface tint */
+  --ink-fade:      rgba(28, 26, 24, .55); /* alias of --ink-secondary */
+
+  --ink-secondary: rgba(28, 26, 24, .55);
+  --ink-tertiary:  rgba(28, 26, 24, .35);
+  --ink-disabled:  rgba(28, 26, 24, .25);
+
+  /* ── Accent — overridden by [data-accent] ───────────────── */
+  --accent:      #4f9b6a;
+  --accent-soft: rgba(79, 155, 106, .12);
+
+  /* ── Semantic palette — decoupled from --accent ──────────
+     "correct/wrong" semantics stay green/red even when user picks
+     mono/blue/coral/yellow accent (audit 4.1, 5.4). */
+  --success:      #4f9b6a;
+  --success-soft: rgba(79, 155, 106, .14);
+  --warning:      #e6b54a;
+  --warning-soft: rgba(230, 181, 74, .16);
+  --info:         #4a78c4;
+  --info-soft:    rgba(74, 120, 196, .14);
+  --error:        #c4554a;
+  --error-soft:   rgba(196, 85, 74, .10);
+  --error-strong: #b3473d;
+
+  /* ── Shadows ─────────────────────────────────────────────── */
+  --shadow-sm:   0 1px 2px rgba(28, 26, 24, .04);
+  --shadow-md:   0 4px 12px rgba(28, 26, 24, .08);
+  --shadow-lg:   0 12px 32px rgba(28, 26, 24, .10);
+
+  /* ── Border ──────────────────────────────────────────────── */
+  --border:      1.5px solid var(--ink);
+
+  /* ── Border radii ────────────────────────────────────────── */
+  --radius-sm:   8px;
+  --radius-md:   10px;
+  --radius-lg:   16px;
+  --radius-pill: 999px;
+
+  /* ── Spacing scale (audit 5.3) ──────────────────────────── */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  24px;
+  --sp-6:  32px;
+  --sp-7:  48px;
+  --pad:   18px; /* legacy base padding; prefer --sp-* in new code */
+
+  /* ── Type scale (audit 5.2) ─────────────────────────────── */
+  --fs-xs:  11px;
+  --fs-sm:  13px;
+  --fs-md:  15px;
+  --fs-lg:  17px;
+  --fs-xl:  22px;
+  --fs-2xl: 30px;
+
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+
+  /* ── Layout widths (audit 2.2 — per-screen max-width) ───── */
+  --w-prose: 680px;  /* settings/profile/forms */
+  --w-grid:  1080px; /* collection/results/tables */
+
+  /* ── Touch target floor (audit 4.4) ─────────────────────── */
+  --touch-min: 44px;
+
+  /* ── Transitions ─────────────────────────────────────────── */
+  --transition-fast: 120ms ease;
+  --transition-med:  220ms ease;
+}
+
+/* ── Dark theme ─────────────────────────────────────────────
+   Audit 4.3: error-soft alpha lifted from .10 → .22 so error banners
+   stay readable on dark paper. */
+[data-theme="dark"] {
+  --paper:    #1a1714;
+  --ink:      #f3ece0;
+  --ink-mute: rgba(243, 236, 224, .30);
+  --ink-soft: rgba(243, 236, 224, .08);
+  --ink-fade: rgba(243, 236, 224, .55);
+
+  --ink-secondary: rgba(243, 236, 224, .55);
+  --ink-tertiary:  rgba(243, 236, 224, .30);
+  --ink-disabled:  rgba(243, 236, 224, .22);
+
+  /* Semantic colors slightly warmed for dark mode */
+  --success:      #6db48a;
+  --success-soft: rgba(109, 180, 138, .22);
+  --warning:      #efc266;
+  --warning-soft: rgba(239, 194, 102, .22);
+  --info:         #6a96d8;
+  --info-soft:    rgba(106, 150, 216, .22);
+  --error:        #e26a5f;
+  --error-soft:   rgba(226, 106, 95, .22);
+  --error-strong: #ef7d72;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .30);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, .40);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, .50);
+}
+
+/* ── Accent palette variants ─────────────────────────────────
+   Only --accent / --accent-soft change; semantic --success/--error/
+   --warning/--info do NOT change with accent (audit 4.1). */
+[data-accent="coral"] {
+  --accent:      #e07a5f;
+  --accent-soft: rgba(224, 122, 95, .14);
+}
+[data-accent="yellow"] {
+  --accent:      #e6b54a;
+  --accent-soft: rgba(230, 181, 74, .16);
+}
+[data-accent="blue"] {
+  --accent:      #4a78c4;
+  --accent-soft: rgba(74, 120, 196, .14);
+}
+[data-accent="green"] {
+  --accent:      #4f9b6a;
+  --accent-soft: rgba(79, 155, 106, .14);
+}
+[data-accent="mono"] {
+  --accent:      #3a3530;
+  --accent-soft: rgba(58, 53, 48, .14);
+}
+[data-theme="dark"][data-accent="mono"] {
+  --accent:      #d8cebf;
+  --accent-soft: rgba(216, 206, 191, .14);
+}

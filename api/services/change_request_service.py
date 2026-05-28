@@ -1,10 +1,34 @@
 """Change request service for test editing proposals."""
 
 import json
+import threading
+from collections import defaultdict
 from datetime import datetime, timezone
 
+from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession, joinedload
+
+# ── Rate limiting: max 5 CR submissions per user per 60 seconds ──────────────
+_CR_RATE_WINDOW = 60  # seconds
+_CR_RATE_LIMIT = 5
+
+_rate_lock = threading.Lock()
+_rate_buckets: dict[int, list[float]] = defaultdict(list)
+
+def _check_rate_limit(user_id: int) -> None:
+    import time
+    now = time.monotonic()
+    with _rate_lock:
+        bucket = _rate_buckets[user_id]
+        bucket[:] = [t for t in bucket if now - t < _CR_RATE_WINDOW]
+        if len(bucket) >= _CR_RATE_LIMIT:
+            raise HTTPException(status_code=429, detail="Too many change requests, please wait")
+        bucket.append(now)
+
+# ── Per-test file lock to prevent concurrent CR apply races ──────────────────
+_apply_locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
+_apply_locks_meta = threading.Lock()
 
 from api.models.db.change_request import ChangeRequest, ChangeRequestStatus, ChangeRequestType
 from api.models.db.test_collection import TestCollection
@@ -60,6 +84,11 @@ def create_change_request(
     question_id: str | None = None,
 ) -> ChangeRequest:
     """Create a new change request."""
+    _check_rate_limit(user.id)
+
+    if len(json.dumps(payload)) > 64 * 1024:
+        raise HTTPException(status_code=400, detail="Change request payload exceeds 64 KB limit")
+
     collection = get_test_collection(db, test_id)
     if not collection:
         raise ValueError("Test not found")
@@ -76,6 +105,29 @@ def create_change_request(
     db.add(change_request)
     db.commit()
     db.refresh(change_request)
+
+    # Notify test owner that a change request was received
+    try:
+        from api.services.notification_service import create_notification
+        create_notification(db, collection.owner_id, "cr_received", {
+            "cr_id": change_request.id,
+            "test_id": test_id,
+            "proposer_id": user.id,
+            "proposer_username": user.username,
+        })
+    except Exception:
+        pass  # Notifications are best-effort; never fail the main flow
+
+    # Activity feed (Phase 5 final) — proposer is the actor.
+    try:
+        from api.services import activity_service
+        activity_service.log(
+            db, user.id, "cr_proposed",
+            test_id=test_id, target_user_id=collection.owner_id,
+            payload={"crId": change_request.id, "requestType": request_type.value},
+        )
+    except Exception:
+        pass
 
     return change_request
 
@@ -202,6 +254,28 @@ def approve_change_request(
     db.commit()
     db.refresh(change_request)
 
+    # Notify proposer that their CR was approved
+    try:
+        from api.services.notification_service import create_notification
+        create_notification(db, change_request.user_id, "cr_approved", {
+            "cr_id": change_request.id,
+            "test_id": test_id,
+            "reviewer_username": reviewer.username,
+        })
+    except Exception:
+        pass
+
+    # Activity feed (Phase 5 final) — reviewer is the actor.
+    try:
+        from api.services import activity_service
+        activity_service.log(
+            db, reviewer.id, "cr_approved",
+            test_id=test_id, target_user_id=change_request.user_id,
+            payload={"crId": change_request.id},
+        )
+    except Exception:
+        pass
+
     return change_request
 
 
@@ -228,26 +302,55 @@ def reject_change_request(
     db.commit()
     db.refresh(change_request)
 
+    # Notify proposer that their CR was rejected
+    try:
+        from api.services.notification_service import create_notification
+        test_id = change_request.test_collection.test_id
+        create_notification(db, change_request.user_id, "cr_rejected", {
+            "cr_id": change_request.id,
+            "test_id": test_id,
+            "reviewer_username": reviewer.username,
+            "comment": comment,
+        })
+    except Exception:
+        pass
+
+    # Activity feed (Phase 5 final) — reviewer is the actor.
+    try:
+        from api.services import activity_service
+        activity_service.log(
+            db, reviewer.id, "cr_rejected",
+            test_id=change_request.test_collection.test_id,
+            target_user_id=change_request.user_id,
+            payload={"crId": change_request.id},
+        )
+    except Exception:
+        pass
+
     return change_request
 
 
 def _apply_change_request(test_id: str, change_request: ChangeRequest) -> None:
-    """Apply a change request to the test."""
-    payload = json.loads(change_request.payload)
-    request_type = ChangeRequestType(change_request.request_type)
+    """Apply a change request to the test, holding a per-test lock to prevent races."""
+    with _apply_locks_meta:
+        lock = _apply_locks[test_id]
 
-    if request_type == ChangeRequestType.ADD_QUESTION:
-        _apply_add_question(test_id, payload)
-    elif request_type == ChangeRequestType.EDIT_QUESTION:
-        question_id = change_request.question_id
-        if question_id:
-            _apply_edit_question(test_id, int(question_id), payload)
-    elif request_type == ChangeRequestType.DELETE_QUESTION:
-        question_id = change_request.question_id
-        if question_id:
-            _apply_delete_question(test_id, int(question_id))
-    elif request_type == ChangeRequestType.EDIT_SETTINGS:
-        _apply_edit_settings(test_id, payload)
+    with lock:
+        payload = json.loads(change_request.payload)
+        request_type = ChangeRequestType(change_request.request_type)
+
+        if request_type == ChangeRequestType.ADD_QUESTION:
+            _apply_add_question(test_id, payload)
+        elif request_type == ChangeRequestType.EDIT_QUESTION:
+            question_id = change_request.question_id
+            if question_id:
+                _apply_edit_question(test_id, int(question_id), payload)
+        elif request_type == ChangeRequestType.DELETE_QUESTION:
+            question_id = change_request.question_id
+            if question_id:
+                _apply_delete_question(test_id, int(question_id))
+        elif request_type == ChangeRequestType.EDIT_SETTINGS:
+            _apply_edit_settings(test_id, payload)
 
 
 def _apply_add_question(test_id: str, payload: dict) -> None:

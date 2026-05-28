@@ -1,5 +1,5 @@
 """Service layer for test operations."""
-from api.utils import json_load, payload_path, read_json_file, write_json_file
+from api.utils import json_load, payload_path, write_json_atomic
 
 
 def load_test_payload(test_id: str) -> dict[str, object]:
@@ -14,7 +14,7 @@ def load_test_payload(test_id: str) -> dict[str, object]:
 
 def save_test_payload(test_id: str, payload: dict[str, object]) -> None:
     """Save test payload to file."""
-    write_json_file(payload_path(test_id), payload)
+    write_json_atomic(payload_path(test_id), payload)
 
 
 def find_question(

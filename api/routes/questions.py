@@ -1,13 +1,16 @@
 """Question management endpoints."""
+from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Path
 from sqlalchemy.orm import Session as DbSession
 
 from api.database import get_db
 from api.dependencies.auth import get_current_user
+from api.models.db.flagged_question import FlaggedQuestion
 from api.models.db.user import User
 from api.services import access_service
+from api.utils.validation import TEST_ID_PATTERN
 from api.services.test_service import (
     extract_blocks,
     find_question,
@@ -20,7 +23,7 @@ router = APIRouter(prefix="/api/tests/{test_id}/questions", tags=["questions"])
 
 
 def _check_edit_permission(
-    test_id: str,
+    test_id: str,  # already validated by Path() at route level
     db: DbSession,
     current_user: User,
 ) -> None:
@@ -33,7 +36,7 @@ def _check_edit_permission(
 
 @router.post("")
 def add_question(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
     payload: dict[str, object] = Body(...),
@@ -104,7 +107,7 @@ def add_question(
 
 @router.patch("/{question_id}")
 def update_question(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     question_id: int,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
@@ -173,7 +176,7 @@ def update_question(
 
 @router.delete("/{question_id}")
 def delete_question(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     question_id: int,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
@@ -193,3 +196,77 @@ def delete_question(
     save_test_payload(test_id, test_payload)
 
     return {"payload": test_payload, "question": question}
+
+
+# ───────────────────────────────────────────────────────────────────────
+#  Per-user question flagging (audit 2.3, prototype "⚑")
+#  Registered BEFORE the parameterized {question_id} routes so the literal
+#  "/flagged" doesn't get swallowed by int-coercion failures.
+# ───────────────────────────────────────────────────────────────────────
+@router.get("/flagged")
+def list_flagged_question_ids(
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
+) -> dict[str, object]:
+    """Return the caller's flagged question_ids for this test.
+
+    Frontend uses this to:
+      - populate the ⚑ overlay in the taking pad
+      - count "Только отмеченные" source on the pre-test screen
+    """
+    if not access_service.can_view_test(db, test_id, current_user):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    rows = (
+        db.query(FlaggedQuestion.question_id)
+        .filter_by(user_id=current_user.id, test_id=test_id)
+        .all()
+    )
+    return {"testId": test_id, "flagged": [r[0] for r in rows]}
+
+
+@router.post("/{question_id}/flag")
+def flag_question(
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
+    question_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
+) -> dict[str, object]:
+    """Mark a question as flagged for the current user. Idempotent."""
+    if not access_service.can_view_test(db, test_id, current_user):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    existing = (
+        db.query(FlaggedQuestion)
+        .filter_by(user_id=current_user.id, test_id=test_id, question_id=question_id)
+        .first()
+    )
+    if existing is None:
+        flag = FlaggedQuestion(
+            user_id=current_user.id,
+            test_id=test_id,
+            question_id=question_id,
+            flagged_at=datetime.now(timezone.utc),
+        )
+        db.add(flag)
+        db.commit()
+    return {"status": "flagged", "questionId": question_id}
+
+
+@router.delete("/{question_id}/flag")
+def unflag_question(
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
+    question_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
+) -> dict[str, object]:
+    """Remove a flag. Idempotent."""
+    if not access_service.can_view_test(db, test_id, current_user):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    db.query(FlaggedQuestion).filter_by(
+        user_id=current_user.id, test_id=test_id, question_id=question_id
+    ).delete()
+    db.commit()
+    return {"status": "unflagged", "questionId": question_id}

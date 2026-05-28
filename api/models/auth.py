@@ -63,6 +63,9 @@ class ProfileResponse(BaseModel):
     avatar_size: int | None
     is_active: bool
     created_at: datetime
+    theme: str | None = None
+    language: str | None = None
+    accent: str | None = None
 
     class Config:
         from_attributes = True
@@ -72,6 +75,16 @@ class ProfileUpdateRequest(BaseModel):
     """Profile update request."""
 
     display_name: str | None = Field(None, max_length=100)
+    theme: str | None = Field(None, pattern=r'^(light|dark|system)$')
+    language: str | None = Field(None, pattern=r'^(ru|en|uz)$')
+    accent: str | None = Field(None, pattern=r'^(green|coral|yellow|blue|mono)$')
+
+
+class ChangePasswordRequest(BaseModel):
+    """Password change request."""
+
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6, max_length=100)
 
 
 class AvatarUploadResponse(BaseModel):
@@ -79,3 +92,24 @@ class AvatarUploadResponse(BaseModel):
 
     avatar_url: str
     avatar_size: int
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Forgot-password request (always returns success to avoid enumeration)."""
+
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Reset-password request."""
+
+    token: str = Field(..., min_length=10, max_length=200)
+    new_password: str = Field(..., min_length=8, max_length=100)
+
+
+class PasswordRulesResponse(BaseModel):
+    """Public password rules — frontend uses these to render a live checklist."""
+
+    min_length: int
+    require_digit: bool
+    require_upper: bool

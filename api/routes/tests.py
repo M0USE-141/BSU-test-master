@@ -1,10 +1,10 @@
 """Test management endpoints."""
 import shutil
 import uuid
-from pathlib import Path
+from pathlib import Path as FilePath
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession, joinedload
 
@@ -12,10 +12,13 @@ from api.config import DATA_DIR
 from api.database import get_db
 from api.dependencies.auth import get_current_user, get_optional_user
 from api.models import TestCreate, TestUpdate
+from api.models.db.attempt import Attempt, AttemptStatus
 from api.models.db.user import User
 from api.models.db.test_collection import AccessLevel, TestCollection
 from api.services import access_service
-from api.utils import assets_dir, json_load, payload_path, test_dir
+from sqlalchemy import func
+from api.utils import assets_dir, json_load, payload_path, test_dir, write_json_atomic
+from api.utils.validation import TEST_ID_PATTERN
 from api.services.test_service import load_test_payload, save_test_payload
 from core.serialization import serialize_metadata, serialize_test_payload
 from core.word_extract import WordTestExtractor
@@ -30,6 +33,8 @@ def list_tests(
     filter_type: str | None = Query(None, alias="filter"),
     limit: int | None = Query(None, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    with_stats: bool = Query(False, alias="with_stats"),
+    sort: str | None = Query(None, pattern="^(new|popular|best)$"),
 ) -> dict[str, object]:
     """List all tests accessible to the current user."""
     # Collect test directories from disk
@@ -98,6 +103,55 @@ def list_tests(
 
         tests.append(metadata)
 
+    # Optional per-test attempt aggregates — drives Discover sort by
+    # popular / best. Single bulk query keyed by test_id avoids N+1.
+    if with_stats or sort in {"popular", "best"}:
+        # Compute COUNT(completed) and AVG(percent_correct) per test_id.
+        # SQLite/SA cast keeps avg as float; round to int for display.
+        accessed_ids = [t["id"] for t in tests]
+        if accessed_ids:
+            stats_rows = db.execute(
+                select(
+                    Attempt.test_id,
+                    func.count(Attempt.id).label("attempts_count"),
+                    func.avg(
+                        (Attempt.correct_count * 100.0) /
+                        func.nullif(Attempt.question_count, 0)
+                    ).label("avg_score"),
+                )
+                .where(
+                    Attempt.test_id.in_(accessed_ids),
+                    Attempt.status == AttemptStatus.COMPLETED.value,
+                )
+                .group_by(Attempt.test_id)
+            ).all()
+            stats_map = {
+                r.test_id: {
+                    "attempts_count": int(r.attempts_count or 0),
+                    "avg_score": round(float(r.avg_score)) if r.avg_score is not None else None,
+                }
+                for r in stats_rows
+            }
+        else:
+            stats_map = {}
+        for t in tests:
+            s = stats_map.get(t["id"], {"attempts_count": 0, "avg_score": None})
+            t["attempts_count"] = s["attempts_count"]
+            t["avg_score"] = s["avg_score"]
+
+    # Sort. Default order is whatever the disk listing returned (mtime-ish).
+    if sort == "popular":
+        tests.sort(key=lambda t: t.get("attempts_count", 0), reverse=True)
+    elif sort == "best":
+        # Tests with no completed attempts sink to the bottom rather than
+        # being treated as zero.
+        tests.sort(key=lambda t: (t.get("avg_score") is None, -(t.get("avg_score") or 0)))
+    elif sort == "new":
+        # Sort newest first — assumes test directories carry creation order.
+        # No-op here since list_tests already iterates sorted dirs; could
+        # be extended later with a created_at column on TestCollection.
+        pass
+
     # Apply pagination
     total = len(tests)
     if offset:
@@ -132,6 +186,8 @@ def create_test(
     assets_directory.mkdir(parents=True, exist_ok=True)
 
     test_payload = serialize_test_payload(test_id, title, [], assets_directory)
+    if payload.description:
+        test_payload["description"] = payload.description.strip()
     save_test_payload(test_id, test_payload)
 
     # Create TestCollection record with ownership
@@ -143,12 +199,22 @@ def create_test(
             pass  # Use default if invalid
     access_service.get_or_create_collection(db, test_id, current_user.id, access_level)
 
+    # Log activity (Phase 5 final).
+    try:
+        from api.services import activity_service
+        activity_service.log(
+            db, current_user.id, "test_created",
+            test_id=test_id, payload={"title": title, "accessLevel": access_level.value},
+        )
+    except Exception:
+        pass
+
     return {"metadata": serialize_metadata(test_payload), "payload": test_payload}
 
 
 @router.get("/{test_id}")
 def get_test(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     current_user: Annotated[User | None, Depends(get_optional_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> dict[str, object]:
@@ -182,7 +248,7 @@ def get_test(
 
 @router.patch("/{test_id}")
 def update_test(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     update: TestUpdate,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
@@ -200,18 +266,18 @@ def update_test(
     if not title:
         raise HTTPException(status_code=400, detail="Title is required")
 
-    from api.utils import json_dump
-
     payload = json_load(payload_file.read_text(encoding="utf-8"))
     payload["title"] = title
-    payload_file.write_text(json_dump(payload), encoding="utf-8")
+    if update.description is not None:
+        payload["description"] = update.description.strip()
+    write_json_atomic(payload_file, payload)
 
     return serialize_metadata(payload)
 
 
 @router.delete("/{test_id}")
 def delete_test(
-    test_id: str,
+    test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> dict[str, str]:
@@ -242,7 +308,7 @@ def upload_test(
 ) -> dict[str, object]:
     """Upload test from Word document."""
     file_name = file.filename or ""
-    if Path(file_name).suffix.lower() == ".doc":
+    if FilePath(file_name).suffix.lower() == ".doc":
         raise HTTPException(status_code=400, detail="Поддерживаются только .docx")
 
     test_id = uuid.uuid4().hex
@@ -252,7 +318,7 @@ def upload_test(
     assets_directory = assets_dir(test_id)
     assets_directory.mkdir(parents=True, exist_ok=True)
 
-    safe_name = Path(file.filename or f"upload_{test_id}.docx").name
+    safe_name = FilePath(file.filename or f"upload_{test_id}.docx").name
     file_path = test_directory / safe_name
     file_path.write_bytes(file.file.read())
 
@@ -267,9 +333,7 @@ def upload_test(
         test_payload = serialize_test_payload(
             test_id, file_path.stem, tests, assets_directory
         )
-        from api.utils import json_dump
-
-        payload_path(test_id).write_text(json_dump(test_payload), encoding="utf-8")
+        write_json_atomic(payload_path(test_id), test_payload)
     finally:
         extractor.cleanup()
 
