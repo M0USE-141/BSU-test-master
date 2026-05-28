@@ -199,6 +199,16 @@ def create_test(
             pass  # Use default if invalid
     access_service.get_or_create_collection(db, test_id, current_user.id, access_level)
 
+    # Log activity (Phase 5 final).
+    try:
+        from api.services import activity_service
+        activity_service.log(
+            db, current_user.id, "test_created",
+            test_id=test_id, payload={"title": title, "accessLevel": access_level.value},
+        )
+    except Exception:
+        pass
+
     return {"metadata": serialize_metadata(test_payload), "payload": test_payload}
 
 

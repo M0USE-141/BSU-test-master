@@ -322,6 +322,25 @@ def finish_attempt(
     # Upsert per-question performance aggregates
     upsert_question_performance(db, attempt)
 
+    # Log to the activity feed — best-effort; never raises (Phase 5 final).
+    if attempt.user_id is not None:
+        try:
+            from api.services import activity_service
+            pct = round((correct_count / attempt.question_count) * 100) if attempt.question_count else 0
+            activity_service.log(
+                db, attempt.user_id, "attempt_completed",
+                test_id=attempt.test_id,
+                attempt_id=attempt.id,
+                payload={
+                    "correct": correct_count,
+                    "total": attempt.question_count,
+                    "percent": pct,
+                    "durationMs": total_duration_ms,
+                },
+            )
+        except Exception:
+            pass
+
     return attempt
 
 

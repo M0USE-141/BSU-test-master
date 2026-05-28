@@ -1018,3 +1018,55 @@ input:-webkit-autofill:focus {
     min-width: var(--touch-min);
   }
 }
+
+/* ── Wizard steps (Phase 5 final — Import 3-step) ──────────────── */
+.wizard-steps {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.wizard-steps__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.wizard-steps__dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--ink-soft);
+  background: var(--paper);
+  font: 700 11px/1 'Inter', sans-serif;
+  color: var(--ink-tertiary);
+  flex-shrink: 0;
+}
+.wizard-steps__dot.is-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.wizard-steps__dot.is-done {
+  border-color: var(--success);
+  background: var(--success);
+  color: #fff;
+}
+.wizard-steps__label {
+  font: 500 13px/1 'Inter', sans-serif;
+  color: var(--ink-tertiary);
+}
+.wizard-steps__label.is-active {
+  font-weight: 700;
+  color: var(--ink);
+}
+.wizard-steps__line {
+  flex: 0 0 36px;
+  height: 1.5px;
+  background: var(--ink-soft);
+  align-self: center;
+}
+.wizard-steps__line.is-done {
+  background: var(--success);
+}

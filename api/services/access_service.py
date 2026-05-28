@@ -87,6 +87,18 @@ def add_share(
     db.add(share)
     db.commit()
     db.refresh(share)
+
+    # Log activity (Phase 5 final). Best-effort, never raises.
+    try:
+        from api.services import activity_service
+        # The actor is the user who issued the share.
+        activity_service.log(
+            db, shared_by, "test_shared",
+            test_id=test_id, target_user_id=user_id,
+        )
+    except Exception:
+        pass
+
     return share
 
 

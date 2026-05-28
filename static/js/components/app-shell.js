@@ -20,15 +20,16 @@ import { listNotifications } from '../api/notifications.js';
 import { getState } from '../state.js';
 
 const SHELL_ATTR = 'data-app-shell';
-const RAIL_KEYS = ['tests', 'stats', 'cr', 'notif', 'import', 'profile'];
+const RAIL_KEYS = ['tests', 'stats', 'cr', 'notif', 'activity', 'import', 'profile'];
 
 const RAIL_CONFIG = [
-  { key: 'tests',   icon: 'home',    labelKey: 'app.rail.tests',   path: '/home',         match: p => p === '/home' || p === '/tests' || p.startsWith('/collection/') || p.startsWith('/test/') && !p.endsWith('/take') },
-  { key: 'stats',   icon: 'chart',   labelKey: 'app.rail.stats',   path: '/stats',        match: p => p === '/stats' },
-  { key: 'cr',      icon: 'edit',    labelKey: 'app.rail.cr',      path: '/change-requests', match: p => p.startsWith('/change-requests') },
-  { key: 'notif',   icon: 'bell',    labelKey: 'app.rail.notif',   path: '/notifications',match: p => p === '/notifications' },
-  { key: 'import',  icon: 'upload',  labelKey: 'app.rail.import',  path: '/import',       match: p => p === '/import' },
-  { key: 'profile', icon: 'user',    labelKey: 'app.rail.profile', path: '/profile',      match: p => p === '/profile' || p === '/settings' },
+  { key: 'tests',    icon: 'home',    labelKey: 'app.rail.tests',    path: '/home',            match: p => p === '/home' || p === '/tests' || p.startsWith('/collection/') || p.startsWith('/test/') && !p.endsWith('/take') },
+  { key: 'stats',    icon: 'chart',   labelKey: 'app.rail.stats',    path: '/stats',           match: p => p === '/stats' },
+  { key: 'cr',       icon: 'edit',    labelKey: 'app.rail.cr',       path: '/change-requests', match: p => p.startsWith('/change-requests') },
+  { key: 'notif',    icon: 'bell',    labelKey: 'app.rail.notif',    path: '/notifications',   match: p => p === '/notifications' },
+  { key: 'activity', icon: 'clock',   labelKey: 'app.rail.activity', path: '/activity',        match: p => p === '/activity' },
+  { key: 'import',   icon: 'upload',  labelKey: 'app.rail.import',   path: '/import',          match: p => p === '/import' },
+  { key: 'profile',  icon: 'user',    labelKey: 'app.rail.profile',  path: '/profile',         match: p => p === '/profile' || p === '/settings' },
 ];
 
 let _unreadCount = 0;

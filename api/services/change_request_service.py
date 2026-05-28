@@ -118,6 +118,17 @@ def create_change_request(
     except Exception:
         pass  # Notifications are best-effort; never fail the main flow
 
+    # Activity feed (Phase 5 final) — proposer is the actor.
+    try:
+        from api.services import activity_service
+        activity_service.log(
+            db, user.id, "cr_proposed",
+            test_id=test_id, target_user_id=collection.owner_id,
+            payload={"crId": change_request.id, "requestType": request_type.value},
+        )
+    except Exception:
+        pass
+
     return change_request
 
 
@@ -254,6 +265,17 @@ def approve_change_request(
     except Exception:
         pass
 
+    # Activity feed (Phase 5 final) — reviewer is the actor.
+    try:
+        from api.services import activity_service
+        activity_service.log(
+            db, reviewer.id, "cr_approved",
+            test_id=test_id, target_user_id=change_request.user_id,
+            payload={"crId": change_request.id},
+        )
+    except Exception:
+        pass
+
     return change_request
 
 
@@ -290,6 +312,18 @@ def reject_change_request(
             "reviewer_username": reviewer.username,
             "comment": comment,
         })
+    except Exception:
+        pass
+
+    # Activity feed (Phase 5 final) — reviewer is the actor.
+    try:
+        from api.services import activity_service
+        activity_service.log(
+            db, reviewer.id, "cr_rejected",
+            test_id=change_request.test_collection.test_id,
+            target_user_id=change_request.user_id,
+            payload={"crId": change_request.id},
+        )
     except Exception:
         pass
 

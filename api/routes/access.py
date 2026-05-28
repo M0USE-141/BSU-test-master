@@ -253,6 +253,17 @@ def request_test_access(
             },
         )
 
+        # Log to activity feed (Phase 5 final) — best-effort.
+        try:
+            from api.services import activity_service
+            activity_service.log(
+                db, current_user.id, "access_requested",
+                test_id=test_id, target_user_id=collection.owner_id,
+                payload={"requestId": req.id},
+            )
+        except Exception:
+            pass
+
     return {"status": "requested"}
 
 
@@ -342,5 +353,19 @@ def decide_access_request(
             "decidedBy": current_user.username,
         },
     )
+
+    # Log to activity feed (Phase 5 final) — only on approve (rejection
+    # is also visible via notifications; we only want positive events
+    # in the timeline).
+    if req.status == AccessRequestStatus.APPROVED.value:
+        try:
+            from api.services import activity_service
+            activity_service.log(
+                db, current_user.id, "access_granted",
+                test_id=test_id, target_user_id=req.requester_id,
+                payload={"requestId": req.id},
+            )
+        except Exception:
+            pass
 
     return {"status": req.status}

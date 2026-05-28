@@ -8,6 +8,7 @@ from api.models.db.notification import Notification
 from api.models.db.password_reset import PasswordResetToken
 from api.models.db.flagged_question import FlaggedQuestion
 from api.models.db.access_request import AccessRequest, AccessRequestStatus
+from api.models.db.activity_event import ActivityEvent
 
 __all__ = [
     "User",
@@ -27,4 +28,5 @@ __all__ = [
     "FlaggedQuestion",
     "AccessRequest",
     "AccessRequestStatus",
+    "ActivityEvent",
 ]

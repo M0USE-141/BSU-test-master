@@ -24,6 +24,7 @@ import { toast } from '../../components/toast.js';
 import { iconEl } from '../../icons.js';
 import { getClientId } from '../../utils/client-id.js';
 import { getState } from '../../state.js';
+import { t } from '../../utils/locale.js';
 
 // Module-scope cancellation token (stale async chains abort).
 let _renderToken = 0;
@@ -56,7 +57,12 @@ export default async function render(root, params) {
 
   main.innerHTML = '';
 
-  if (tests.length === 0) {
+  // First-run: only consider the user owning zero tests as "fresh".
+  // Public catalog tests aren't excluded from the home list (a logged-in
+  // user can still browse them), but the new-user onboarding screen
+  // should still appear until they have something of their own.
+  const ownedTests = tests.filter(function (t) { return !!t.is_owner; });
+  if (ownedTests.length === 0) {
     renderFirstRun(main);
     return;
   }
@@ -867,46 +873,167 @@ function fillAttemptsTable(slot, attempts, testId) {
   slot.appendChild(table);
 }
 
+/**
+ * First-run onboarding — three-card grid (Phase 5 final).
+ *
+ * Matches design-bundle-v2.1/proto-screens-main.jsx::FirstRun.
+ * Centred container with a greeting caps + h1 + paragraph, then a
+ * three-equal-column grid:
+ *   1. Перетащить .docx — dashed accent border, opens file picker,
+ *      passes the chosen file to /import via sessionStorage so the
+ *      import wizard can pre-fill step 1.
+ *   2. Из шаблона       — navigates to /import?template=mcq.
+ *   3. Public-каталог    — navigates to /discover.
+ * Plus a ghost "Skip" link that toasts and continues (mostly a no-op
+ * for now — once we have a `first_run_dismissed` flag in user prefs
+ * this will persist the dismissal).
+ */
 function renderFirstRun(main) {
+  const me = getState().user;
+  const greeting = me && (me.display_name || me.username)
+    ? (t('firstrun.caps') || 'Привет! Спасибо, что зарегистрировались.')
+    : (t('firstrun.caps') || 'Привет! Спасибо, что зарегистрировались.');
+
   const wrap = document.createElement('div');
   wrap.style.flex = '1';
   wrap.style.display = 'flex';
+  wrap.style.flexDirection = 'column';
   wrap.style.alignItems = 'center';
   wrap.style.justifyContent = 'center';
   wrap.style.padding = 'var(--sp-5)';
+  wrap.style.textAlign = 'center';
+  wrap.style.gap = '14px';
 
-  const card = document.createElement('div');
-  card.className = 'empty';
-  card.style.maxWidth = '480px';
-  card.style.border = 'var(--border)';
-  card.style.borderRadius = 'var(--radius-lg)';
-  card.style.padding = 'var(--sp-6)';
+  const caps = document.createElement('div');
+  caps.className = 'caps';
+  caps.textContent = greeting;
+  wrap.appendChild(caps);
 
-  const icon = document.createElement('div');
-  icon.className = 'empty__icon';
-  icon.appendChild(iconEl('upload', 24));
-  card.appendChild(icon);
+  const titleEl = document.createElement('h1');
+  titleEl.style.fontSize = '30px';
+  titleEl.style.letterSpacing = '-0.02em';
+  titleEl.style.margin = '0';
+  titleEl.style.maxWidth = '520px';
+  titleEl.style.fontWeight = 'var(--fw-bold)';
+  titleEl.textContent = t('firstrun.title') || 'Начнём с импорта вашего первого теста';
+  wrap.appendChild(titleEl);
 
-  const title = document.createElement('div');
-  title.className = 'empty__title';
-  title.textContent = 'Начнём с импорта первого теста';
-  card.appendChild(title);
+  const desc = document.createElement('p');
+  desc.style.fontSize = 'var(--fs-sm)';
+  desc.style.color = 'var(--ink-secondary)';
+  desc.style.maxWidth = '520px';
+  desc.style.margin = '0';
+  desc.textContent = t('firstrun.desc')
+    || 'Перетащите файл .docx — мы сами найдём вопросы, варианты ответов и правильные.';
+  wrap.appendChild(desc);
 
-  const desc = document.createElement('div');
-  desc.className = 'empty__desc';
-  desc.textContent = 'Перетащите .docx или используйте public-каталог.';
-  card.appendChild(desc);
+  // Three-card grid.
+  const grid = document.createElement('div');
+  grid.style.display = 'grid';
+  grid.style.gridTemplateColumns = '1fr 1fr 1fr';
+  grid.style.gap = '12px';
+  grid.style.width = '100%';
+  grid.style.maxWidth = '680px';
+  grid.style.marginTop = '14px';
 
-  const cta = document.createElement('button');
-  cta.type = 'button';
-  cta.className = 'btn btn--primary';
-  cta.style.marginTop = 'var(--sp-3)';
-  cta.textContent = 'Импортировать .docx';
-  cta.addEventListener('click', function () { navigate('/import'); });
-  card.appendChild(cta);
+  // Hidden file input — owned by the .docx card.
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  fileInput.style.display = 'none';
+  fileInput.addEventListener('change', function () {
+    const f = fileInput.files && fileInput.files[0];
+    if (!f) return;
+    // Stash a hint for the import screen — actual file blob can't survive
+    // a navigation, so we just record the intent and let import.js pick up.
+    try {
+      sessionStorage.setItem('firstrun:wanted_upload', '1');
+    } catch (_) { /* private mode */ }
+    navigate('/import');
+  });
+  wrap.appendChild(fileInput);
 
-  wrap.appendChild(card);
+  grid.appendChild(buildFirstRunCard({
+    accent: true,
+    iconKind: 'upload',
+    title: t('firstrun.card.docx.title') || 'Перетащить .docx',
+    hint:  t('firstrun.card.docx.hint')  || 'или нажмите для выбора',
+    onClick: function () { fileInput.click(); },
+  }));
+  grid.appendChild(buildFirstRunCard({
+    iconKind: 'doc',
+    title: t('firstrun.card.template.title') || 'Из шаблона',
+    hint:  t('firstrun.card.template.hint')  || 'multiple-choice, true/false',
+    onClick: function () { navigate('/import?template=mcq'); },
+  }));
+  grid.appendChild(buildFirstRunCard({
+    iconKind: 'globe',
+    title: t('firstrun.card.discover.title') || 'Public-каталог',
+    hint:  t('firstrun.card.discover.hint')  || 'пройти готовый',
+    onClick: function () { navigate('/discover'); },
+  }));
+  wrap.appendChild(grid);
+
+  const skip = document.createElement('button');
+  skip.type = 'button';
+  skip.className = 'btn btn--ghost btn--small';
+  skip.style.marginTop = '6px';
+  skip.style.color = 'var(--ink-tertiary)';
+  skip.textContent = t('firstrun.skip') || 'Пропустить — посмотрю позже';
+  skip.addEventListener('click', function () {
+    // No persistence yet — next reload will show the screen again
+    // until the user has at least one test. Keep the affordance so the
+    // empty home screen isn't a dead end.
+    navigate('/discover');
+  });
+  wrap.appendChild(skip);
+
   main.appendChild(wrap);
+}
+
+function buildFirstRunCard(opts) {
+  const card = document.createElement('button');
+  card.type = 'button';
+  card.style.padding = '24px 16px';
+  card.style.borderRadius = 'var(--radius-md)';
+  card.style.textAlign = 'center';
+  card.style.cursor = 'pointer';
+  card.style.font = 'inherit';
+  card.style.display = 'flex';
+  card.style.flexDirection = 'column';
+  card.style.alignItems = 'center';
+  card.style.gap = '8px';
+  card.style.transition = 'box-shadow var(--transition-fast), background var(--transition-fast)';
+
+  if (opts.accent) {
+    card.style.border = '2px dashed var(--accent)';
+    card.style.background = 'var(--accent-soft)';
+    card.style.color = 'var(--ink)';
+  } else {
+    card.style.border = 'var(--border)';
+    card.style.background = 'var(--paper)';
+    card.style.color = 'var(--ink)';
+  }
+
+  const ic = document.createElement('span');
+  ic.style.lineHeight = '0';
+  ic.appendChild(iconEl(opts.iconKind, 24));
+  card.appendChild(ic);
+
+  const titleEl = document.createElement('div');
+  titleEl.style.fontWeight = 'var(--fw-semibold)';
+  titleEl.style.fontSize = 'var(--fs-md)';
+  titleEl.textContent = opts.title;
+  card.appendChild(titleEl);
+
+  const hintEl = document.createElement('div');
+  hintEl.style.fontSize = 'var(--fs-xs)';
+  hintEl.style.color = 'var(--ink-tertiary)';
+  hintEl.textContent = opts.hint;
+  card.appendChild(hintEl);
+
+  card.addEventListener('click', opts.onClick);
+  return card;
 }
 
 function extractPlainText(blocks) {

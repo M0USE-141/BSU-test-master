@@ -10,6 +10,7 @@ import { uploadTestDocx } from '../../api/tests.js';
 import { navigate } from '../../router.js';
 import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
+import { mountAppShell } from '../../components/app-shell.js';
 
 function esc(s) {
   return String(s ?? '')
@@ -28,7 +29,9 @@ let _uploading = false;
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 export default async function render(root) {
-  _root   = root;
+  // Render inside the AppShell main slot — the wizard now lives next to
+  // the rail/topbar instead of a bespoke header.
+  _root   = mountAppShell(root);
   _step   = 1;
   _file   = null;
   _title  = '';
@@ -39,30 +42,35 @@ export default async function render(root) {
 }
 
 // ── Step progress bar ─────────────────────────────────────────────────────────
-const STEPS = ['Upload', 'Review', 'Confirm'];
-
+//
+// Uses the new .wizard-steps block defined in components.css — numbered
+// circles connected by lines. The step name is localized via the
+// `wizard.step.*` keys added in Phase 5 final.
 function _stepBar() {
-  return STEPS.map((label, i) => {
-    const n = i + 1;
+  const steps = [
+    [1, t('wizard.step.upload')  || 'Файл'],
+    [2, t('wizard.step.markers') || 'Маркеры'],
+    [3, t('wizard.step.confirm') || 'Подтверждение'],
+  ];
+  return steps.map(function (entry, i) {
+    const n = entry[0];
+    const label = entry[1];
     const done   = n < _step;
     const active = n === _step;
-    return `
-      <div style="display:flex;align-items:center;gap:8px;">
-        <div style="
-          width:24px;height:24px;border-radius:50%;display:flex;align-items:center;
-          justify-content:center;flex-shrink:0;
-          background:${done || active ? 'var(--accent)' : 'transparent'};
-          border:1.5px solid ${done || active ? 'var(--accent)' : 'var(--ink)'};
-          font:700 11px/1 Inter,sans-serif;
-          color:${done || active ? 'var(--paper)' : 'var(--ink)'};">
-          ${done ? (iconEl('check', 10)?.outerHTML || '✓') : n}
-        </div>
-        <span style="font:${active ? 700 : 400} 13px/1 Inter,sans-serif;
-                     color:${active ? 'var(--accent)' : 'var(--ink-mute)'};">
-          ${esc(label)}
-        </span>
-        ${i < STEPS.length - 1 ? `<span style="color:var(--ink-mute);margin:0 4px;">›</span>` : ''}
-      </div>`;
+    const dotClass = 'wizard-steps__dot' + (done ? ' is-done' : '') + (active ? ' is-active' : '');
+    const labelClass = 'wizard-steps__label' + (active ? ' is-active' : '');
+    const line = (i < steps.length - 1)
+      ? '<span class="wizard-steps__line' + (done ? ' is-done' : '') + '"></span>'
+      : '';
+    const inner = done
+      ? (iconEl('check', 10) ? iconEl('check', 10).outerHTML : '✓')
+      : String(n);
+    return ''
+      + '<div class="wizard-steps__item">'
+      +   '<div class="' + dotClass + '">' + inner + '</div>'
+      +   '<span class="' + labelClass + '">' + esc(label) + '</span>'
+      + '</div>'
+      + line;
   }).join('');
 }
 
@@ -74,23 +82,13 @@ function _mount() {
   screen.className = 'screen';
   screen.style.cssText = 'display:flex;flex-direction:column;height:100%;min-height:0;';
 
-  // Header
+  // Header — keep just the wizard step strip; the AppShell topbar
+  // already provides app-level navigation.
   const hdr = document.createElement('div');
   hdr.style.cssText = `
-    display:flex;align-items:center;justify-content:space-between;
-    padding:12px var(--pad);border-bottom:var(--border);flex-shrink:0;`;
-  hdr.innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;">
-      <a href="#/home" class="btn btn--ghost btn--small" style="display:flex;align-items:center;gap:4px;">
-        ${iconEl('chevL', 16)?.outerHTML || '←'}
-      </a>
-      <span style="font:700 18px/1 Inter,sans-serif;color:var(--ink);">
-        ${t('import.title') || 'Import from .docx'}
-      </span>
-    </div>
-    <div style="display:flex;align-items:center;gap:4px;">
-      ${_stepBar()}
-    </div>`;
+    display:flex;align-items:center;justify-content:center;
+    padding:16px var(--pad);border-bottom:1px solid var(--ink-soft);flex-shrink:0;`;
+  hdr.innerHTML = `<div class="wizard-steps">${_stepBar()}</div>`;
 
   // Body — swap based on step
   const body = document.createElement('div');

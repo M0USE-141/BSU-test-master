@@ -22,6 +22,7 @@ function getCommands() {
     { icon: 'plus',   label: t('test.create')      || 'Create test',     action: () => navigate('/home') },
     { icon: 'upload', label: t('test.import')      || 'Import .docx',    action: () => navigate('/import') },
     { icon: 'globe',  label: t('discover.title')   || 'Public catalog',  action: () => navigate('/discover') },
+    { icon: 'clock',  label: t('app.rail.activity')|| 'Activity',        action: () => navigate('/activity') },
     { icon: 'chart',  label: t('nav.stats')        || 'Statistics',      action: () => navigate('/stats') },
     { icon: 'cog',    label: t('nav.settings')     || 'Settings',        action: () => navigate('/settings') },
     { icon: 'bell',   label: t('nav.notifications')|| 'Notifications',   action: () => navigate('/notifications') },

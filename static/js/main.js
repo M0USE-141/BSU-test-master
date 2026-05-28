@@ -7,6 +7,7 @@ import { initI18n, setLocale } from './i18n.js';
 import { initRouter, navigate } from './router.js';
 import { initSearchPalette } from './search-palette.js';
 import { toggleCheatsheet, closeCheatsheet } from './components/cheatsheet.js';
+import { installOfflineBanner } from './components/offline-banner.js';
 import { getMe } from './api/auth.js';
 import { getMyProfile } from './api/users.js';
 import { getState, setState } from './state.js';
@@ -46,6 +47,9 @@ initRouter(document.getElementById('app'));
 
 // Global cmd-K search palette
 initSearchPalette();
+
+// Sticky banner when navigator goes offline.
+installOfflineBanner();
 
 // Global hotkeys:
 //   '?'      → toggle keyboard cheatsheet

@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from api.config import ALLOWED_ORIGINS, APP_VERSION, STATIC_DIR, validate_secret_key
 from api.database import init_db
-from api.routes import access, assets, attempts, auth, change_requests, notifications, questions, search, statistics, tests, users
+from api.routes import access, activity, assets, attempts, auth, change_requests, notifications, questions, search, statistics, tests, users
 from api.services.cleanup_service import schedule_events_cleanup
 from core.logging_setup import setup_console_logging
 
@@ -114,3 +114,4 @@ app.include_router(attempts.router)
 app.include_router(statistics.router)
 app.include_router(notifications.router)
 app.include_router(search.router)
+app.include_router(activity.router)
