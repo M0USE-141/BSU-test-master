@@ -104,6 +104,7 @@ def get_attempts_list(
     db: DBSession,
     client_id: str | None = None,
     user_id: int | None = None,
+    match_any: bool = False,
     test_id: str | None = None,
     status: str | None = None,
     start_date: datetime | None = None,
@@ -114,17 +115,27 @@ def get_attempts_list(
     """
     Get list of attempts with basic stats (for attempt list view).
     Returns tuple of (attempts_list, total_count).
+
+    When ``match_any=True`` and both client_id and user_id are supplied,
+    rows matching *either* are returned (a logged-in user sees attempts
+    they made before logging in via client_id, plus attempts already
+    bound to their user_id from another device).
     """
+    from sqlalchemy import or_
+
     # Build base query
     query = select(Attempt)
     count_query = select(func.count(Attempt.id))
 
     # Apply filters
     conditions = []
-    if client_id:
-        conditions.append(Attempt.client_id == client_id)
-    if user_id:
-        conditions.append(Attempt.user_id == user_id)
+    if match_any and client_id and user_id:
+        conditions.append(or_(Attempt.client_id == client_id, Attempt.user_id == user_id))
+    else:
+        if client_id:
+            conditions.append(Attempt.client_id == client_id)
+        if user_id:
+            conditions.append(Attempt.user_id == user_id)
     if test_id:
         conditions.append(Attempt.test_id == test_id)
     if status:

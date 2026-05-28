@@ -1,14 +1,17 @@
 """Statistics endpoints using SQLite database."""
+import csv
+import io
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi.responses import StreamingResponse
 import sqlalchemy as sa
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
 
 from api.database import get_db
-from api.dependencies.auth import get_current_user
+from api.dependencies.auth import get_current_user, get_optional_user
 from api.models.db.user import User
 from api.services import access_service
 from api.services.stats_service import (
@@ -47,7 +50,8 @@ def parse_date(date_str: str | None) -> datetime | None:
 @router.get("/stats/attempts")
 def list_attempt_stats(
     db: Annotated[DbSession, Depends(get_db)],
-    client_id: str = Query(..., alias="clientId"),
+    current_user: Annotated[User | None, Depends(get_optional_user)] = None,
+    client_id: str | None = Query(None, alias="clientId"),
     test_id: str | None = Query(None, alias="testId"),
     start_date: str | None = Query(None, alias="startDate"),
     end_date: str | None = Query(None, alias="endDate"),
@@ -70,13 +74,19 @@ def list_attempt_stats(
     Returns:
         Dictionary with attempts list and pagination info
     """
-    client_id = validate_id("clientId", client_id)
+    user_id = current_user.id if current_user else None
+    if client_id:
+        client_id = validate_id("clientId", client_id)
     if test_id:
         test_id = validate_id("testId", test_id)
+    if not client_id and not user_id:
+        raise HTTPException(status_code=400, detail="clientId or auth required")
 
     attempts, total = get_attempts_list(
         db=db,
         client_id=client_id,
+        user_id=user_id,
+        match_any=True,
         test_id=test_id,
         status=status,
         start_date=parse_date(start_date),
@@ -91,6 +101,70 @@ def list_attempt_stats(
         "offset": offset,
         "limit": limit,
     }
+
+
+@router.get("/stats/attempts.csv")
+def export_attempts_csv(
+    db: Annotated[DbSession, Depends(get_db)],
+    current_user: Annotated[User | None, Depends(get_optional_user)] = None,
+    client_id: str | None = Query(None, alias="clientId"),
+    test_id: str | None = Query(None, alias="testId"),
+    status: str | None = Query(None),
+) -> StreamingResponse:
+    """Stream attempts as CSV. Auth or clientId required; owners can scope by testId."""
+    user_id = current_user.id if current_user else None
+    if client_id:
+        client_id = validate_id("clientId", client_id)
+    if test_id:
+        test_id = validate_id("testId", test_id)
+    if not client_id and not user_id:
+        raise HTTPException(status_code=400, detail="clientId or auth required")
+
+    # If a test is scoped and caller is its owner, fetch all attempts of the
+    # test. Otherwise scope to caller's own attempts (user_id OR client_id).
+    if test_id and current_user and access_service.can_edit_test(db, test_id, current_user):
+        attempts, _ = get_attempts_list(db=db, test_id=test_id, status=status, limit=10000)
+    else:
+        attempts, _ = get_attempts_list(
+            db=db,
+            client_id=client_id,
+            user_id=user_id,
+            match_any=True,
+            test_id=test_id,
+            status=status,
+            limit=10000,
+        )
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "attemptId", "testId", "userId", "clientId", "status",
+        "startedAt", "finishedAt", "durationMs",
+        "questionCount", "answeredCount", "correctCount", "percentCorrect",
+    ])
+    for a in attempts:
+        writer.writerow([
+            a.get("attemptId", ""),
+            a.get("testId", ""),
+            a.get("userId", "") or "",
+            a.get("clientId", ""),
+            a.get("status", ""),
+            a.get("startedAt", "") or "",
+            a.get("finishedAt", "") or "",
+            a.get("totalDurationMs", 0),
+            a.get("questionCount", 0),
+            a.get("answeredCount", 0),
+            a.get("correctCount", 0),
+            round(a.get("percentCorrect", 0) or 0, 1),
+        ])
+
+    buf.seek(0)
+    filename = "attempts" + (("-" + test_id) if test_id else "") + ".csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/stats/attempts/{attempt_id}")
