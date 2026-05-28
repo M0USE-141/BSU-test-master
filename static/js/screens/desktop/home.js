@@ -13,9 +13,9 @@
  *   - Доступ      — access level + shares + pending access requests
  */
 import { listTests, getTest, deleteTest } from '../../api/tests.js';
-import { getTestShares } from '../../api/access.js';
+import { getTestShares, addShare, removeShare, updateTestAccess } from '../../api/access.js';
 import { listAccessRequests, decideAccessRequest } from '../../api/access-requests.js';
-import { listAttempts } from '../../api/statistics.js';
+import { listAttempts, getOwnerAnalytics } from '../../api/statistics.js';
 import { navigate } from '../../router.js';
 import { mountAppShell } from '../../components/app-shell.js';
 import { buildMailLayout, buildListRow } from '../../components/mail-layout.js';
@@ -403,7 +403,7 @@ function renderTabBody(detail, state, isOwner) {
   if (state.tab === 'Обзор')      return renderOverviewTab(body, state, isOwner);
   if (state.tab === 'Активность') return renderActivityTab(body, state);
   if (state.tab === 'Вопросы')    return renderQuestionsTab(body, state, isOwner);
-  if (state.tab === 'Статистика') return renderStatsTab(body);
+  if (state.tab === 'Статистика') return renderStatsTab(body, state, isOwner);
   if (state.tab === 'Доступ')     return renderAccessTab(body, state, isOwner);
 }
 
@@ -433,15 +433,15 @@ async function renderOverviewTab(body, state, isOwner) {
   descCard.body.appendChild(descBody);
   grid.appendChild(descCard.el);
 
-  // KPI grid.
+  // KPI grid — prototype order: Средний · Лучший · Время · Попыток
   const kpiGrid = document.createElement('div');
   kpiGrid.style.display = 'grid';
   kpiGrid.style.gridTemplateColumns = '1fr 1fr';
   kpiGrid.style.gap = '8px';
-  kpiGrid.appendChild(buildKpi('Вопросы', String((test.questions && test.questions.length) || 0)));
-  kpiGrid.appendChild(buildKpi('Попыток', '—'));
   kpiGrid.appendChild(buildKpi('Средний', '—'));
   kpiGrid.appendChild(buildKpi('Лучший', '—'));
+  kpiGrid.appendChild(buildKpi('Время', '—'));
+  kpiGrid.appendChild(buildKpi('Попыток', '—'));
   grid.appendChild(kpiGrid);
   body.appendChild(grid);
 
@@ -469,14 +469,25 @@ async function renderOverviewTab(body, state, isOwner) {
     const resp = await listAttempts({ test_id: test.id, client_id: getClientId(), limit: 50 });
     const items = Array.isArray(resp) ? resp : (resp.items || resp.attempts || []);
     state.attempts = items;
-    const completed = items.filter(function (a) { return a.status === 'completed' || a.percentCorrect !== undefined; });
+    const completed = items.filter(function (a) { return a.status === 'completed'; });
     const total = completed.length;
     const scores = completed.map(function (a) { return a.percentCorrect; }).filter(Number.isFinite);
     const avg = scores.length ? Math.round(scores.reduce(function (s, x) { return s + x; }, 0) / scores.length) : null;
     const best = scores.length ? Math.max.apply(Math, scores) : null;
-    kpiGrid.children[1].querySelector('.kpi__value').textContent = String(total);
-    kpiGrid.children[2].querySelector('.kpi__value').textContent = avg !== null ? avg + '%' : '—';
-    kpiGrid.children[3].querySelector('.kpi__value').textContent = best !== null ? best + '%' : '—';
+    const durs = completed.map(function (a) { return a.totalDurationMs || 0; }).filter(function (d) { return d > 0; });
+    const avgDurSec = durs.length ? Math.round(durs.reduce(function (s, x) { return s + x; }, 0) / durs.length / 1000) : null;
+    function fmtDur(s) {
+      if (s == null) return '—';
+      if (s < 60) return s + 'с';
+      const m = Math.floor(s / 60);
+      const r = s % 60;
+      return r ? m + 'м ' + r + 'с' : m + 'м';
+    }
+    // Order: Средний · Лучший · Время · Попыток
+    kpiGrid.children[0].querySelector('.kpi__value').textContent = avg !== null ? avg + '%' : '—';
+    kpiGrid.children[1].querySelector('.kpi__value').textContent = best !== null ? best + '%' : '—';
+    kpiGrid.children[2].querySelector('.kpi__value').textContent = fmtDur(avgDurSec);
+    kpiGrid.children[3].querySelector('.kpi__value').textContent = String(total);
     fillAttemptsTable(tableSlot, items.slice(0, 5), test.id);
   } catch (e) {
     tableSlot.appendChild(emptyHint('Попыток ещё нет — пройдите тест, чтобы увидеть результаты'));
@@ -500,61 +511,258 @@ async function renderActivityTab(body, state) {
   }
 }
 
-// ─── Tab: Вопросы (basic list; full editor in phase 5) ───────
+// ─── Tab: Вопросы (master-detail editor) ─────────────────────
 
 function renderQuestionsTab(body, state, isOwner) {
   const test = state.detail;
-  const card = buildCard('Вопросы · ' + ((test.questions && test.questions.length) || 0));
-  if (isOwner) {
-    const note = document.createElement('div');
-    note.style.fontSize = '13px';
-    note.style.color = 'var(--ink-secondary)';
-    note.style.marginBottom = '10px';
-    note.textContent = 'Полноценный редактор вопросов появится в следующем обновлении.';
-    card.body.appendChild(note);
+  if (!(test.questions || []).length) {
+    body.appendChild(emptyHint('Вопросов пока нет'));
+    return;
   }
-  const list = document.createElement('div');
-  list.style.display = 'flex';
-  list.style.flexDirection = 'column';
-  list.style.gap = '8px';
-  list.style.maxHeight = '60vh';
-  list.style.overflow = 'auto';
-  (test.questions || []).slice(0, 60).forEach(function (q, idx) {
-    const row = document.createElement('div');
-    row.style.border = '1.5px solid var(--ink)';
-    row.style.borderRadius = 'var(--radius-sm)';
-    row.style.padding = '10px 12px';
-    row.style.background = 'var(--paper)';
-    const head = document.createElement('div');
-    head.className = 'caps';
-    head.style.marginBottom = '4px';
-    head.textContent = 'Q' + (idx + 1);
-    const text = document.createElement('div');
-    text.style.fontSize = '13px';
-    text.style.lineHeight = '1.5';
-    text.style.color = 'var(--ink)';
-    text.textContent = extractPlainText(q.question) || '(пустой вопрос)';
-    row.appendChild(head);
-    row.appendChild(text);
-    list.appendChild(row);
+  const hint = document.createElement('div');
+  hint.style.fontSize = '12px';
+  hint.style.color = 'var(--ink-tertiary)';
+  hint.style.marginBottom = '10px';
+  hint.textContent = isOwner
+    ? 'Редактируйте вопросы напрямую. Используйте кнопки «Картинка» и «Формула» для вставки изображений и LaTeX/MathML формул.'
+    : 'Вы не владелец теста. Любые правки уйдут владельцу как предложение (CR).';
+  body.appendChild(hint);
+
+  const host = document.createElement('div');
+  body.appendChild(host);
+
+  import('../../components/question-editor.js').then(function (mod) {
+    function remount(currentTest) {
+      mod.mountQuestionEditor({
+        host: host,
+        test: currentTest,
+        canEdit: isOwner,
+        onChange: async function () {
+          try {
+            const fresh = await getTest(currentTest.id);
+            state.detail = fresh;
+            remount(fresh);
+          } catch (_) { /* best-effort */ }
+        },
+      });
+    }
+    remount(test);
+  }).catch(function (e) {
+    host.appendChild(emptyHint('Не удалось загрузить редактор: ' + (e && e.message || '')));
   });
-  if ((test.questions || []).length === 0) {
-    list.appendChild(emptyHint('Вопросов пока нет'));
-  }
-  card.body.appendChild(list);
-  body.appendChild(card.el);
 }
 
-// ─── Tab: Статистика (placeholder) ───────────────────────────
+// ─── Tab: Статистика ─────────────────────────────────────────
 
-function renderStatsTab(body) {
-  const card = buildCard('Статистика по тесту');
-  const hint = document.createElement('div');
-  hint.style.fontSize = '13px';
-  hint.style.color = 'var(--ink-secondary)';
-  hint.textContent = 'Детальная аналитика появится в Phase 5. Сейчас доступны общие KPI на вкладке «Обзор».';
-  card.body.appendChild(hint);
-  body.appendChild(card.el);
+async function renderStatsTab(body, state, isOwner) {
+  const test = state.detail;
+
+  if (!isOwner) {
+    const card = buildCard('Статистика по тесту');
+    const hint = document.createElement('div');
+    hint.style.fontSize = '13px';
+    hint.style.color = 'var(--ink-secondary)';
+    hint.textContent = 'Полная аналитика доступна только владельцу теста.';
+    card.body.appendChild(hint);
+    body.appendChild(card.el);
+    return;
+  }
+
+  // Loading skeleton.
+  const skel = document.createElement('div');
+  skel.className = 'skeleton';
+  skel.style.height = '320px';
+  skel.style.borderRadius = 'var(--radius-md)';
+  body.appendChild(skel);
+
+  let analytics;
+  try {
+    analytics = await getOwnerAnalytics(test.id);
+  } catch (e) {
+    body.innerHTML = '';
+    body.appendChild(emptyHint('Не удалось загрузить аналитику'));
+    return;
+  }
+  body.innerHTML = '';
+
+  const kpis = analytics.kpis || {};
+  const diff = analytics.questionDifficulty || [];
+  const dist = analytics.scoreDistribution || [];
+
+  // Header row with CSV export.
+  const headerRow = document.createElement('div');
+  headerRow.style.display = 'flex';
+  headerRow.style.justifyContent = 'space-between';
+  headerRow.style.alignItems = 'center';
+  headerRow.style.marginBottom = '12px';
+  const heading = document.createElement('div');
+  heading.style.fontSize = '13px';
+  heading.style.fontWeight = 'var(--fw-semibold)';
+  heading.textContent = 'Статистика по тесту';
+  headerRow.appendChild(heading);
+  const csvBtn = document.createElement('a');
+  csvBtn.className = 'btn btn--ghost btn--small';
+  csvBtn.href = '/api/stats/attempts.csv?testId=' + encodeURIComponent(test.id);
+  csvBtn.setAttribute('download', '');
+  csvBtn.appendChild(iconEl('upload', 13));
+  const csvLbl = document.createElement('span');
+  csvLbl.textContent = ' Экспорт CSV';
+  csvBtn.appendChild(csvLbl);
+  headerRow.appendChild(csvBtn);
+  body.appendChild(headerRow);
+
+  // KPI grid (4 tiles).
+  const kpiGrid = document.createElement('div');
+  kpiGrid.style.display = 'grid';
+  kpiGrid.style.gridTemplateColumns = 'repeat(4, 1fr)';
+  kpiGrid.style.gap = '8px';
+  kpiGrid.style.marginBottom = '14px';
+  kpiGrid.appendChild(buildKpi('Попыток',  String(kpis.totalAttempts || 0)));
+  kpiGrid.appendChild(buildKpi('Уник. студ.', String(kpis.uniqueStudents || 0)));
+  kpiGrid.appendChild(buildKpi('Средний', (kpis.avgScore != null ? kpis.avgScore : 0) + '%'));
+  kpiGrid.appendChild(buildKpi('Прошли',  (kpis.passRate != null ? kpis.passRate : 0) + '%'));
+  body.appendChild(kpiGrid);
+
+  // Per-question accuracy heatmap (16 columns).
+  const diffCard = buildCard('Точность по вопросам');
+  const diffBody = diffCard.body;
+  if (!diff.length) {
+    diffBody.appendChild(emptyHint('Попыток ещё нет'));
+  } else {
+    // Legend.
+    const legend = document.createElement('div');
+    legend.style.display = 'flex';
+    legend.style.gap = '12px';
+    legend.style.fontSize = '11px';
+    legend.style.color = 'var(--ink-tertiary)';
+    legend.style.marginBottom = '8px';
+    [['<60%', 'var(--error)'], ['60-80%', 'var(--warning)'], ['≥80%', 'var(--success)']].forEach(function (pair) {
+      const item = document.createElement('span');
+      item.style.display = 'inline-flex';
+      item.style.alignItems = 'center';
+      item.style.gap = '4px';
+      const sw = document.createElement('span');
+      sw.style.width = '10px';
+      sw.style.height = '10px';
+      sw.style.borderRadius = '2px';
+      sw.style.background = pair[1];
+      item.appendChild(sw);
+      const lb = document.createElement('span');
+      lb.textContent = pair[0];
+      item.appendChild(lb);
+      legend.appendChild(item);
+    });
+    diffBody.appendChild(legend);
+
+    const grid = document.createElement('div');
+    grid.style.display = 'grid';
+    grid.style.gridTemplateColumns = 'repeat(16, 1fr)';
+    grid.style.gap = '4px';
+    diff.forEach(function (q, i) {
+      const cell = document.createElement('div');
+      cell.style.aspectRatio = '1 / 1';
+      cell.style.borderRadius = '3px';
+      cell.style.fontSize = '10px';
+      cell.style.display = 'flex';
+      cell.style.alignItems = 'center';
+      cell.style.justifyContent = 'center';
+      cell.style.color = 'var(--paper)';
+      cell.style.fontWeight = 'var(--fw-semibold)';
+      const rate = q.correctRate || 0;
+      cell.style.background = rate < 60 ? 'var(--error)'
+                            : rate < 80 ? 'var(--warning)'
+                            : 'var(--success)';
+      cell.textContent = String(i + 1);
+      cell.title = 'Q' + (i + 1) + ' · ' + rate + '% · n=' + q.totalAttempts;
+      grid.appendChild(cell);
+    });
+    diffBody.appendChild(grid);
+  }
+  body.appendChild(diffCard.el);
+
+  // Score distribution + Activity bars (two-up row).
+  const twoUp = document.createElement('div');
+  twoUp.style.display = 'grid';
+  twoUp.style.gridTemplateColumns = '1fr 1fr';
+  twoUp.style.gap = '12px';
+  twoUp.style.marginTop = '14px';
+
+  const distCard = buildCard('Распределение оценок');
+  const distBody = distCard.body;
+  if (!dist.length || dist.every(function (b) { return b.count === 0; })) {
+    distBody.appendChild(emptyHint('Нет данных'));
+  } else {
+    const maxC = Math.max.apply(Math, dist.map(function (b) { return b.count; }));
+    const bars = document.createElement('div');
+    bars.style.display = 'flex';
+    bars.style.alignItems = 'flex-end';
+    bars.style.gap = '4px';
+    bars.style.height = '120px';
+    dist.forEach(function (b) {
+      const col = document.createElement('div');
+      col.style.flex = '1';
+      col.style.display = 'flex';
+      col.style.flexDirection = 'column';
+      col.style.alignItems = 'center';
+      col.style.gap = '4px';
+      col.title = b.bucket + ' · ' + b.count + ' поп.';
+      const bar = document.createElement('div');
+      bar.style.width = '100%';
+      bar.style.minHeight = '3px';
+      const h = maxC > 0 ? Math.round(b.count / maxC * 96) : 3;
+      bar.style.height = Math.max(3, h) + 'px';
+      bar.style.background = 'var(--accent)';
+      bar.style.borderRadius = '3px';
+      col.appendChild(bar);
+      const lbl = document.createElement('div');
+      lbl.style.fontSize = '9px';
+      lbl.style.color = 'var(--ink-tertiary)';
+      lbl.textContent = b.bucket.replace('%', '');
+      col.appendChild(lbl);
+      bars.appendChild(col);
+    });
+    distBody.appendChild(bars);
+  }
+  twoUp.appendChild(distCard.el);
+
+  const actCard = buildCard('Активность по неделям');
+  const actBody = actCard.body;
+  const activity = analytics.activityByWeek || [];
+  if (!activity.length) {
+    actBody.appendChild(emptyHint('Нет данных'));
+  } else {
+    const maxA = Math.max.apply(Math, activity.map(function (a) { return a.count; })) || 1;
+    const bars = document.createElement('div');
+    bars.style.display = 'flex';
+    bars.style.alignItems = 'flex-end';
+    bars.style.gap = '6px';
+    bars.style.height = '120px';
+    activity.forEach(function (a) {
+      const col = document.createElement('div');
+      col.style.flex = '1';
+      col.style.display = 'flex';
+      col.style.flexDirection = 'column';
+      col.style.alignItems = 'center';
+      col.style.gap = '4px';
+      col.title = a.week + ' · ' + a.count + ' поп.';
+      const bar = document.createElement('div');
+      bar.style.width = '100%';
+      const h = Math.max(3, Math.round(a.count / maxA * 96));
+      bar.style.height = h + 'px';
+      bar.style.background = 'var(--accent)';
+      bar.style.borderRadius = '3px';
+      col.appendChild(bar);
+      const lbl = document.createElement('div');
+      lbl.style.fontSize = '10px';
+      lbl.style.color = 'var(--ink-tertiary)';
+      lbl.textContent = a.week.split('-W').pop();
+      col.appendChild(lbl);
+      bars.appendChild(col);
+    });
+    actBody.appendChild(bars);
+  }
+  twoUp.appendChild(actCard.el);
+  body.appendChild(twoUp);
 }
 
 // ─── Tab: Доступ ─────────────────────────────────────────────
@@ -567,14 +775,51 @@ async function renderAccessTab(body, state, isOwner) {
   levelRow.style.display = 'flex';
   levelRow.style.gap = '8px';
   levelRow.style.flexWrap = 'wrap';
+  const levelHint = document.createElement('div');
+  levelHint.style.fontSize = '12px';
+  levelHint.style.color = 'var(--ink-tertiary)';
+  levelHint.style.marginTop = '8px';
+  const LEVEL_DESC = {
+    private: 'Только владелец видит и проходит тест.',
+    shared:  'Доступ по списку приглашённых пользователей.',
+    public:  'Тест виден в каталоге, доступен всем.',
+  };
+  function paintLevel() {
+    Array.from(levelRow.children).forEach(function (c) {
+      c.classList.toggle('chip--active', c.dataset.lvl === test.access_level);
+    });
+    levelHint.textContent = LEVEL_DESC[test.access_level] || '';
+  }
   ['private', 'shared', 'public'].forEach(function (lvl) {
-    const chip = document.createElement('span');
-    chip.className = 'chip' + (test.access_level === lvl ? ' chip--active' : '');
-    chip.style.cursor = 'default';
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip';
+    chip.dataset.lvl = lvl;
     chip.textContent = lvl;
+    if (isOwner) {
+      chip.addEventListener('click', async function () {
+        if (test.access_level === lvl) return;
+        const prev = test.access_level;
+        test.access_level = lvl;
+        paintLevel();
+        try {
+          await updateTestAccess(test.id, lvl);
+          toast('Уровень доступа обновлён', { tone: 'success' });
+        } catch (e) {
+          test.access_level = prev;
+          paintLevel();
+          toast('Не удалось изменить', { tone: 'error' });
+        }
+      });
+    } else {
+      chip.disabled = true;
+      chip.style.cursor = 'default';
+    }
     levelRow.appendChild(chip);
   });
+  paintLevel();
   levelCard.body.appendChild(levelRow);
+  levelCard.body.appendChild(levelHint);
   body.appendChild(levelCard.el);
 
   if (!isOwner) {
@@ -587,6 +832,26 @@ async function renderAccessTab(body, state, isOwner) {
     return;
   }
 
+  // Invite-by-username.
+  const inviteCard = buildCard('Пригласить пользователя');
+  inviteCard.el.style.marginTop = '14px';
+  const inviteRow = document.createElement('div');
+  inviteRow.style.display = 'flex';
+  inviteRow.style.gap = '8px';
+  const inviteInput = document.createElement('input');
+  inviteInput.type = 'text';
+  inviteInput.className = 'input';
+  inviteInput.placeholder = '@username';
+  inviteInput.style.flex = '1';
+  const inviteBtn = document.createElement('button');
+  inviteBtn.type = 'button';
+  inviteBtn.className = 'btn btn--primary btn--small';
+  inviteBtn.textContent = 'Пригласить';
+  inviteRow.appendChild(inviteInput);
+  inviteRow.appendChild(inviteBtn);
+  inviteCard.body.appendChild(inviteRow);
+  body.appendChild(inviteCard.el);
+
   // Shares.
   const sharesCard = buildCard('Поделено с');
   sharesCard.el.style.marginTop = '14px';
@@ -594,11 +859,14 @@ async function renderAccessTab(body, state, isOwner) {
   sharesCard.body.appendChild(sharesSlot);
   body.appendChild(sharesCard.el);
 
-  try {
-    const shares = await getTestShares(test.id);
-    if (!shares || shares.length === 0) {
-      sharesSlot.appendChild(emptyHint('Тест пока никому не открыт'));
-    } else {
+  async function reloadShares() {
+    sharesSlot.innerHTML = '';
+    try {
+      const shares = await getTestShares(test.id);
+      if (!shares || shares.length === 0) {
+        sharesSlot.appendChild(emptyHint('Тест пока никому не открыт'));
+        return;
+      }
       const list = document.createElement('ul');
       list.style.listStyle = 'none';
       list.style.padding = '0';
@@ -623,13 +891,53 @@ async function renderAccessTab(body, state, isOwner) {
         name.textContent = s.username || s.email || ('user#' + s.user_id);
         li.appendChild(av);
         li.appendChild(name);
+        const rm = document.createElement('button');
+        rm.type = 'button';
+        rm.className = 'btn btn--small btn--ghost';
+        rm.textContent = '×';
+        rm.title = 'Убрать доступ';
+        rm.style.fontSize = '16px';
+        rm.style.lineHeight = '1';
+        rm.addEventListener('click', async function () {
+          li.style.opacity = '0.5';
+          try {
+            await removeShare(test.id, s.user_id);
+            toast('Доступ убран', { tone: 'success' });
+            reloadShares();
+          } catch (_) {
+            li.style.opacity = '1';
+            toast('Не удалось убрать доступ', { tone: 'error' });
+          }
+        });
+        li.appendChild(rm);
         list.appendChild(li);
       });
       sharesSlot.appendChild(list);
+    } catch (e) {
+      sharesSlot.appendChild(emptyHint('Не удалось загрузить список'));
     }
-  } catch (e) {
-    sharesSlot.appendChild(emptyHint('Не удалось загрузить список'));
   }
+
+  inviteBtn.addEventListener('click', async function () {
+    const username = (inviteInput.value || '').trim().replace(/^@/, '');
+    if (!username) return;
+    inviteBtn.disabled = true;
+    try {
+      await addShare(test.id, username);
+      toast('Пользователь приглашён', { tone: 'success' });
+      inviteInput.value = '';
+      reloadShares();
+    } catch (e) {
+      toast((e && e.message) || 'Не удалось пригласить', { tone: 'error' });
+    } finally {
+      inviteBtn.disabled = false;
+    }
+  });
+  inviteInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') inviteBtn.click();
+  });
+
+  reloadShares();
 
   // Pending access requests.
   const reqCard = buildCard('Запросы доступа');

@@ -19,7 +19,7 @@
  *   GET /api/tests              ? with_stats=true
  *   GET /api/tests/{id}/weak-questions
  */
-import { getMyAggregate, getHeatmap, getStreak, listAttempts, getWeakQuestions } from '../../api/statistics.js';
+import { getMyAggregate, getHeatmap, getStreak, listAttempts, getWeakQuestions, getMyTrend } from '../../api/statistics.js';
 import { listTests } from '../../api/tests.js';
 import { mountAppShell } from '../../components/app-shell.js';
 import { buildMailLayout } from '../../components/mail-layout.js';
@@ -237,6 +237,21 @@ async function renderDetail(detail, state, tests) {
   headLeft.appendChild(title);
   head.appendChild(headLeft);
 
+  // CSV export button.
+  const csvBtn = document.createElement('a');
+  csvBtn.className = 'btn btn--ghost btn--small';
+  const params = new URLSearchParams();
+  params.set('clientId', getClientId());
+  if (state.sel && state.sel !== 'all' && state.sel !== 'weak' && state.sel !== 'activity') {
+    params.set('testId', state.sel);
+  }
+  csvBtn.href = '/api/stats/attempts.csv?' + params.toString();
+  csvBtn.setAttribute('download', '');
+  const lbl = document.createElement('span');
+  lbl.textContent = 'Экспорт CSV';
+  csvBtn.appendChild(lbl);
+  head.appendChild(csvBtn);
+
   // Body.
   const body = document.createElement('div');
   body.style.padding = 'var(--sp-4) var(--sp-5)';
@@ -301,6 +316,99 @@ async function renderSummaryView(body, state, tests) {
   kpiGrid.appendChild(buildKpi('Точность', accuracy));
   body.appendChild(kpiGrid);
 
+  // Two-up row: Прогресс по дням (Bars) + Слабые темы mini-card.
+  const twoUp = document.createElement('div');
+  twoUp.style.display = 'grid';
+  twoUp.style.gridTemplateColumns = '3fr 2fr';
+  twoUp.style.gap = '12px';
+  twoUp.style.marginBottom = '14px';
+
+  const barsCard = buildCard('Прогресс по дням · 15 дн');
+  const barsSlot = document.createElement('div');
+  barsSlot.style.minHeight = '140px';
+  barsCard.body.appendChild(barsSlot);
+  twoUp.appendChild(barsCard.el);
+
+  const weakMini = buildCard('Слабые темы');
+  const weakMiniSlot = document.createElement('div');
+  weakMiniSlot.style.minHeight = '140px';
+  weakMini.body.appendChild(weakMiniSlot);
+  twoUp.appendChild(weakMini.el);
+  body.appendChild(twoUp);
+
+  // Fetch trend + weak in parallel.
+  getMyTrend(15).then(function (resp) {
+    const rows = (resp && resp.trend) || [];
+    if (!rows.length) {
+      barsSlot.appendChild(emptyHint('Нет попыток за выбранный период'));
+      return;
+    }
+    renderTrendBars(barsSlot, rows);
+  }).catch(function () {
+    barsSlot.appendChild(emptyHint('Не удалось загрузить прогресс'));
+  });
+
+  // Aggregate weak questions across owned tests (capped to keep it cheap).
+  (async function () {
+    try {
+      const ownTests = (tests || []).filter(function (t) { return !!t.is_owner; }).slice(0, 8);
+      const results = await Promise.all(ownTests.map(function (t) {
+        return getWeakQuestions(t.id).then(function (r) {
+          return { title: t.title, questions: (r && r.questions) || [] };
+        }).catch(function () { return null; });
+      }));
+      const flat = [];
+      results.forEach(function (r) {
+        if (!r) return;
+        r.questions.slice(0, 3).forEach(function (q) {
+          flat.push({ testTitle: r.title, q: q });
+        });
+      });
+      flat.sort(function (a, b) {
+        return (a.q.correctRate || 0) - (b.q.correctRate || 0);
+      });
+      const top = flat.slice(0, 3);
+      if (!top.length) {
+        weakMiniSlot.appendChild(emptyHint('Слабых тем не выявлено'));
+        return;
+      }
+      top.forEach(function (item) {
+        const row = document.createElement('div');
+        row.style.marginBottom = '10px';
+        const head = document.createElement('div');
+        head.style.display = 'flex';
+        head.style.justifyContent = 'space-between';
+        head.style.fontSize = '12px';
+        head.style.marginBottom = '4px';
+        const t1 = document.createElement('span');
+        t1.style.color = 'var(--ink)';
+        t1.style.fontWeight = '600';
+        t1.textContent = (item.testTitle || '').slice(0, 28) || '—';
+        const t2 = document.createElement('span');
+        t2.style.color = 'var(--ink-tertiary)';
+        const rate = Math.round((item.q.correctRate || 0) * 100);
+        t2.textContent = rate + '%';
+        head.appendChild(t1);
+        head.appendChild(t2);
+        const bar = document.createElement('div');
+        bar.style.height = '6px';
+        bar.style.background = 'var(--ink-soft)';
+        bar.style.borderRadius = '3px';
+        bar.style.overflow = 'hidden';
+        const fill = document.createElement('div');
+        fill.style.height = '100%';
+        fill.style.width = rate + '%';
+        fill.style.background = rate < 60 ? 'var(--error)' : 'var(--warning)';
+        bar.appendChild(fill);
+        row.appendChild(head);
+        row.appendChild(bar);
+        weakMiniSlot.appendChild(row);
+      });
+    } catch (_) {
+      weakMiniSlot.appendChild(emptyHint('—'));
+    }
+  })();
+
   // Activity-for-year heatmap card.
   const hmCard = buildCard('Активность за год');
   const hmSlot = document.createElement('div');
@@ -315,6 +423,49 @@ async function renderSummaryView(body, state, tests) {
   } catch (_) {
     hmSlot.appendChild(emptyHint('Не удалось загрузить активность'));
   }
+}
+
+function renderTrendBars(slot, rows) {
+  slot.innerHTML = '';
+  // Normalise to fill 15 slots; rows are sparse (only days with attempts).
+  const wrap = document.createElement('div');
+  wrap.style.display = 'flex';
+  wrap.style.alignItems = 'flex-end';
+  wrap.style.gap = '4px';
+  wrap.style.height = '120px';
+  wrap.style.padding = '8px 0';
+
+  const maxScore = 100;
+  rows.slice(-15).forEach(function (r) {
+    const col = document.createElement('div');
+    col.style.flex = '1';
+    col.style.display = 'flex';
+    col.style.flexDirection = 'column';
+    col.style.alignItems = 'center';
+    col.style.gap = '4px';
+    col.title = r.date + ' · ' + r.avg_score + '% · ' + r.attempts_count + ' поп.';
+
+    const bar = document.createElement('div');
+    bar.style.width = '100%';
+    bar.style.minHeight = '4px';
+    const h = Math.max(4, Math.round((r.avg_score || 0) / maxScore * 96));
+    bar.style.height = h + 'px';
+    bar.style.background = (r.avg_score >= 70) ? 'var(--accent)'
+                          : (r.avg_score >= 50) ? 'var(--warning)'
+                          : 'var(--error)';
+    bar.style.borderRadius = '3px';
+    col.appendChild(bar);
+
+    const lbl = document.createElement('div');
+    lbl.style.fontSize = '10px';
+    lbl.style.color = 'var(--ink-tertiary)';
+    const dt = r.date && r.date.slice(5).replace('-', '.');
+    lbl.textContent = dt || '';
+    col.appendChild(lbl);
+
+    wrap.appendChild(col);
+  });
+  slot.appendChild(wrap);
 }
 
 async function renderWeakView(body, state, tests) {
