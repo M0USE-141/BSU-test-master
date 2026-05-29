@@ -22,7 +22,6 @@ import { buildMailLayout, buildListRow } from '../../components/mail-layout.js';
 import { confirm as confirmDialog } from '../../components/confirm-dialog.js';
 import { toast } from '../../components/toast.js';
 import { iconEl } from '../../icons.js';
-import { getClientId } from '../../utils/client-id.js';
 import { getState } from '../../state.js';
 import { t } from '../../utils/locale.js';
 
@@ -44,10 +43,39 @@ export default async function render(root, params) {
   skel.style.minHeight = '200px';
   main.appendChild(skel);
 
+  const PAGE_SIZE = 30;
+  const initialFilter = ['my', 'shared', 'public'].includes(params.filter)
+    ? params.filter : 'my';
+  let myTests = [];
+  let myTotal = 0;
   let tests = [];
+  let total = 0;
   try {
-    const resp = await listTests({ limit: 100 });
-    tests = Array.isArray(resp) ? resp : (resp.items || resp.tests || []);
+    const reqs = [
+      listTests({ filter: 'my', with_stats: true, limit: PAGE_SIZE, offset: 0 }),
+    ];
+    if (initialFilter !== 'my') {
+      reqs.push(listTests({
+        filter: initialFilter, with_stats: true,
+        limit: PAGE_SIZE, offset: 0,
+        ...(initialFilter === 'public' ? { sort: 'popular' } : {}),
+      }));
+    }
+    const results = await Promise.allSettled(reqs);
+    if (results[0].status === 'fulfilled') {
+      const resp = results[0].value;
+      myTests = Array.isArray(resp) ? resp : (resp.items || resp.tests || []);
+      myTotal = (resp && resp.total != null) ? resp.total : myTests.length;
+    } else {
+      throw results[0].reason;
+    }
+    if (initialFilter === 'my') {
+      tests = myTests; total = myTotal;
+    } else if (results[1] && results[1].status === 'fulfilled') {
+      const resp = results[1].value;
+      tests = Array.isArray(resp) ? resp : (resp.items || resp.tests || []);
+      total = (resp && resp.total != null) ? resp.total : tests.length;
+    }
   } catch (e) {
     main.innerHTML = '';
     main.appendChild(emptyState('Не удалось загрузить список тестов', (e && e.message) || 'Проверьте подключение'));
@@ -57,36 +85,52 @@ export default async function render(root, params) {
 
   main.innerHTML = '';
 
-  // First-run: only consider the user owning zero tests as "fresh".
-  // Public catalog tests aren't excluded from the home list (a logged-in
-  // user can still browse them), but the new-user onboarding screen
-  // should still appear until they have something of their own.
-  const ownedTests = tests.filter(function (t) { return !!t.is_owner; });
-  if (ownedTests.length === 0) {
+  // Brand-new user with zero own tests → first-run onboarding (only when
+  // the user didn't explicitly land on /home?filter=public from elsewhere).
+  if (myTotal === 0 && initialFilter === 'my') {
     renderFirstRun(main);
     return;
   }
 
+  // Decide which filter the sidebar should show. Explicit ?filter= wins;
+  // otherwise fall back to 'my' (or 'public' if user has no own tests).
+  const effectiveFilter = (params.filter && initialFilter !== 'my')
+    ? initialFilter
+    : (myTotal === 0 ? 'public' : 'my');
+
   const state = {
-    filter: 'all',
+    filter: effectiveFilter,
     search: '',
-    selectedId: params.id || tests[0].id,
+    selectedId: params.id || (tests[0] && tests[0].id) || null,
     tab: 'Обзор',
     detail: null,
     attempts: [],
+    tests: tests.slice(),
+    offset: tests.length,
+    pageSize: PAGE_SIZE,
+    exhausted: tests.length < PAGE_SIZE || tests.length >= total,
+    loading: false,
   };
 
   const built = buildMailLayout(main);
   const sidebar = built.sidebar;
   const detail = built.detail;
-  renderSidebar(sidebar, tests, state);
-  loadDetail(detail, state);
+  renderSidebar(sidebar, state);
+  if (state.selectedId) loadDetail(detail, state);
+  // Fallback: empty-state for an owner with 0 own tests AND no explicit
+  // filter — sidebar auto-loads public.
+  if (effectiveFilter === 'public' && tests.length === 0) {
+    state.tests = [];
+    state.offset = 0;
+    state.exhausted = false;
+    renderSidebar(sidebar, state);
+  }
 }
 
 // ─── Sidebar ─────────────────────────────────────────────────
 
-function renderSidebar(sidebar, tests, state) {
-  sidebar.innerHTML = '';
+function renderSidebar(sidebar, state) {
+  while (sidebar.firstChild) sidebar.removeChild(sidebar.firstChild);
 
   const head = document.createElement('div');
   head.className = 'mail-layout__sidebar-head';
@@ -97,7 +141,12 @@ function renderSidebar(sidebar, tests, state) {
   headRow.style.justifyContent = 'space-between';
   const caps = document.createElement('div');
   caps.className = 'caps';
-  caps.textContent = 'Мои тесты · ' + tests.length;
+  function currentFilterLabel() {
+    return state.filter === 'my' ? 'Мои тесты'
+         : state.filter === 'shared' ? 'Shared со мной'
+         : 'Public каталог';
+  }
+  caps.textContent = currentFilterLabel() + ' · ' + state.tests.length;
   headRow.appendChild(caps);
 
   const importBtn = document.createElement('button');
@@ -140,14 +189,13 @@ function renderSidebar(sidebar, tests, state) {
   searchWrap.appendChild(searchInput);
   head.appendChild(searchWrap);
 
-  // Filter chips.
+  // Filter chips — backend-driven, no 'all'.
   const filterRow = document.createElement('div');
   filterRow.style.display = 'flex';
   filterRow.style.gap = '4px';
   filterRow.style.flexWrap = 'wrap';
   const filters = [
-    ['all', 'Все'],
-    ['private', 'Свои'],
+    ['my', 'Свои'],
     ['shared', 'Shared'],
     ['public', 'Public'],
   ];
@@ -159,12 +207,17 @@ function renderSidebar(sidebar, tests, state) {
     chip.type = 'button';
     chip.className = 'chip chip--small' + (state.filter === key ? ' chip--active' : '');
     chip.textContent = label;
-    chip.addEventListener('click', function () {
+    chip.addEventListener('click', async function () {
+      if (state.filter === key) return;
       state.filter = key;
+      state.tests = [];
+      state.offset = 0;
+      state.exhausted = false;
       Object.keys(filterChips).forEach(function (k) {
         filterChips[k].classList.toggle('chip--active', k === key);
       });
       renderList();
+      await loadMore();
     });
     filterChips[key] = chip;
     filterRow.appendChild(chip);
@@ -178,26 +231,55 @@ function renderSidebar(sidebar, tests, state) {
   listWrap.style.overflowY = 'auto';
   sidebar.appendChild(listWrap);
 
-  function renderList() {
-    listWrap.innerHTML = '';
-    const filtered = tests.filter(function (t) {
-      if (state.filter !== 'all' && (t.access_level || t.tag) !== state.filter) return false;
-      if (state.search) {
-        const title = (t.title || t.t || '').toLowerCase();
-        if (title.indexOf(state.search.toLowerCase()) < 0) return false;
+  async function loadMore() {
+    if (state.loading || state.exhausted) return;
+    state.loading = true;
+    try {
+      const resp = await listTests({
+        filter: state.filter,
+        with_stats: true,
+        limit: state.pageSize,
+        offset: state.offset,
+        ...(state.filter === 'public' ? { sort: 'popular' } : {}),
+      });
+      const items = Array.isArray(resp) ? resp : (resp.items || resp.tests || []);
+      state.tests = state.tests.concat(items);
+      state.offset += items.length;
+      if (items.length < state.pageSize
+          || (resp && resp.total != null && state.offset >= resp.total)) {
+        state.exhausted = true;
       }
-      return true;
-    });
+    } catch { state.exhausted = true; }
+    finally {
+      state.loading = false;
+      renderList();
+    }
+  }
 
-    if (filtered.length === 0) {
+  let scrollObserver = null;
+
+  function renderList() {
+    while (listWrap.firstChild) listWrap.removeChild(listWrap.firstChild);
+    caps.textContent = currentFilterLabel() + ' · ' + state.tests.length;
+
+    const filtered = state.search
+      ? state.tests.filter(function (t) {
+          const title = (t.title || t.t || '').toLowerCase();
+          return title.indexOf(state.search.toLowerCase()) >= 0;
+        })
+      : state.tests;
+
+    if (filtered.length === 0 && !state.loading && state.exhausted) {
       const empty = document.createElement('div');
       empty.style.padding = '24px 14px';
       empty.style.textAlign = 'center';
       empty.style.fontSize = '12px';
       empty.style.color = 'var(--ink-tertiary)';
-      empty.textContent = 'Ничего по фильтру';
+      empty.textContent = state.search ? 'Ничего по поиску'
+        : state.filter === 'my' ? 'У вас пока нет своих тестов'
+        : state.filter === 'shared' ? 'Никто пока не поделился с вами'
+        : 'Публичных тестов нет';
       listWrap.appendChild(empty);
-      return;
     }
 
     filtered.forEach(function (testItem) {
@@ -206,6 +288,9 @@ function renderSidebar(sidebar, tests, state) {
       const subParts = [];
       const qc = testItem.questionCount || testItem.question_count;
       if (qc) subParts.push(qc + ' вопросов');
+      if (state.filter !== 'my' && testItem.owner_username) {
+        subParts.push('@' + testItem.owner_username);
+      }
       const row = buildListRow({
         title: testItem.title || testItem.t || id,
         sub: subParts.join(' · '),
@@ -233,6 +318,28 @@ function renderSidebar(sidebar, tests, state) {
       row.insertBefore(tag, mainCol ? mainCol.nextSibling : null);
       listWrap.appendChild(row);
     });
+
+    if (state.loading) {
+      const sk = document.createElement('div');
+      sk.className = 'skeleton';
+      sk.style.height = '52px';
+      sk.style.margin = '6px 10px';
+      sk.style.borderRadius = '6px';
+      listWrap.appendChild(sk);
+    }
+
+    if (!state.exhausted) {
+      const sentinel = document.createElement('div');
+      sentinel.style.height = '1px';
+      listWrap.appendChild(sentinel);
+      if (scrollObserver) scrollObserver.disconnect();
+      scrollObserver = new IntersectionObserver(function (entries) {
+        if (entries[0].isIntersecting) loadMore();
+      }, { root: listWrap, rootMargin: '200px' });
+      scrollObserver.observe(sentinel);
+    } else if (scrollObserver) {
+      scrollObserver.disconnect();
+    }
   }
   renderList();
 }
@@ -466,7 +573,7 @@ async function renderOverviewTab(body, state, isOwner) {
   body.appendChild(attemptsCard.el);
 
   try {
-    const resp = await listAttempts({ test_id: test.id, client_id: getClientId(), limit: 50 });
+    const resp = await listAttempts({ testId: test.id, limit: 50 });
     const items = Array.isArray(resp) ? resp : (resp.items || resp.attempts || []);
     state.attempts = items;
     const completed = items.filter(function (a) { return a.status === 'completed'; });
@@ -502,7 +609,7 @@ async function renderActivityTab(body, state) {
   const slot = document.createElement('div');
   card.body.appendChild(slot);
   try {
-    const resp = await listAttempts({ test_id: state.detail.id, client_id: getClientId(), limit: 200 });
+    const resp = await listAttempts({ testId: state.detail.id, limit: 200 });
     const items = Array.isArray(resp) ? resp : (resp.items || resp.attempts || []);
     card.head.querySelector('.card__title').textContent = 'Все попытки · ' + items.length;
     fillAttemptsTable(slot, items, state.detail.id);
@@ -515,10 +622,10 @@ async function renderActivityTab(body, state) {
 
 function renderQuestionsTab(body, state, isOwner) {
   const test = state.detail;
-  if (!(test.questions || []).length) {
-    body.appendChild(emptyHint('Вопросов пока нет'));
-    return;
-  }
+  // Even when there are zero questions we still mount the editor so the
+  // owner sees the "+ Добавить вопрос" button in the sidebar. The
+  // detail pane stays empty in that case (the editor handles the empty
+  // state) — viewers without questions see a read-only empty hint.
   const hint = document.createElement('div');
   hint.style.fontSize = '12px';
   hint.style.color = 'var(--ink-tertiary)';
@@ -527,6 +634,11 @@ function renderQuestionsTab(body, state, isOwner) {
     ? 'Редактируйте вопросы напрямую. Используйте кнопки «Картинка» и «Формула» для вставки изображений и LaTeX/MathML формул.'
     : 'Вы не владелец теста. Любые правки уйдут владельцу как предложение (CR).';
   body.appendChild(hint);
+
+  if (!(test.questions || []).length && !isOwner) {
+    body.appendChild(emptyHint('Вопросов пока нет'));
+    return;
+  }
 
   const host = document.createElement('div');
   body.appendChild(host);
@@ -1191,7 +1303,7 @@ function fillAttemptsTable(slot, attempts, testId) {
  *      passes the chosen file to /import via sessionStorage so the
  *      import wizard can pre-fill step 1.
  *   2. Из шаблона       — navigates to /import?template=mcq.
- *   3. Public-каталог    — navigates to /discover.
+ *   3. Public-каталог    — navigates to /home with the Public chip selected.
  * Plus a ghost "Skip" link that toasts and continues (mostly a no-op
  * for now — once we have a `first_run_dismissed` flag in user prefs
  * this will persist the dismissal).
@@ -1278,7 +1390,7 @@ function renderFirstRun(main) {
     iconKind: 'globe',
     title: t('firstrun.card.discover.title') || 'Public-каталог',
     hint:  t('firstrun.card.discover.hint')  || 'пройти готовый',
-    onClick: function () { navigate('/discover'); },
+    onClick: function () { navigate('/home?filter=public'); },
   }));
   wrap.appendChild(grid);
 
@@ -1292,7 +1404,7 @@ function renderFirstRun(main) {
     // No persistence yet — next reload will show the screen again
     // until the user has at least one test. Keep the affordance so the
     // empty home screen isn't a dead end.
-    navigate('/discover');
+    navigate('/home?filter=public');
   });
   wrap.appendChild(skip);
 

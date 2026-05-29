@@ -1,11 +1,14 @@
 /**
- * statistics.js — statistics API wrapper
+ * statistics.js — statistics API wrapper.
+ *
+ * All endpoints require auth. `clientId` query param is gone — the
+ * server uses the bearer-token user.
  *
  * Actual backend routes (prefix="/api"):
  *   GET /api/stats/heatmap?weeks=N
  *   GET /api/stats/me/aggregate?testId=...
  *   GET /api/stats/streak
- *   GET /api/stats/attempts?clientId=...&testId=...
+ *   GET /api/stats/attempts?testId=...
  *   GET /api/stats/attempts/{id}
  *   GET /api/tests/{id}/statistics        (owner only)
  *   GET /api/tests/{id}/weak-questions
@@ -69,7 +72,8 @@ export async function getOwnerAnalytics(testId) {
 }
 
 /**
- * Get a single attempt by ID.
+ * Get a single attempt by ID. Auth-only; the server validates that the
+ * attempt belongs to the current user.
  * @param {string} attemptId
  */
 export async function getAttempt(attemptId) {
@@ -81,12 +85,12 @@ export async function getAttempt(attemptId) {
  * @param {number} [days=30]
  */
 export async function getMyTrend(days = 30) {
-  return apiFetch('GET', `/api/stats/trend?days=${days}`);
+  return apiFetch('GET', `/api/stats/me/trend?days=${days}`);
 }
 
 /**
- * List attempts by clientId (no auth required).
- * @param {{ clientId: string, testId?: string, status?: string, limit?: number }} params
+ * List the current user's attempts.
+ * @param {{ testId?: string, status?: string, limit?: number, offset?: number }} [params]
  */
 export async function listAttempts(params) {
   return apiFetch('GET', `/api/stats/attempts${qs(params)}`);
