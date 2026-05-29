@@ -24,14 +24,24 @@ NS = {
 }
 
 
-def _short_id_for_bytes(data: bytes) -> str:
-    """First 7 hex chars of sha1 — same scheme as `api/routes/assets.py`.
+# Length of the short content-hash id used for material filenames.
+# MUST equal `api.utils.file_utils.SHORT_ID_LEN`. We don't import from
+# `api.*` here (layering: `core/` is the parser, `api/` is the web app),
+# so the agreement is held by convention — change both together if you
+# ever rotate the length.
+SHORT_ID_LEN = 7
 
-    Two callers must agree on this: the upload route uses sha1[:7] for
-    manually uploaded materials; we use the same here so docx-extracted
-    assets dedupe against manual uploads.
+
+def _short_id_for_bytes(data: bytes) -> str:
+    """First `SHORT_ID_LEN` hex chars of sha1 — content-addressing only.
+
+    Mirrors `api.routes.assets._short_id_for` so docx-extracted assets
+    dedupe against materials uploaded manually through the editor's
+    "Загрузить картинку" / "Загрузить MathML" buttons.
+
+    `usedforsecurity=False` — this is content-addressing, not crypto.
     """
-    return hashlib.sha1(data).hexdigest()[:7]
+    return hashlib.sha1(data, usedforsecurity=False).hexdigest()[:SHORT_ID_LEN]
 
 
 class WordTestExtractor:
