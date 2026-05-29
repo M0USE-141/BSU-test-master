@@ -2,7 +2,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session as DbSession
 
 from api.database import get_db
@@ -17,7 +17,7 @@ from api.models.db.user import User
 from api.services.auth_service import get_user_by_id
 from api.services.image_service import (
     delete_avatar,
-    get_avatar_file_path,
+    get_avatar_stream,
     get_avatar_url,
     process_avatar,
 )
@@ -79,14 +79,12 @@ async def upload_avatar(
     db: Annotated[DbSession, Depends(get_db)],
 ) -> AvatarUploadResponse:
     """Upload user avatar."""
-    # Delete old avatar if exists
+    # Delete old avatar from storage if exists
     if current_user.avatar_path:
-        delete_avatar(current_user.avatar_path)
+        delete_avatar(current_user.id, current_user.avatar_path)
 
-    # Process and save new avatar
     avatar_path, avatar_size = await process_avatar(file, current_user.id)
 
-    # Update user record
     current_user.avatar_path = avatar_path
     current_user.avatar_size = avatar_size
     db.commit()
@@ -111,10 +109,8 @@ async def delete_user_avatar(
             detail="No avatar to delete",
         )
 
-    # Delete file
-    delete_avatar(current_user.avatar_path)
+    delete_avatar(current_user.id, current_user.avatar_path)
 
-    # Update user record
     current_user.avatar_path = None
     current_user.avatar_size = None
     db.commit()
@@ -143,8 +139,8 @@ async def get_public_user(
 async def get_user_avatar(
     user_id: int,
     db: Annotated[DbSession, Depends(get_db)],
-) -> FileResponse:
-    """Get user avatar file (public endpoint)."""
+) -> StreamingResponse:
+    """Get user avatar bytes (public endpoint, streamed from storage)."""
     user = get_user_by_id(db, user_id)
     if user is None:
         raise HTTPException(
@@ -152,25 +148,30 @@ async def get_user_avatar(
             detail="User not found",
         )
 
-    avatar_path = get_avatar_file_path(user.avatar_path)
-    if avatar_path is None:
+    result = get_avatar_stream(user.id, user.avatar_path)
+    if result is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Avatar not found",
         )
-
-    # Determine media type from extension
-    ext = avatar_path.suffix.lower()
-    media_types = {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-    }
-    media_type = media_types.get(ext, "image/jpeg")
-
-    return FileResponse(
-        path=avatar_path,
+    stream, media_type = result
+    return StreamingResponse(
+        _iter_and_close(stream),
         media_type=media_type,
         headers={"Cache-Control": "public, max-age=3600"},
     )
+
+
+def _iter_and_close(stream, chunk_size: int = 64 * 1024):
+    """Yield from a binary stream and close it after iteration (Windows-safe)."""
+    try:
+        while True:
+            chunk = stream.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+    finally:
+        try:
+            stream.close()
+        except Exception:  # noqa: BLE001
+            pass

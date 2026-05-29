@@ -1,6 +1,15 @@
-"""Image processing service for user avatars."""
+"""Image processing service for user avatars (storage_service-backed).
+
+The on-disk bookkeeping is gone — bytes live wherever the configured
+`StorageBackend` puts them (LocalStorageBackend root in dev, MinIO bucket
+in prod). The `User.avatar_path` column still stores the uniqued
+filename (`<user_id>_<uuid8>.<ext>`) until Phase 4 renames it to
+`avatar_object_key` and switches to a stable `current.jpg`.
+"""
+from __future__ import annotations
+
+import io
 import logging
-import os
 import uuid
 from pathlib import Path
 from typing import BinaryIO
@@ -12,8 +21,11 @@ from api.config import (
     AVATAR_ALLOWED_EXTENSIONS,
     AVATAR_MAX_DIMENSION,
     AVATAR_MAX_SIZE_BYTES,
-    AVATARS_DIR,
 )
+from api.dependencies.storage import get_storage_backend
+from api.services import storage_keys
+from api.services.storage_keys import StorageKeyError
+from api.services.storage_service import ObjectNotFoundError, StorageBackend
 
 logger = logging.getLogger(__name__)
 
@@ -27,23 +39,27 @@ except ImportError:
     logger.warning("PIL not available, avatar resizing will be skipped")
 
 
+_CONTENT_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+}
+
+
+def _media_type_for(filename: str) -> str:
+    ext = Path(filename).suffix.lower()
+    return _CONTENT_TYPES.get(ext, "application/octet-stream")
+
+
 def validate_avatar_file(file: UploadFile) -> None:
-    """
-    Validate uploaded avatar file.
-
-    Args:
-        file: Uploaded file
-
-    Raises:
-        HTTPException: If file is invalid
-    """
+    """Validate uploaded avatar file."""
     if not file.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No filename provided",
         )
 
-    # Check extension
     ext = Path(file.filename).suffix.lower()
     if ext not in AVATAR_ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -51,7 +67,6 @@ def validate_avatar_file(file: UploadFile) -> None:
             detail=f"Invalid file type. Allowed: {', '.join(AVATAR_ALLOWED_EXTENSIONS)}",
         )
 
-    # Check content type
     allowed_content_types = {"image/png", "image/jpeg", "image/gif"}
     if file.content_type and file.content_type not in allowed_content_types:
         raise HTTPException(
@@ -60,49 +75,43 @@ def validate_avatar_file(file: UploadFile) -> None:
         )
 
 
-def _get_file_size(file: BinaryIO) -> int:
-    """Get file size by seeking to end."""
-    file.seek(0, 2)  # Seek to end
-    size = file.tell()
-    file.seek(0)  # Reset to beginning
-    return size
+def _resize_in_memory(content: bytes) -> bytes:
+    """Resize image bytes to fit AVATAR_MAX_DIMENSION; preserve format.
 
-
-def _resize_image(image_path: Path) -> None:
-    """
-    Resize image to fit within max dimensions.
-
-    Args:
-        image_path: Path to the image file
+    Returns the (possibly resized) bytes. If PIL is unavailable or the
+    image already fits, returns the input unchanged.
     """
     if not PIL_AVAILABLE:
-        return
+        return content
 
     try:
-        with Image.open(image_path) as img:
-            # Convert to RGB if necessary (for PNG with transparency)
-            if img.mode in ("RGBA", "P"):
+        with Image.open(io.BytesIO(content)) as img:
+            fmt = img.format or "JPEG"
+            # Normalize palette/alpha to RGB for JPEG output. Other
+            # formats (PNG, GIF) keep their original mode so animations
+            # and transparency survive.
+            if fmt == "JPEG" and img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
 
-            # Check if resize is needed
             width, height = img.size
             if width <= AVATAR_MAX_DIMENSION and height <= AVATAR_MAX_DIMENSION:
-                return
+                return content
 
-            # Calculate new size maintaining aspect ratio
             ratio = min(AVATAR_MAX_DIMENSION / width, AVATAR_MAX_DIMENSION / height)
             new_size = (int(width * ratio), int(height * ratio))
-
-            # Resize with high quality
             img = img.resize(new_size, Image.Resampling.LANCZOS)
 
-            # Save with optimization
-            img.save(image_path, optimize=True, quality=85)
-            logger.info(f"Resized avatar from {width}x{height} to {new_size}")
-
-    except Exception as e:
-        logger.error(f"Error resizing image: {e}")
-        # Don't raise - keep original image if resize fails
+            out = io.BytesIO()
+            save_kwargs: dict[str, object] = {"format": fmt, "optimize": True}
+            if fmt == "JPEG":
+                save_kwargs["quality"] = 85
+            img.save(out, **save_kwargs)
+            logger.info("Resized avatar from %sx%s to %s", width, height, new_size)
+            return out.getvalue()
+    except Exception as exc:
+        # Resize failures shouldn't block the upload — log and keep original.
+        logger.error("Error resizing avatar image: %s", exc)
+        return content
 
 
 _MAGIC = {
@@ -113,59 +122,54 @@ _MAGIC = {
 }
 
 
-def _save_and_resize(content: bytes, user_id: int) -> tuple[str, int]:
-    """Write avatar bytes to disk and resize with PIL (runs in thread pool)."""
-    # Detect format from magic bytes
-    detected = next((ext for sig, ext in _MAGIC.items() if content[:len(sig)] == sig), None)
+def _save_through_storage(
+    content: bytes,
+    user_id: int,
+    storage: StorageBackend,
+) -> tuple[str, int]:
+    """Process bytes + push to storage. Runs in a thread pool."""
+    detected = next(
+        (ext for sig, ext in _MAGIC.items() if content[: len(sig)] == sig),
+        None,
+    )
     if detected is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File content does not match a supported image format",
         )
 
+    processed = _resize_in_memory(content)
     filename = f"{user_id}_{uuid.uuid4().hex[:8]}{detected}"
-    avatar_path = AVATARS_DIR / filename
-    AVATARS_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
-        with open(avatar_path, "wb") as f:
-            f.write(content)
+        key = storage_keys.avatar_legacy_key(user_id, filename)
+    except StorageKeyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
-        _resize_image(avatar_path)
-
-        final_size = avatar_path.stat().st_size
-        logger.info(f"Saved avatar for user {user_id}: {filename}")
-        return filename, final_size
-
-    except HTTPException:
-        raise  # re-raise HTTP errors from _resize_image path
-    except Exception as e:
-        if avatar_path.exists():
-            avatar_path.unlink()
-        logger.error(f"Error saving avatar: {e}")
+    try:
+        storage.put_object(
+            key,
+            io.BytesIO(processed),
+            content_type=_media_type_for(filename),
+            length=len(processed),
+        )
+    except Exception as exc:
+        logger.error("Error saving avatar to storage: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save avatar",
         )
 
+    logger.info("Saved avatar for user %s: %s", user_id, filename)
+    return filename, len(processed)
+
 
 async def process_avatar(file: UploadFile, user_id: int) -> tuple[str, int]:
-    """
-    Process and save uploaded avatar.
+    """Process and store uploaded avatar.
 
-    Validates the upload in the event loop (fast path), then offloads
-    disk I/O and PIL resizing to the default thread pool so the event
-    loop is not blocked by CPU-intensive work.
-
-    Args:
-        file: Uploaded file
-        user_id: User ID for organizing files
-
-    Returns:
-        Tuple of (avatar_filename, avatar_size_bytes)
-
-    Raises:
-        HTTPException: If processing fails
+    Returns (avatar_filename, avatar_size_bytes). The filename matches
+    the legacy contract — `User.avatar_path` keeps it verbatim — but the
+    bytes now live in the configured `StorageBackend`.
     """
     if not PIL_AVAILABLE:
         raise HTTPException(
@@ -175,75 +179,60 @@ async def process_avatar(file: UploadFile, user_id: int) -> tuple[str, int]:
 
     validate_avatar_file(file)
 
-    # Read file content (async I/O — stays on event loop)
     content = await file.read()
 
-    # Fast in-event-loop checks before we touch the thread pool
     if len(content) > AVATAR_MAX_SIZE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"File too large. Maximum size: {AVATAR_MAX_SIZE_BYTES // (1024 * 1024)}MB",
         )
 
-    # Offload CPU-bound PIL work + disk writes to thread pool
-    return await run_in_threadpool(_save_and_resize, content, user_id)
+    storage = get_storage_backend()
+    return await run_in_threadpool(_save_through_storage, content, user_id, storage)
 
 
-def delete_avatar(avatar_path: str | None) -> bool:
-    """
-    Delete avatar file.
-
-    Args:
-        avatar_path: Path to avatar file (relative to AVATARS_DIR)
-
-    Returns:
-        True if deleted, False if not found
-    """
+def delete_avatar(user_id: int, avatar_path: str | None) -> bool:
+    """Delete an avatar from storage. Returns True if a delete was attempted."""
     if not avatar_path:
         return False
 
-    full_path = AVATARS_DIR / avatar_path
-    if full_path.exists():
-        try:
-            full_path.unlink()
-            logger.info(f"Deleted avatar: {avatar_path}")
-            return True
-        except Exception as e:
-            logger.error(f"Error deleting avatar {avatar_path}: {e}")
-            return False
-    return False
+    try:
+        key = storage_keys.avatar_legacy_key(user_id, avatar_path)
+    except StorageKeyError as exc:
+        logger.warning("Refusing to delete invalid avatar path %r: %s", avatar_path, exc)
+        return False
+
+    storage = get_storage_backend()
+    try:
+        storage.delete_object(key)
+        logger.info("Deleted avatar: %s", key)
+        return True
+    except Exception as exc:
+        logger.error("Error deleting avatar %s: %s", key, exc)
+        return False
 
 
 def get_avatar_url(user_id: int, avatar_path: str | None) -> str | None:
-    """
-    Get public URL for avatar.
-
-    Args:
-        user_id: User ID
-        avatar_path: Avatar filename
-
-    Returns:
-        URL string or None
-    """
+    """Return the public URL for an avatar (the API proxy endpoint)."""
     if not avatar_path:
         return None
     return f"/api/users/{user_id}/avatar"
 
 
-def get_avatar_file_path(avatar_path: str | None) -> Path | None:
-    """
-    Get full filesystem path for avatar.
-
-    Args:
-        avatar_path: Avatar filename
-
-    Returns:
-        Path object or None
-    """
+def get_avatar_stream(
+    user_id: int,
+    avatar_path: str | None,
+) -> tuple[BinaryIO, str] | None:
+    """Open an avatar for streaming. Returns (stream, media_type) or None."""
     if not avatar_path:
         return None
-
-    full_path = AVATARS_DIR / avatar_path
-    if full_path.exists():
-        return full_path
-    return None
+    try:
+        key = storage_keys.avatar_legacy_key(user_id, avatar_path)
+    except StorageKeyError:
+        return None
+    storage = get_storage_backend()
+    try:
+        stream = storage.get_object_stream(key)
+    except ObjectNotFoundError:
+        return None
+    return stream, _media_type_for(avatar_path)
