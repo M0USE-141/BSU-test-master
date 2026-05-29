@@ -162,6 +162,25 @@ class WordTestExtractor:
         mathml = self._omml_xslt(omml_xml)
         return str(mathml)
 
+    def _register_formula(self, mathml_text: str | None) -> tuple[str | None, str | None]:
+        """Persist a MathML XML string to the assets dir, keyed by content hash.
+
+        Returns ``(formula_id, mathml_text)``:
+          - ``formula_id`` — 7-char sha1 stem; written to ``<id>.mml`` on disk.
+          - ``mathml_text`` — original XML, returned for callers that still
+            want to embed it as a fallback (legacy behavior; new payload
+            will prefer the id).
+        For invalid / empty mathml returns ``(None, None)``.
+        """
+        if not mathml_text:
+            return None, None
+        encoded = mathml_text.encode("utf-8")
+        stem = _short_id_for_bytes(encoded)
+        path = self.extract_dir / f"{stem}.mml"
+        if not path.exists():
+            path.write_bytes(encoded)
+        return stem, mathml_text
+
     # ---- Parse cell content (text + images + formulas) ----
     def _content_from_cell(
             self,
@@ -183,12 +202,17 @@ class WordTestExtractor:
 
         def push_formula(formula_text: str | None):
             flush_text()
+            formula_id, _ = self._register_formula(formula_text)
             items.append(
                 ContentItem(
                     "formula",
-                    formula_id=None,
+                    formula_id=formula_id,
                     path=None,
-                    formula_text=formula_text,
+                    # Keep formula_text only when registration failed (no
+                    # MathML — e.g. OMML XSLT missing). In the normal path
+                    # the serializer will emit just `id` and the renderer
+                    # will fetch the .mml via the materials endpoint.
+                    formula_text=formula_text if formula_id is None else None,
                 )
             )
 
