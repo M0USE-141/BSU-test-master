@@ -74,16 +74,37 @@ class WordTestExtractor:
 
     # ---- Extract embedded images from docx media ----
     def _extract_images(self, doc: Document) -> dict[str, Path]:
+        """Extract embedded images.
+
+        Returns a map ``rel_id → on-disk Path`` where the filename is
+        ``<sha1[:7]><ext>`` (lowercased ext). Two .docx relationships that
+        point to the same bytes converge to the same Path → automatic
+        dedup. The rel_id stays as the map key because the rest of the
+        extractor still references images via Word's internal rel ids
+        when walking runs.
+        """
         image_map: dict[str, Path] = {}
         count = 0
         for rel_id, part in doc.part.related_parts.items():
             if "image" not in part.content_type:
                 continue
-            ext = Path(part.partname).suffix
-            image_path = self.extract_dir / f"{rel_id}{ext}"
-            image_path.write_bytes(part.blob)
+            ext = Path(part.partname).suffix.lower()
+            blob = part.blob
+            stem = _short_id_for_bytes(blob)
+            image_path = self.extract_dir / f"{stem}{ext}"
+            if not image_path.exists():
+                image_path.write_bytes(blob)
             converted_path = convert_metafile_to_png(image_path, self.extract_dir)
-            image_map[rel_id] = converted_path or image_path
+            if converted_path is not None and converted_path != image_path:
+                # WMF/EMF → PNG yields a sibling file; re-name it under the
+                # same sha1[:7] stem so the filename still encodes content.
+                new_path = self.extract_dir / f"{stem}.png"
+                if converted_path != new_path:
+                    converted_path.replace(new_path)
+                image_path = new_path
+            else:
+                image_path = converted_path or image_path
+            image_map[rel_id] = image_path
             count += 1
         log.info("Extracted embedded images: %d", count)
         self.logs.append(f"Изображений извлечено: {count}")
