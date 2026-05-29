@@ -105,3 +105,32 @@ export function dispatch(action, payload) {
     }
   }
 }
+
+// ── Access-token store ─────────────────────────────────────────────────
+//
+// Access tokens are short-lived (15 min) and kept in JS memory only — XSS
+// can no longer steal a long-lived credential from localStorage. The
+// long-lived refresh token lives in an HttpOnly cookie that JS can never
+// read. On page reload the SPA calls /api/auth/refresh to mint a fresh
+// access token via the cookie.
+
+/** @type {string | null} */
+let _accessToken = null;
+
+/** @returns {string | null} */
+export function getAccessToken() {
+  return _accessToken;
+}
+
+/**
+ * Set the in-memory access token. Pass null/undefined/'' to clear.
+ * @param {string | null | undefined} token
+ */
+export function setAccessToken(token) {
+  _accessToken = token || null;
+}
+
+/** Convenience alias for setAccessToken(null). */
+export function clearAccessToken() {
+  _accessToken = null;
+}

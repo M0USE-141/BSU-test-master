@@ -1,7 +1,11 @@
 /**
- * auth.js — authentication API wrapper
+ * auth.js — authentication API wrapper.
+ *
+ * Token model: see `_fetch.js`. Access token in JS memory (state.js),
+ * refresh token in HttpOnly cookie. `login()` and `bootRefresh()` save
+ * the access token; `logout()` and a failing refresh clear it.
  */
-import { apiFetch, setToken, clearToken } from './_fetch.js';
+import { apiFetch, attemptRefresh, setToken, clearToken } from './_fetch.js';
 
 /**
  * Login with username or email + password.
@@ -28,9 +32,15 @@ export async function register(username, email, password) {
 }
 
 /**
- * Logout — clears stored token.
+ * Logout — calls the server (so the session row is invalidated and the
+ * HttpOnly cookie is cleared by the server response) and drops the
+ * in-memory access token. Best-effort: ignores network/auth errors so
+ * the local cleanup always runs.
  */
-export function logout() {
+export async function logout() {
+  try {
+    await apiFetch('POST', '/api/auth/logout');
+  } catch { /* even on error, drop the token below */ }
   clearToken();
 }
 
@@ -42,14 +52,23 @@ export async function getMe() {
 }
 
 /**
- * Refresh the access token.
+ * Refresh the access token using the refresh-cookie.
+ * Returns the new token on success; throws ApiError otherwise.
  */
 export async function refreshToken() {
-  const data = await apiFetch('POST', '/api/auth/refresh');
-  if (data?.access_token) {
-    setToken(data.access_token);
-  }
-  return data;
+  return attemptRefresh();
+}
+
+/**
+ * Boot-time silent refresh. Called by `main.js` on page load.
+ * Returns true if the user is still authenticated (cookie was valid),
+ * false otherwise. Never throws.
+ */
+export async function bootRefresh() {
+  try {
+    await attemptRefresh();
+    return true;
+  } catch { return false; }
 }
 
 /**

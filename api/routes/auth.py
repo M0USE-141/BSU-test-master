@@ -2,13 +2,24 @@
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session as DbSession
 
-from api.config import ACCESS_TOKEN_EXPIRE_MINUTES
-from api.database import get_db
+from api.config import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    COOKIE_DOMAIN,
+    COOKIE_SAMESITE,
+    COOKIE_SECURE,
+    PUBLIC_BASE_URL,
+    REFRESH_COOKIE_NAME,
+    REFRESH_COOKIE_PATH,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+)
+from api.database import SessionLocal, get_db
 from api.dependencies.auth import get_current_user
+from api.dependencies.mail import get_mail_service
+from api.services.mail import MailService
 from api.models.auth import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
@@ -30,6 +41,9 @@ from api.services.auth_service import (
     get_user_by_username,
     hash_password,
     invalidate_session,
+    invalidate_session_by_refresh,
+    login_session,
+    rotate_refresh,
     verify_password,
     verify_token,
 )
@@ -43,6 +57,39 @@ from api.services.password_reset_service import (
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 security = HTTPBearer(auto_error=False)
+
+
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    """Attach the refresh-token HttpOnly cookie to the response.
+
+    Settings come from `api.config`:
+      - HttpOnly always — JS can never read it (XSS-proof).
+      - Secure only when ENV=prod (HTTPS); dev runs HTTP at LAN IP.
+      - SameSite=Lax — protects against most CSRF without breaking
+        normal navigation/links.
+      - Path scoped to /api/auth so the cookie is only sent on auth
+        endpoints; other API calls use the Authorization header.
+    """
+    max_age = REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+    response.set_cookie(
+        key=REFRESH_COOKIE_NAME,
+        value=token,
+        max_age=max_age,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
+        path=REFRESH_COOKIE_PATH,
+        domain=COOKIE_DOMAIN,
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    """Remove the refresh cookie (logout / rotation failure)."""
+    response.delete_cookie(
+        key=REFRESH_COOKIE_NAME,
+        path=REFRESH_COOKIE_PATH,
+        domain=COOKIE_DOMAIN,
+    )
 
 
 @router.get("/password-rules", response_model=PasswordRulesResponse)
@@ -81,23 +128,83 @@ def register(
 @router.post("/forgot-password", response_model=MessageResponse)
 def forgot_password(
     data: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
     request: Request,
     db: Annotated[DbSession, Depends(get_db)],
+    mail: Annotated[MailService, Depends(get_mail_service)],
 ) -> MessageResponse:
-    """Issue a reset link for the email if it exists.
+    """Issue a reset link.
 
-    Always returns 200 with a generic message — never reveals whether the
-    address is registered. The link is emailed when SMTP is configured,
-    otherwise logged to the server console (see password_reset_service).
+    Always returns 200 with a generic message — anti-enumeration. When
+    the email exists and belongs to an active user we issue a token and
+    queue the delivery via `BackgroundTasks`. The mail service writes
+    an `outgoing_emails` audit row regardless of delivery success.
     """
     user = get_user_by_email(db, data.email)
     if user is not None and user.is_active:
-        base = str(request.base_url).rstrip("/")
-        issue_reset_token(db, user, base_url=base)
+        token = issue_reset_token(db, user)
+        base = PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
+        reset_url = f"{base.rstrip('/')}/#/auth/reset?token={token}"
+        # Run delivery on its own DB session — BackgroundTasks may
+        # outlive the current request scope and `db` (from Depends) is
+        # closed when this handler returns.
+        background_tasks.add_task(
+            _send_password_reset_mail,
+            mail,
+            to=user.email,
+            user_id=user.id,
+            locale=user.language,
+            display_name=user.display_name or user.username,
+            username=user.username,
+            reset_url=reset_url,
+        )
 
     return MessageResponse(
         message="If that email is registered, a reset link has been sent."
     )
+
+
+def _send_password_reset_mail(
+    mail: MailService,
+    *,
+    to: str,
+    user_id: int,
+    locale: str | None,
+    display_name: str,
+    username: str,
+    reset_url: str,
+) -> None:
+    """BackgroundTasks worker — owns its own DB session."""
+    from api.services.password_reset_service import RESET_TOKEN_TTL_MINUTES
+    with SessionLocal() as session:
+        user_ctx = {"display_name": display_name, "username": username}
+        # subject is rendered with the same context, so use a default
+        # localized message — picked up via mail templates' shared
+        # subject key.
+        subjects = {
+            "ru": "Сброс пароля — TestMasterBSU",
+            "en": "Password reset — TestMasterBSU",
+            "uz": "Parolni tiklash — TestMasterBSU",
+        }
+        loc = (locale or "ru").lower()
+        try:
+            mail.send_template(
+                session,
+                to=to,
+                locale=loc,
+                template="password_reset",
+                event="password_reset",
+                user_id=user_id,
+                context={
+                    "subject": subjects.get(loc, subjects["ru"]),
+                    "user": user_ctx,
+                    "action_url": reset_url,
+                    "ttl_minutes": RESET_TOKEN_TTL_MINUTES,
+                },
+            )
+        except Exception:  # noqa: BLE001 — never re-raise from background
+            import logging
+            logging.getLogger(__name__).exception("password reset mail send failed")
 
 
 @router.post("/reset-password", response_model=MessageResponse)
@@ -127,9 +234,15 @@ def reset_password(
 @router.post("/login", response_model=TokenResponse)
 def login(
     data: UserLogin,
+    response: Response,
     db: Annotated[DbSession, Depends(get_db)],
 ) -> TokenResponse:
-    """Login and get JWT token."""
+    """Login and get an access token.
+
+    Response body carries the short-lived access token (Bearer-style).
+    The long-lived refresh token is set as an HttpOnly cookie so it
+    can never be read by JavaScript — silent rotation via /refresh.
+    """
     # Try to find user by username
     user = get_user_by_username(db, data.username)
 
@@ -156,33 +269,37 @@ def login(
             detail="Invalid credentials",
         )
 
-    # Create token and session
-    token, jti = create_access_token(user.id)
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    create_session(db, user.id, jti, expires_at)
-
+    access_token, refresh_token_str, expires_in, _ = login_session(db, user.id)
+    _set_refresh_cookie(response, refresh_token_str)
     return TokenResponse(
-        access_token=token,
+        access_token=access_token,
         token_type="bearer",
-        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        expires_in=expires_in,
     )
 
 
 @router.post("/logout", response_model=MessageResponse)
 async def logout(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    response: Response,
     db: Annotated[DbSession, Depends(get_db)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)] = None,
+    refresh_token: Annotated[str | None, Cookie(alias=REFRESH_COOKIE_NAME)] = None,
 ) -> MessageResponse:
-    """Logout and invalidate current session."""
-    if credentials is None:
-        return MessageResponse(message="Already logged out")
+    """Logout — invalidate session(s) and clear the refresh cookie.
 
-    token = credentials.credentials
-    payload = verify_token(token)
+    Uses whichever token is available: prefer access JTI (current bearer),
+    fall back to refresh cookie. Always clears the cookie so the client
+    can't keep re-logging-in silently.
+    """
+    if credentials is not None:
+        payload = verify_token(credentials.credentials)
+        if payload and payload.get("jti"):
+            invalidate_session(db, payload["jti"])
 
-    if payload and payload.get("jti"):
-        invalidate_session(db, payload["jti"])
+    if refresh_token:
+        invalidate_session_by_refresh(db, refresh_token)
 
+    _clear_refresh_cookie(response)
     return MessageResponse(message="Logged out successfully")
 
 
@@ -213,63 +330,38 @@ def change_password(
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    response: Response,
     db: Annotated[DbSession, Depends(get_db)],
+    refresh_token: Annotated[str | None, Cookie(alias=REFRESH_COOKIE_NAME)] = None,
 ) -> TokenResponse:
-    """Refresh access token."""
-    if credentials is None:
+    """Rotate the access+refresh pair using the HttpOnly refresh cookie.
+
+    - Reads `refresh_token` from cookie (no Authorization header needed).
+    - Validates JWT signature, expiry, and the matching Session row.
+    - Issues a fresh access+refresh pair, marks the old session inactive,
+      and sets the new refresh cookie.
+    - On any failure: clears the cookie and returns 401 so the SPA can
+      drop the user to /auth/login cleanly.
+    """
+    if not refresh_token:
+        _clear_refresh_cookie(response)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token = credentials.credentials
-    payload = verify_token(token)
-
-    if payload is None:
+    result = rotate_refresh(db, refresh_token)
+    if result is None:
+        _clear_refresh_cookie(response)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Invalid or expired refresh token",
         )
 
-    user_id = payload.get("sub")
-    old_jti = payload.get("jti")
-
-    if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload",
-        )
-
-    try:
-        uid = int(user_id)
-        if uid <= 0:
-            raise ValueError
-    except (ValueError, TypeError):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload",
-        )
-
-    # Verify the old session is still active before issuing a new token
-    if old_jti:
-        session = get_active_session(db, old_jti)
-        if session is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session expired or invalidated",
-            )
-        invalidate_session(db, old_jti)
-
-    # Create new token and session
-    new_token, new_jti = create_access_token(uid)
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    create_session(db, uid, new_jti, expires_at)
-
+    new_access, new_refresh, expires_in, _ = result
+    _set_refresh_cookie(response, new_refresh)
     return TokenResponse(
-        access_token=new_token,
+        access_token=new_access,
         token_type="bearer",
-        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        expires_in=expires_in,
     )

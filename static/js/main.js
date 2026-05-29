@@ -8,7 +8,7 @@ import { initRouter, navigate } from './router.js';
 import { initSearchPalette } from './search-palette.js';
 import { toggleCheatsheet, closeCheatsheet } from './components/cheatsheet.js';
 import { installOfflineBanner } from './components/offline-banner.js';
-import { getMe } from './api/auth.js';
+import { getMe, bootRefresh } from './api/auth.js';
 import { getMyProfile } from './api/users.js';
 import { getState, setState } from './state.js';
 
@@ -18,8 +18,19 @@ initTheme();
 // Initialize i18n, then start the router
 await initI18n();
 
-// Re-hydrate user state from stored token (survives page reloads)
+// Legacy cleanup — pre-refactor builds stashed tokens in localStorage. Drop
+// them so XSS-readable credentials don't linger after upgrade.
 if (localStorage.getItem('access_token')) {
+  localStorage.removeItem('access_token');
+}
+
+// Silent boot-time refresh: ask the server to mint a fresh access token
+// using the HttpOnly refresh cookie (if present). On success the user
+// stays logged in across page reloads; on failure (no cookie / expired)
+// the router will redirect them to /auth/login on the first protected
+// route.
+const _authed = await bootRefresh();
+if (_authed) {
   try {
     const user = await getMe();
     if (user?.id) {
@@ -29,7 +40,6 @@ if (localStorage.getItem('access_token')) {
       try {
         const profile = await getMyProfile();
         if (profile) {
-          // Apply server prefs only when they differ from cached values
           if (profile.theme    && profile.theme    !== localStorage.getItem('theme'))
             setTheme(profile.theme);
           if (profile.accent   && profile.accent   !== localStorage.getItem('accent'))
@@ -40,7 +50,7 @@ if (localStorage.getItem('access_token')) {
         }
       } catch { /* preferences hydration is best-effort */ }
     }
-  } catch { /* token expired or invalid — router will redirect to login */ }
+  } catch { /* getMe failed — router will redirect */ }
 }
 
 initRouter(document.getElementById('app'));

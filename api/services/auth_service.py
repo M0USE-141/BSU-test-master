@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session as DbSession
 from api.config import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     ALGORITHM,
+    REFRESH_TOKEN_EXPIRE_DAYS,
     SECRET_KEY,
     SESSION_EXTEND_MINUTES,
 )
@@ -145,6 +146,143 @@ def extend_session(db: DbSession, session: Session) -> Session:
 def invalidate_session(db: DbSession, token_jti: str) -> None:
     """Invalidate a session by token JTI."""
     session = db.query(Session).filter(Session.token_jti == token_jti).first()
+    if session:
+        session.is_active = False
+        db.commit()
+
+
+# ── Refresh tokens ──────────────────────────────────────────────
+
+
+def create_refresh_token(user_id: int, jti: str | None = None) -> tuple[str, str, datetime]:
+    """Create a JWT refresh token.
+
+    Refresh tokens carry `type:"refresh"` to distinguish them from access
+    tokens — the access-token verification rejects them and vice versa.
+
+    Returns:
+        Tuple of (token, jti, expires_at).
+    """
+    if jti is None:
+        jti = str(uuid.uuid4())
+    expires_at = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    payload = {
+        "sub": str(user_id),
+        "exp": expires_at,
+        "jti": jti,
+        "type": "refresh",
+    }
+    encoded = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded, jti, expires_at
+
+
+def verify_refresh_token(token: str) -> dict | None:
+    """Verify a refresh JWT and confirm `type=refresh`.
+
+    Returns the decoded payload or None on invalid signature, expiry,
+    or wrong token type.
+    """
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        return None
+    if payload.get("type") != "refresh":
+        return None
+    return payload
+
+
+def login_session(db: DbSession, user_id: int) -> tuple[str, str, int, datetime]:
+    """Issue a fresh access+refresh pair and persist a new Session row.
+
+    Returns:
+        (access_token, refresh_token, access_expires_in_seconds, refresh_expires_at)
+    """
+    access_token, access_jti = create_access_token(user_id)
+    refresh_token, refresh_jti, refresh_expires_at = create_refresh_token(user_id)
+    access_expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+    )
+    session = Session(
+        user_id=user_id,
+        token_jti=access_jti,
+        expires_at=access_expires_at,
+        refresh_jti=refresh_jti,
+        refresh_expires_at=refresh_expires_at,
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return (
+        access_token,
+        refresh_token,
+        ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        refresh_expires_at,
+    )
+
+
+def rotate_refresh(
+    db: DbSession, refresh_token: str
+) -> tuple[str, str, int, datetime] | None:
+    """Validate a refresh token and rotate the session.
+
+    On success: marks the old session inactive, creates a NEW session row
+    with fresh access+refresh JTIs, and returns the new token pair.
+
+    On failure (signature/expiry/missing session/already-rotated): returns
+    None — caller should respond 401.
+    """
+    payload = verify_refresh_token(refresh_token)
+    if not payload:
+        return None
+    refresh_jti = payload.get("jti")
+    user_id_str = payload.get("sub")
+    if not refresh_jti or not user_id_str:
+        return None
+    try:
+        user_id = int(user_id_str)
+    except (TypeError, ValueError):
+        return None
+
+    now = datetime.now(timezone.utc)
+    session = (
+        db.query(Session)
+        .filter(
+            Session.refresh_jti == refresh_jti,
+            Session.is_active == True,  # noqa: E712
+        )
+        .first()
+    )
+    if not session:
+        return None
+    refresh_expires_at = session.refresh_expires_at
+    if refresh_expires_at is not None:
+        if refresh_expires_at.tzinfo is None:
+            refresh_expires_at = refresh_expires_at.replace(tzinfo=timezone.utc)
+        if refresh_expires_at <= now:
+            session.is_active = False
+            db.commit()
+            return None
+
+    # Mark the old session inactive (rotation) and mint a fresh pair.
+    session.is_active = False
+    db.commit()
+    return login_session(db, user_id)
+
+
+def invalidate_session_by_refresh(db: DbSession, refresh_token: str) -> None:
+    """Look up the session by refresh JTI and deactivate it.
+
+    Used by /logout when only the refresh cookie is available.
+    """
+    payload = verify_refresh_token(refresh_token)
+    if not payload:
+        return
+    refresh_jti = payload.get("jti")
+    if not refresh_jti:
+        return
+    session = (
+        db.query(Session).filter(Session.refresh_jti == refresh_jti).first()
+    )
     if session:
         session.is_active = False
         db.commit()
