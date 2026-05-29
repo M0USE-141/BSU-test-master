@@ -8,6 +8,12 @@ intent). The `client_id` column and its index are dropped.
 Rows with `user_id IS NULL` (legacy anonymous attempts) are deleted
 because there is no owner to attach them to.
 
+NOTE: idempotent. `0001_pg_initial` delegates to
+`Base.metadata.create_all`, which already reflects the post-Phase-C
+shape (no client_id, user_id NOT NULL). This migration therefore
+inspects the current schema and skips ops that have already been
+applied. Both greenfield and pre-Phase-C databases converge here.
+
 Revision ID: 0003_attempt_user_required
 Revises: 0002_session_refresh
 Create Date: 2026-05-29
@@ -17,6 +23,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
+
 # revision identifiers, used by Alembic.
 revision = "0003_attempt_user_required"
 down_revision = "0002_session_refresh"
@@ -24,38 +31,90 @@ branch_labels = None
 depends_on = None
 
 
+def _table_columns(inspector, table: str) -> dict[str, dict]:
+    return {c["name"]: c for c in inspector.get_columns(table)}
+
+
+def _table_indexes(inspector, table: str) -> set[str]:
+    return {i["name"] for i in inspector.get_indexes(table)}
+
+
+def _table_fks(inspector, table: str) -> list[dict]:
+    return inspector.get_foreign_keys(table)
+
+
 def upgrade() -> None:
-    # Purge anonymous attempts — they have no user to attach to.
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    cols = _table_columns(inspector, "attempts")
+    indexes = _table_indexes(inspector, "attempts")
+
+    # Purge anonymous attempts — they have no user to attach to. Safe to
+    # run unconditionally: it's a no-op if user_id is already NOT NULL.
     op.execute("DELETE FROM attempts WHERE user_id IS NULL")
 
-    # Drop the old FK with ON DELETE SET NULL, then re-add with CASCADE
-    # and NOT NULL. PG names the constraint `attempts_user_id_fkey` by
-    # default; alembic can reflect it via batch ops but here we know
-    # the name from the autogenerate convention.
+    user_id_nullable = cols.get("user_id", {}).get("nullable", True)
+
+    needs_user_id_alter = user_id_nullable
+    user_fk = next(
+        (fk for fk in _table_fks(inspector, "attempts")
+         if fk.get("referred_table") == "users"
+         and fk.get("constrained_columns") == ["user_id"]),
+        None,
+    )
+    needs_fk_swap = user_fk is not None and (user_fk.get("options") or {}).get(
+        "ondelete", ""
+    ).upper() != "CASCADE"
+    has_client_id = "client_id" in cols
+    has_client_id_index = "ix_attempts_client_id" in indexes
+
+    # If everything's already in the target shape, fast-exit.
+    if not (needs_user_id_alter or needs_fk_swap or has_client_id or has_client_id_index):
+        return
+
     with op.batch_alter_table("attempts") as batch:
-        batch.alter_column(
-            "user_id",
-            existing_type=sa.Integer(),
-            nullable=False,
-        )
-        batch.drop_constraint("attempts_user_id_fkey", type_="foreignkey")
-        batch.create_foreign_key(
-            "attempts_user_id_fkey",
-            "users",
-            ["user_id"],
-            ["id"],
-            ondelete="CASCADE",
-        )
-        # Drop client_id index and column.
-        batch.drop_index("ix_attempts_client_id")
-        batch.drop_column("client_id")
+        if needs_user_id_alter:
+            batch.alter_column(
+                "user_id",
+                existing_type=sa.Integer(),
+                nullable=False,
+            )
+        if needs_fk_swap and user_fk:
+            fk_name = user_fk.get("name") or "attempts_user_id_fkey"
+            batch.drop_constraint(fk_name, type_="foreignkey")
+            batch.create_foreign_key(
+                "attempts_user_id_fkey",
+                "users",
+                ["user_id"],
+                ["id"],
+                ondelete="CASCADE",
+            )
+        if has_client_id_index:
+            batch.drop_index("ix_attempts_client_id")
+        if has_client_id:
+            batch.drop_column("client_id")
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    cols = _table_columns(inspector, "attempts")
+    indexes = _table_indexes(inspector, "attempts")
+
     with op.batch_alter_table("attempts") as batch:
-        batch.add_column(sa.Column("client_id", sa.String(length=64), nullable=True))
-        batch.create_index("ix_attempts_client_id", ["client_id"], unique=False)
-        batch.drop_constraint("attempts_user_id_fkey", type_="foreignkey")
+        if "client_id" not in cols:
+            batch.add_column(sa.Column("client_id", sa.String(length=64), nullable=True))
+        if "ix_attempts_client_id" not in indexes:
+            batch.create_index("ix_attempts_client_id", ["client_id"], unique=False)
+        # Re-add the SET NULL FK if it isn't already in that shape.
+        user_fk = next(
+            (fk for fk in _table_fks(inspector, "attempts")
+             if fk.get("constrained_columns") == ["user_id"]),
+            None,
+        )
+        if user_fk is not None:
+            batch.drop_constraint(user_fk.get("name") or "attempts_user_id_fkey",
+                                  type_="foreignkey")
         batch.create_foreign_key(
             "attempts_user_id_fkey",
             "users",
@@ -68,6 +127,3 @@ def downgrade() -> None:
             existing_type=sa.Integer(),
             nullable=True,
         )
-    # Backfill client_id with a placeholder so the NOT NULL re-add (if a
-    # later migration restores it) doesn't fail. Left empty here because
-    # we don't know the original values.
