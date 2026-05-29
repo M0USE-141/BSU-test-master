@@ -1,17 +1,28 @@
 /**
- * screens/mobile/collection.js — Mobile collection detail
- * Route: /collection/:id  (also used for /test/:id)
+ * mobile/collection.js — Mobile collection detail (M3 redesign).
  *
- * Tabs: Overview | History | Stats
+ * Five tabs: Обзор / Вопросы / Статистика / Доступ / Активность.
+ * Each tab is a separate render function; data fetched once on mount
+ * and shared across them (test payload, attempts list).
+ *
+ * Sticky CTA bar at the bottom carries "Доступ" + "Начать тест".
+ * Bottom nav is hidden to give the tab strip + sticky bar room.
  */
 import { getTest } from '../../api/tests.js';
-import { getMyAggregate, listAttempts } from '../../api/statistics.js';
+import { listAttempts } from '../../api/statistics.js';
+import { getTestShares, updateTestAccess, addShare } from '../../api/access.js';
 import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
 import { navigate } from '../../router.js';
-import { buildBottomNav, esc, getClientId, fmtDate } from './_shell.js';
+import {
+  topBar, mShell, mCard, mChip, mBtn, mSticky, caps,
+} from '../../components/mobile-atoms.js';
+import { fmtDate } from './_shell.js';
+import { toast } from '../../components/toast.js';
 
-// ── Helpers ───────────────────────────────────────────────────
+let _renderToken = 0;
+
+// ── helpers ─────────────────────────────────────────────────────
 
 function fmtMs(ms) {
   if (!ms) return '—';
@@ -23,8 +34,8 @@ function fmtMs(ms) {
 }
 
 function buildSparkline(scores) {
-  if (scores.length < 2) return '';
-  const W = 240, H = 44, P = 5;
+  if (scores.length < 2) return null;
+  const W = 280, H = 56, P = 5;
   const max = Math.max(...scores, 1);
   const min = Math.min(...scores);
   const range = max - min || 1;
@@ -34,277 +45,644 @@ function buildSparkline(scores) {
     const y = H - P - ((v - min) / range) * (H - P * 2);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(' ');
-  const dots = scores.map((v, i) => {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('height', String(H));
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.style.display = 'block';
+  const line = document.createElementNS(NS, 'polyline');
+  line.setAttribute('points', pts);
+  line.setAttribute('fill', 'none');
+  line.setAttribute('stroke', 'var(--accent)');
+  line.setAttribute('stroke-width', '2');
+  line.setAttribute('stroke-linecap', 'round');
+  line.setAttribute('stroke-linejoin', 'round');
+  svg.appendChild(line);
+  scores.forEach((v, i) => {
     const x = P + i * step;
     const y = H - P - ((v - min) / range) * (H - P * 2);
     const last = i === scores.length - 1;
-    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${last ? 4 : 2.5}"
-      fill="var(--accent)" opacity="${last ? 1 : 0.5}"/>`;
-  }).join('');
-  return `
-    <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}"
-         preserveAspectRatio="none" style="display:block;overflow:visible;">
-      <polyline points="${pts}" fill="none" stroke="var(--accent)"
-                stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-      ${dots}
-    </svg>`;
+    const dot = document.createElementNS(NS, 'circle');
+    dot.setAttribute('cx', x.toFixed(1));
+    dot.setAttribute('cy', y.toFixed(1));
+    dot.setAttribute('r', last ? '4' : '2.5');
+    dot.setAttribute('fill', 'var(--accent)');
+    dot.setAttribute('opacity', last ? '1' : '0.5');
+    svg.appendChild(dot);
+  });
+  return svg;
 }
 
-// ── Main render ───────────────────────────────────────────────
+function kpiCell(label, value, delta) {
+  const cell = document.createElement('div');
+  Object.assign(cell.style, {
+    border: '1.5px solid var(--ink)',
+    borderRadius: 'var(--radius-md)',
+    padding: '10px 12px',
+    background: 'var(--paper)',
+    boxShadow: 'var(--shadow-sm)',
+  });
+  cell.appendChild(caps(label));
+  const v = document.createElement('div');
+  Object.assign(v.style, {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: '22px', fontWeight: '700',
+    color: 'var(--ink)', marginTop: '4px',
+  });
+  v.textContent = value;
+  cell.appendChild(v);
+  if (delta) {
+    const d = document.createElement('div');
+    Object.assign(d.style, {
+      fontSize: '11px', color: 'var(--accent)', marginTop: '2px',
+    });
+    d.textContent = delta;
+    cell.appendChild(d);
+  }
+  return cell;
+}
+
+function emptyHint(text) {
+  const e = document.createElement('div');
+  Object.assign(e.style, {
+    padding: '24px 12px', textAlign: 'center',
+    color: 'var(--ink-mute)', fontSize: '13px',
+  });
+  e.textContent = text;
+  return e;
+}
+
+function scoreBadge(pct) {
+  const good = pct >= 80;
+  const badge = document.createElement('span');
+  Object.assign(badge.style, {
+    fontFamily: "'JetBrains Mono', monospace",
+    minWidth: '48px', textAlign: 'center',
+    padding: '3px 8px', borderRadius: '999px',
+    background: good ? 'var(--accent-soft)' : 'var(--ink-soft)',
+    color: good ? 'var(--accent)' : 'var(--ink-fade)',
+    fontSize: '12px', fontWeight: '700',
+    flexShrink: '0',
+  });
+  badge.textContent = `${pct}%`;
+  return badge;
+}
+
+// ── Tab renderers ───────────────────────────────────────────────
+
+function renderOverviewTab(test, attempts) {
+  const wrap = document.createElement('div');
+  wrap.style.padding = '12px 16px 24px';
+
+  const meta = document.createElement('div');
+  Object.assign(meta.style, {
+    display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px',
+  });
+  meta.appendChild(mChip({ sm: true }, `${test.questions?.length ?? 0} ${t('test.questions') || 'вопр.'}`));
+  meta.appendChild(mChip({ sm: true }, `${attempts.length} ${t('test.attempts') || 'попыток'}`));
+  if (test.access_level) meta.appendChild(mChip({ sm: true }, test.access_level));
+  wrap.appendChild(meta);
+
+  const grid = document.createElement('div');
+  Object.assign(grid.style, {
+    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px',
+    marginBottom: '12px',
+  });
+  const scores = attempts.map(a => Math.round(a.percentCorrect ?? 0)).filter(n => n > 0);
+  const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+  const best = scores.length ? Math.max(...scores) : null;
+  const totalMs = attempts.reduce((s, a) => s + (a.totalDurationMs || 0), 0);
+  const avgMs = attempts.length ? totalMs / attempts.length : 0;
+  grid.appendChild(kpiCell(t('stats.avg')  || 'Средний', avg  != null ? `${avg}%`  : '—'));
+  grid.appendChild(kpiCell(t('stats.best') || 'Лучший', best != null ? `${best}%` : '—'));
+  grid.appendChild(kpiCell(t('stats.avg_time') || 'Время', fmtMs(avgMs)));
+  grid.appendChild(kpiCell(t('test.attempts') || 'Попыток', String(attempts.length)));
+  wrap.appendChild(grid);
+
+  const descBody = document.createElement('div');
+  Object.assign(descBody.style, {
+    fontSize: '13px', color: 'var(--ink-fade)', lineHeight: '1.55',
+  });
+  if (test.description) descBody.textContent = test.description;
+  else {
+    const i = document.createElement('i');
+    i.textContent = t('test.no_description') || 'Описание не задано.';
+    descBody.appendChild(i);
+  }
+  wrap.appendChild(mCard({ title: t('test.description') || 'Описание' }, descBody));
+
+  const recentBody = document.createElement('div');
+  if (attempts.length === 0) {
+    recentBody.appendChild(emptyHint(t('test.no_attempts') || 'Ещё не было попыток'));
+  } else {
+    attempts.slice(0, 4).forEach((a, i) => {
+      const row = document.createElement('div');
+      Object.assign(row.style, {
+        display: 'flex', alignItems: 'center', gap: '10px',
+        padding: '10px 0',
+        borderTop: i ? '1px solid var(--ink-soft)' : 'none',
+        cursor: 'pointer',
+      });
+      row.addEventListener('click', () => navigate(`/test/${test.id}/results/${a.attemptId || a.id}`));
+      row.appendChild(scoreBadge(Math.round(a.percentCorrect ?? 0)));
+      const mid = document.createElement('div');
+      mid.style.flex = '1';
+      const main = document.createElement('div');
+      Object.assign(main.style, { fontSize: '13px', fontWeight: '500' });
+      main.textContent = fmtDate(a.finishedAt || a.startedAt);
+      mid.appendChild(main);
+      const sub = document.createElement('div');
+      Object.assign(sub.style, {
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: '11px', color: 'var(--ink-mute)',
+      });
+      sub.textContent = `${fmtMs(a.totalDurationMs)} · ${a.questionCount || 0} q`;
+      mid.appendChild(sub);
+      row.appendChild(mid);
+      row.appendChild(iconEl('chevR', 14));
+      recentBody.appendChild(row);
+    });
+  }
+  wrap.appendChild(mCard({ title: t('test.recent_attempts') || 'Последние попытки' }, recentBody));
+
+  return wrap;
+}
+
+function renderQuestionsTab(test) {
+  const wrap = document.createElement('div');
+  Object.assign(wrap.style, {
+    padding: '12px 16px 24px',
+    display: 'flex', flexDirection: 'column', gap: '10px',
+  });
+
+  let term = '';
+  const search = document.createElement('div');
+  Object.assign(search.style, {
+    display: 'flex', alignItems: 'center', gap: '6px',
+    padding: '8px 12px', border: '1.5px solid var(--ink)',
+    borderRadius: 'var(--radius-sm)', fontSize: '13px',
+  });
+  const sIcon = iconEl('search', 13);
+  sIcon.style.color = 'var(--ink-mute)';
+  search.appendChild(sIcon);
+  const sInput = document.createElement('input');
+  sInput.type = 'search';
+  sInput.placeholder = t('test.search_questions') || 'Поиск по тексту';
+  Object.assign(sInput.style, {
+    flex: '1', border: 'none', background: 'transparent', outline: 'none',
+    color: 'var(--ink)', fontFamily: 'Inter, sans-serif', fontSize: '13px',
+  });
+  sInput.addEventListener('input', (e) => { term = e.target.value.toLowerCase(); rerender(); });
+  search.appendChild(sInput);
+  wrap.appendChild(search);
+
+  if (test.is_owner) {
+    const add = mBtn({
+      full: true,
+      onClick: () => navigate(`/test/${test.id}/q/new?new=1`),
+      style: {
+        borderStyle: 'dashed', borderColor: 'var(--accent)',
+        color: 'var(--accent)', background: 'transparent',
+      },
+    }, iconEl('plus', 14), t('test.add_question') || 'Добавить вопрос');
+    wrap.appendChild(add);
+  }
+
+  const list = document.createElement('div');
+  Object.assign(list.style, { display: 'flex', flexDirection: 'column', gap: '8px' });
+  wrap.appendChild(list);
+
+  function questionText(q) {
+    const blocks = q.question?.blocks || [];
+    if (blocks.length) {
+      const inlines = blocks[0].inlines || [];
+      return inlines.map(i => i.text || '').join('').trim();
+    }
+    if (typeof q.question === 'string') return q.question;
+    return '';
+  }
+
+  function rerender() {
+    list.replaceChildren();
+    const qs = (test.questions || []).filter(q => {
+      if (!term) return true;
+      return questionText(q).toLowerCase().includes(term);
+    });
+    if (qs.length === 0) {
+      list.appendChild(emptyHint(t('test.empty_filter') || 'Ничего по фильтру'));
+      return;
+    }
+    qs.forEach((q, idx) => {
+      const card = document.createElement('div');
+      Object.assign(card.style, {
+        border: '1.5px solid var(--ink)',
+        borderRadius: 'var(--radius-sm)',
+        padding: '10px 12px',
+        background: 'var(--paper)',
+        cursor: test.is_owner ? 'pointer' : 'default',
+      });
+      // Both owners and non-owners can open the question detail; the
+      // question editor screen shows preview for non-owners with the
+      // "Propose CR" CTA, and edit for owners.
+      card.addEventListener('click', () => navigate(`/test/${test.id}/q/${q.id || (idx + 1)}`));
+      const head = document.createElement('div');
+      Object.assign(head.style, {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: '4px',
+      });
+      const num = document.createElement('span');
+      Object.assign(num.style, {
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: '10px', color: 'var(--ink-mute)', fontWeight: '600',
+      });
+      num.textContent = `Q${q.id ?? (idx + 1)}`;
+      head.appendChild(num);
+      if (test.is_owner) {
+        const chev = iconEl('chevR', 12);
+        chev.style.color = 'var(--ink-mute)';
+        head.appendChild(chev);
+      }
+      card.appendChild(head);
+      const body = document.createElement('div');
+      Object.assign(body.style, {
+        fontSize: '13px', lineHeight: '1.4',
+        overflow: 'hidden', textOverflow: 'ellipsis',
+        display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical',
+      });
+      body.textContent = questionText(q) || `${t('test.question') || 'Вопрос'} ${q.id ?? idx + 1}`;
+      card.appendChild(body);
+      list.appendChild(card);
+    });
+  }
+  rerender();
+  return wrap;
+}
+
+function renderStatsTab(test, attempts) {
+  const wrap = document.createElement('div');
+  wrap.style.padding = '12px 16px 24px';
+
+  const scores = attempts
+    .map(a => Math.round(a.percentCorrect ?? 0))
+    .filter(n => n > 0);
+  const avg  = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+  const best = scores.length ? Math.max(...scores) : null;
+  const totalMs = attempts.reduce((s, a) => s + (a.totalDurationMs || 0), 0);
+  const avgMs = attempts.length ? totalMs / attempts.length : 0;
+
+  const grid = document.createElement('div');
+  Object.assign(grid.style, {
+    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px',
+    marginBottom: '12px',
+  });
+  grid.appendChild(kpiCell(t('stats.avg')      || 'Средний', avg  != null ? `${avg}%`  : '—'));
+  grid.appendChild(kpiCell(t('test.attempts')  || 'Попыток', String(attempts.length)));
+  grid.appendChild(kpiCell(t('stats.avg_time') || 'Время', fmtMs(avgMs)));
+  grid.appendChild(kpiCell(t('stats.best')     || 'Лучший', best != null ? `${best}%` : '—'));
+  wrap.appendChild(grid);
+
+  if (scores.length >= 2) {
+    const trend = scores.slice(0, 10).reverse();
+    const spark = buildSparkline(trend);
+    if (spark) {
+      const trendBody = document.createElement('div');
+      trendBody.appendChild(spark);
+      wrap.appendChild(mCard({
+        title: `${t('stats.trend') || 'Тренд'} · ${trend.length} ${t('test.attempts') || 'попыток'}`,
+      }, trendBody));
+    }
+  }
+  if (scores.length === 0) {
+    wrap.appendChild(mCard({}, emptyHint(t('test.no_data') || 'Данных пока нет.')));
+  }
+  return wrap;
+}
+
+function renderAccessTab(test) {
+  const wrap = document.createElement('div');
+  wrap.style.padding = '12px 16px 24px';
+
+  const lvlCardBody = document.createElement('div');
+  const chipsRow = document.createElement('div');
+  Object.assign(chipsRow.style, {
+    display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px',
+  });
+  const hintEl = document.createElement('div');
+  Object.assign(hintEl.style, {
+    fontSize: '11px', color: 'var(--ink-fade)', lineHeight: '1.5',
+  });
+  const levels = [
+    { id: 'private', label: t('access.private') || 'Приватный',
+      hint: t('access.hint.private') || 'Доступ только у вас.' },
+    { id: 'shared',  label: t('access.shared')  || 'Shared',
+      hint: t('access.hint.shared')  || 'Вы и пользователи из списка.' },
+    { id: 'public',  label: t('access.public')  || 'Public',
+      hint: t('access.hint.public')  || 'Любой со ссылкой.' },
+  ];
+  let currentLevel = (test.access_level || 'private').toLowerCase();
+
+  function renderChips() {
+    chipsRow.replaceChildren();
+    for (const lvl of levels) {
+      chipsRow.appendChild(mChip({
+        active: currentLevel === lvl.id,
+        onClick: test.is_owner ? async () => {
+          try {
+            await updateTestAccess(test.id, lvl.id);
+            currentLevel = lvl.id;
+            const hint = levels.find(l => l.id === currentLevel)?.hint || '';
+            hintEl.textContent = hint;
+            toast(`${t('access.changed_to') || 'Уровень:'} ${lvl.label}`, { tone: 'success' });
+            renderChips();
+          } catch (e) { toast(e.message || 'Ошибка', { tone: 'error' }); }
+        } : null,
+      }, lvl.label));
+    }
+  }
+  renderChips();
+  hintEl.textContent = levels.find(l => l.id === currentLevel)?.hint || '';
+  lvlCardBody.appendChild(chipsRow);
+  lvlCardBody.appendChild(hintEl);
+  wrap.appendChild(mCard({ title: t('access.level') || 'Уровень доступа' }, lvlCardBody));
+
+  // Owner-only invite block.
+  if (test.is_owner) {
+    const inviteBody = document.createElement('div');
+    Object.assign(inviteBody.style, { display: 'flex', gap: '6px', alignItems: 'stretch' });
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = '@username';
+    Object.assign(input.style, {
+      flex: '1', border: '1.5px solid var(--ink)', borderRadius: 'var(--radius-sm)',
+      padding: '8px 10px', fontSize: '12px', outline: 'none',
+      background: 'var(--paper)', color: 'var(--ink)',
+      fontFamily: 'Inter, sans-serif',
+    });
+    inviteBody.appendChild(input);
+    inviteBody.appendChild(mBtn({
+      primary: true, sm: true,
+      onClick: async () => {
+        const u = input.value.trim().replace(/^@/, '');
+        if (!u) return toast(t('access.username_required') || 'Введите username', { tone: 'error' });
+        try {
+          await addShare(test.id, u);
+          toast(t('access.invited') || 'Приглашение отправлено', { tone: 'success' });
+          input.value = '';
+          reloadPeople();
+        } catch (e) { toast(e.message || 'Ошибка', { tone: 'error' }); }
+      },
+    }, t('access.invite') || 'Пригласить'));
+    wrap.appendChild(mCard({ title: t('access.add') || 'Пригласить' }, inviteBody));
+  }
+
+  const peopleSlot = document.createElement('div');
+  peopleSlot.appendChild(emptyHint(t('access.loading') || 'Загружаем список…'));
+  wrap.appendChild(mCard({ title: t('access.people') || 'Люди с доступом' }, peopleSlot));
+
+  async function reloadPeople() {
+    try {
+      const data = await getTestShares(test.id);
+      const shares = data?.shares || data || [];
+      peopleSlot.replaceChildren();
+      if (!Array.isArray(shares) || shares.length === 0) {
+        peopleSlot.appendChild(emptyHint(t('access.empty') || 'Пока нет участников'));
+        return;
+      }
+      shares.forEach((s, i) => {
+        const row = document.createElement('div');
+        Object.assign(row.style, {
+          display: 'flex', alignItems: 'center', gap: '10px',
+          padding: '8px 0',
+          borderTop: i ? '1px solid var(--ink-soft)' : 'none',
+        });
+        const av = document.createElement('div');
+        Object.assign(av.style, {
+          width: '32px', height: '32px', borderRadius: '50%',
+          border: '1.5px solid var(--ink)',
+          background: 'var(--accent-soft)', color: 'var(--accent)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontWeight: '600', fontSize: '12px', flexShrink: '0',
+        });
+        av.textContent = (s.username || '?').slice(0, 2).toUpperCase();
+        row.appendChild(av);
+        const mid = document.createElement('div');
+        Object.assign(mid.style, { flex: '1', minWidth: '0' });
+        const name = document.createElement('div');
+        Object.assign(name.style, { fontSize: '13px', fontWeight: '600' });
+        name.textContent = s.display_name || s.username || '—';
+        mid.appendChild(name);
+        const subEl = document.createElement('div');
+        Object.assign(subEl.style, { fontSize: '11px', color: 'var(--ink-mute)' });
+        subEl.textContent = s.username ? `@${s.username}` : '';
+        mid.appendChild(subEl);
+        row.appendChild(mid);
+        peopleSlot.appendChild(row);
+      });
+    } catch {
+      peopleSlot.replaceChildren();
+      peopleSlot.appendChild(emptyHint(t('access.load_failed') || 'Не удалось загрузить'));
+    }
+  }
+  reloadPeople();
+
+  return wrap;
+}
+
+function renderActivityTab(test, attempts) {
+  const wrap = document.createElement('div');
+  wrap.style.padding = '12px 16px 24px';
+
+  const body = document.createElement('div');
+  if (attempts.length === 0) {
+    body.appendChild(emptyHint(t('test.no_attempts') || 'Попыток нет'));
+  } else {
+    attempts.forEach((a, i) => {
+      const row = document.createElement('div');
+      Object.assign(row.style, {
+        display: 'flex', alignItems: 'center', gap: '10px',
+        padding: '10px 0',
+        borderTop: i ? '1px solid var(--ink-soft)' : 'none',
+        cursor: 'pointer',
+      });
+      row.addEventListener('click', () => navigate(`/test/${test.id}/results/${a.attemptId || a.id}`));
+      row.appendChild(scoreBadge(Math.round(a.percentCorrect ?? 0)));
+      const mid = document.createElement('div');
+      mid.style.flex = '1';
+      const main = document.createElement('div');
+      Object.assign(main.style, { fontSize: '13px', fontWeight: '500' });
+      main.textContent = `${t('test.attempt') || 'попытка'} #${i + 1} · ${fmtDate(a.finishedAt || a.startedAt)}`;
+      mid.appendChild(main);
+      const subEl = document.createElement('div');
+      Object.assign(subEl.style, {
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: '11px', color: 'var(--ink-mute)',
+      });
+      subEl.textContent = `${fmtMs(a.totalDurationMs)} · ${a.questionCount || 0} q`;
+      mid.appendChild(subEl);
+      row.appendChild(mid);
+      row.appendChild(iconEl('chevR', 14));
+      body.appendChild(row);
+    });
+  }
+  wrap.appendChild(mCard({ title: `${t('test.all_attempts') || 'Все попытки'} · ${attempts.length}` }, body));
+  return wrap;
+}
+
+// ── Tab strip ───────────────────────────────────────────────────
+
+function buildTabStrip(activeId, onSelect) {
+  const strip = document.createElement('div');
+  Object.assign(strip.style, {
+    display: 'flex', gap: '4px',
+    padding: '10px 14px',
+    overflowX: 'auto',
+    borderBottom: '1px solid var(--ink-soft)',
+    position: 'sticky', top: '0',
+    background: 'var(--paper)', zIndex: '5',
+  });
+  const tabs = [
+    { id: 'overview',  label: t('test.tab.overview')  || 'Обзор' },
+    { id: 'questions', label: t('test.tab.questions') || 'Вопросы' },
+    { id: 'stats',     label: t('test.tab.stats')     || 'Статистика' },
+    { id: 'access',    label: t('test.tab.access')    || 'Доступ' },
+    { id: 'activity',  label: t('test.tab.activity')  || 'Активность' },
+  ];
+  for (const tab of tabs) {
+    const isActive = tab.id === activeId;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    Object.assign(btn.style, {
+      padding: '6px 14px',
+      border: '1.5px solid',
+      borderColor: isActive ? 'var(--accent)' : 'var(--ink-soft)',
+      borderRadius: '999px',
+      fontSize: '12px',
+      fontWeight: isActive ? '600' : '500',
+      background: isActive ? 'var(--accent-soft)' : 'var(--paper)',
+      color: isActive ? 'var(--accent)' : 'var(--ink-fade)',
+      cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: '0',
+      fontFamily: 'Inter, sans-serif',
+    });
+    btn.textContent = tab.label;
+    btn.addEventListener('click', () => onSelect(tab.id));
+    strip.appendChild(btn);
+  }
+  return strip;
+}
+
+// ── Main render ─────────────────────────────────────────────────
 
 export default async function render(root, params = {}) {
+  _renderToken++;
+  const myToken = _renderToken;
+  const stale = () => _renderToken !== myToken;
+
   const testId = params.id;
   if (!testId) { navigate('/home'); return; }
 
-  // Skeleton
-  root.innerHTML = `
-    <div class="mob">
-      <div class="mob__content" style="padding:16px;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-          <button class="mob-topbar__back mob-back-btn">${iconEl('chevL', 16)?.outerHTML || '←'}</button>
-          <span style="font:600 17px/1 Inter,sans-serif;color:var(--ink);">${t('test.collection') || 'Collection'}</span>
-        </div>
-        ${[80, 50, 44, 44].map(h =>
-          `<div class="skeleton" style="height:${h}px;border-radius:var(--radius-md);margin-bottom:8px;"></div>`
-        ).join('')}
-      </div>
-    </div>`;
-  root.querySelector('.mob-back-btn')?.addEventListener('click', () => history.back());
-
-  // ── Fetch all data upfront ────────────────────────────────
-  let test = null, agg = null, allAttempts = [];
-  try {
-    const [testRes, aggRes, attRes] = await Promise.allSettled([
-      getTest(testId),
-      getMyAggregate({ test_id: testId }),
-      listAttempts({ clientId: getClientId(), testId, status: 'completed', limit: 100 }),
-    ]);
-    if (testRes.status === 'fulfilled') test         = testRes.value?.metadata || testRes.value;
-    if (aggRes.status === 'fulfilled')  agg          = aggRes.value;
-    if (attRes.status === 'fulfilled')  allAttempts  = attRes.value?.attempts || [];
-    if (!Array.isArray(allAttempts)) allAttempts = [];
-  } catch {}
-
-  if (!test) {
-    root.innerHTML = `<div class="mob" style="padding:24px;color:var(--ink-mute)">
-      ${t('common.error') || 'Error loading.'}
-    </div>`;
-    return;
-  }
-
-  // ── Derived stats ─────────────────────────────────────────
-  const qCount   = test.questionCount ?? test.question_count ?? test.questions?.length ?? '?';
-  const attCount = agg?.attemptCount ?? 0;
-  const avgPct   = Math.round(agg?.avgPercentCorrect ?? 0);
-  const avgTimeSec = agg?.avgTimePerQuestion ? Math.round(agg.avgTimePerQuestion / 1000) : null;
-  const bestPct  = allAttempts.length
-    ? Math.round(Math.max(...allAttempts.map(a => a.percentCorrect ?? 0)))
-    : null;
-
-  let activeTab = 'overview';
-
-  // ── Tab: Overview ─────────────────────────────────────────
-  function renderOverview() {
-    return `
-      <div class="mob-kpis">
-        <div class="mob-kpi">
-          <div class="mob-kpi__val">${qCount}</div>
-          <div class="mob-kpi__label">${t('common.questions') || 'questions'}</div>
-        </div>
-        <div class="mob-kpi">
-          <div class="mob-kpi__val">${attCount}</div>
-          <div class="mob-kpi__label">${t('test.attempts') || 'attempts'}</div>
-        </div>
-        <div class="mob-kpi">
-          <div class="mob-kpi__val">${avgPct ? `${avgPct}%` : '—'}</div>
-          <div class="mob-kpi__label">${t('stats.your_avg') || 'your avg'}</div>
-        </div>
-        <div class="mob-kpi">
-          <div class="mob-kpi__val">${avgTimeSec !== null ? `${avgTimeSec}s` : '—'}</div>
-          <div class="mob-kpi__label">${t('stats.avg_time') || 'avg/q'}</div>
-        </div>
-      </div>
-
-      <div style="padding:0 16px 24px;">
-        <div style="font:600 13px/1 Inter,sans-serif;color:var(--ink);margin-bottom:6px;">
-          ${t('test.description') || 'Description'}
-        </div>
-        <div style="font:400 13px/1.5 Inter,sans-serif;color:var(--ink-fade);">
-          ${esc(test.description || '') ||
-            `<em style="color:var(--ink-mute)">${t('test.no_description') || 'No description.'}</em>`}
-        </div>
-      </div>`;
-  }
-
-  // ── Tab: History ──────────────────────────────────────────
-  function renderHistory() {
-    if (!allAttempts.length) {
-      return `<div class="mob-empty"><div class="mob-empty__text">
-        ${t('stats.no_attempts') || 'No attempts yet.'}
-      </div></div>`;
-    }
-    return `<div style="padding:0 16px 32px;">
-      ${allAttempts.map(a => {
-        const pct   = Math.round(a.percentCorrect ?? 0);
-        const color = pct >= 70 ? 'var(--accent)' : '#c4554a';
-        const bg    = pct >= 70 ? 'var(--accent-soft)' : 'rgba(196,85,74,.10)';
-        const dur   = fmtMs(a.totalDurationMs);
-        const when  = fmtDate(a.finishedAt || a.startedAt);
-        return `
-          <div class="mob-att-row" data-attempt-id="${esc(a.attemptId || '')}">
-            <span class="mob-att-badge" style="background:${bg};color:${color};">${pct}%</span>
-            <div style="flex:1;min-width:0;">
-              <div style="font:500 13px/1.3 Inter,sans-serif;color:var(--ink);">
-                ${a.correctCount ?? '?'}&thinsp;/&thinsp;${a.questionCount ?? '?'}
-                ${t('results.correct') || 'correct'}
-              </div>
-              <div style="font:400 11px/1 Inter,sans-serif;color:var(--ink-mute);margin-top:3px;">
-                ${dur} · ${when}
-              </div>
-            </div>
-            ${iconEl('chevR', 12)?.outerHTML || ''}
-          </div>`;
-      }).join('')}
-    </div>`;
-  }
-
-  // ── Tab: Stats ────────────────────────────────────────────
-  function renderStats() {
-    // Show scores oldest-first for the trend chart
-    const recentScores = allAttempts.slice(0, 10).reverse().map(a => a.percentCorrect ?? 0);
-
-    return `<div style="padding:0 16px 32px;">
-
-      <!-- KPI grid -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px;">
-        <div class="mob-kpi">
-          <div class="mob-kpi__val">${attCount || '—'}</div>
-          <div class="mob-kpi__label">${t('stats.total_attempts') || 'attempts'}</div>
-        </div>
-        <div class="mob-kpi">
-          <div class="mob-kpi__val">${bestPct !== null ? `${bestPct}%` : '—'}</div>
-          <div class="mob-kpi__label">${t('stats.best_score') || 'best score'}</div>
-        </div>
-        <div class="mob-kpi">
-          <div class="mob-kpi__val">${avgPct ? `${avgPct}%` : '—'}</div>
-          <div class="mob-kpi__label">${t('stats.your_avg') || 'avg score'}</div>
-        </div>
-        <div class="mob-kpi">
-          <div class="mob-kpi__val">${avgTimeSec !== null ? `${avgTimeSec}s` : '—'}</div>
-          <div class="mob-kpi__label">${t('stats.avg_time') || 'avg/q'}</div>
-        </div>
-      </div>
-
-      <!-- Score trend sparkline -->
-      ${recentScores.length >= 2 ? `
-      <div>
-        <div style="font:600 13px/1 Inter,sans-serif;color:var(--ink);margin-bottom:8px;">
-          ${t('results.trend') || 'Score trend'}
-          <span style="font-weight:400;color:var(--ink-mute);">
-            (${t('stats.last') || 'last'} ${recentScores.length})
-          </span>
-        </div>
-        <div style="border:var(--border);border-radius:var(--radius-md);
-                    padding:12px 12px 6px;background:var(--paper);">
-          ${buildSparkline(recentScores)}
-          <div style="display:flex;justify-content:space-between;margin-top:2px;
-                      font:400 10px/1 Inter,sans-serif;color:var(--ink-mute);">
-            <span>${t('stats.oldest') || 'oldest'}</span>
-            <span>${t('stats.recent_label') || 'recent'}</span>
-          </div>
-        </div>
-      </div>` : `
-      <div style="font:400 13px/1.5 Inter,sans-serif;color:var(--ink-mute);">
-        ${t('results.trend_coming') || 'Complete more attempts to see your trend.'}
-      </div>`}
-    </div>`;
-  }
-
-  // ── Build screen ──────────────────────────────────────────
-  const screen = document.createElement('div');
-  screen.className = 'mob';
-  screen.innerHTML = `
-    <div class="mob__content">
-
-      <!-- Back + crumb -->
-      <div style="display:flex;align-items:center;gap:8px;padding:12px 16px 0;">
-        <button class="mob-topbar__back mob-coll-back">${iconEl('chevL', 16)?.outerHTML || '←'}</button>
-        <span style="font:400 11px/1 Inter,sans-serif;color:var(--ink-mute);
-                     text-transform:uppercase;letter-spacing:.06em;">
-          ${t('test.collection') || 'collection'}
-        </span>
-      </div>
-
-      <!-- Title + access chip -->
-      <div class="mob-coll-header">
-        <div class="mob-coll-title">${esc(test.title || 'Untitled')}</div>
-        <div class="mob-coll-chips">
-          <span class="chip chip--active">${
-            test.access_level === 'public'  ? (t('test.public')  || 'Public')
-            : test.access_level === 'shared' ? (t('test.shared') || 'Shared')
-            : (t('test.private') || 'Private')
-          }</span>
-          <span class="chip">${qCount} ${t('test.questions') || 'q'}</span>
-          ${attCount ? `<span class="chip">${attCount} ${t('test.attempts') || 'att'}</span>` : ''}
-        </div>
-      </div>
-
-      <!-- Start button -->
-      <div class="mob-coll-actions">
-        <a href="#/test/${testId}/take" class="btn btn--primary" style="flex:1;justify-content:center;">
-          ${iconEl('play', 14)?.outerHTML || ''} ${t('test.start') || 'Start test'}
-        </a>
-      </div>
-
-      <!-- Tab bar -->
-      <div class="mob-segment" id="mob-coll-tabs" style="margin:0 16px 0;">
-        ${['overview', 'history', 'stats'].map(tab => `
-          <div class="mob-segment__item ${tab === activeTab ? 'mob-segment__item--active' : ''}"
-               data-tab="${tab}">
-            ${tab === 'overview' ? (t('common.overview') || 'Overview')
-            : tab === 'history'  ? (t('stats.history')   || 'History')
-            :                      (t('nav.stats')        || 'Stats')}
-          </div>`).join('')}
-      </div>
-
-      <!-- Tab content area -->
-      <div id="mob-coll-content">${renderOverview()}</div>
-
-    </div>`;
-
-  // Wire up history row clicks (also called after each tab render)
-  function wireHistoryClicks() {
-    screen.querySelectorAll('.mob-att-row').forEach(row => {
-      row.addEventListener('click', () => {
-        const attemptId = row.dataset.attemptId;
-        if (!attemptId) return;
-        // Store clientId so results.js can load this historical attempt
-        sessionStorage.setItem(`att:${attemptId}:client`, getClientId());
-        sessionStorage.setItem(`att:${attemptId}:testId`, testId);
-        navigate(`/test/${testId}/results/${attemptId}`);
-      });
+  // Skeleton.
+  const skeleton = document.createElement('div');
+  skeleton.style.padding = '12px 16px';
+  for (let i = 0; i < 3; i++) {
+    const s = document.createElement('div');
+    s.className = 'skeleton';
+    Object.assign(s.style, {
+      height: '70px', borderRadius: 'var(--radius-md)', marginBottom: '8px',
     });
+    skeleton.appendChild(s);
   }
-
-  // Tab switching
-  screen.querySelector('#mob-coll-tabs')?.addEventListener('click', e => {
-    const btn = e.target.closest('[data-tab]');
-    if (!btn || btn.dataset.tab === activeTab) return;
-    activeTab = btn.dataset.tab;
-    screen.querySelectorAll('[data-tab]').forEach(el => {
-      el.classList.toggle('mob-segment__item--active', el.dataset.tab === activeTab);
-    });
-    const content = screen.querySelector('#mob-coll-content');
-    if (!content) return;
-    content.innerHTML =
-      activeTab === 'overview' ? renderOverview()
-      : activeTab === 'history' ? renderHistory()
-      : renderStats();
-    if (activeTab === 'history') wireHistoryClicks();
+  mShell({
+    root,
+    topbar: topBar({ title: '…', back: true, backHref: '#/home' }),
+    body: skeleton,
+    hideNav: true,
   });
 
-  screen.querySelector('.mob-coll-back')?.addEventListener('click', () => history.back());
-  screen.appendChild(buildBottomNav('tests'));
-  root.innerHTML = '';
-  root.appendChild(screen);
+  let test = null;
+  let attempts = [];
+  let getTestErr = null;
+  try {
+    const [tRes, aRes] = await Promise.allSettled([
+      getTest(testId),
+      listAttempts({ status: 'completed', limit: 50, testId }),
+    ]);
+    if (stale()) return;
+    if (tRes.status === 'fulfilled') test = tRes.value;
+    else getTestErr = tRes.reason;
+    if (aRes.status === 'fulfilled') {
+      attempts = aRes.value?.attempts || aRes.value || [];
+      attempts = attempts.filter(a => !a.testId || a.testId === testId);
+    }
+  } catch { /* fall through */ }
+  if (stale()) return;
+  if (!test) {
+    const status = getTestErr?.status || getTestErr?.response?.status;
+    if (status === 403) { navigate(`/error/403?testId=${encodeURIComponent(testId)}`); return; }
+    navigate('/error/404'); return;
+  }
+
+  let activeTab = (params.tab && ['overview','questions','stats','access','activity'].includes(params.tab))
+    ? params.tab : 'overview';
+
+  // Assemble body — strip stays at top, tab body underneath.
+  const bodyEl = document.createElement('div');
+  let strip = buildTabStrip(activeTab, switchTo);
+  bodyEl.appendChild(strip);
+  const tabBody = document.createElement('div');
+  bodyEl.appendChild(tabBody);
+
+  function renderActive() {
+    tabBody.replaceChildren();
+    if (activeTab === 'overview')       tabBody.appendChild(renderOverviewTab(test, attempts));
+    else if (activeTab === 'questions') tabBody.appendChild(renderQuestionsTab(test));
+    else if (activeTab === 'stats')     tabBody.appendChild(renderStatsTab(test, attempts));
+    else if (activeTab === 'access')    tabBody.appendChild(renderAccessTab(test));
+    else if (activeTab === 'activity')  tabBody.appendChild(renderActivityTab(test, attempts));
+  }
+  function switchTo(id) {
+    activeTab = id;
+    const newStrip = buildTabStrip(activeTab, switchTo);
+    strip.replaceWith(newStrip);
+    strip = newStrip;
+    renderActive();
+    bodyEl.parentElement?.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  renderActive();
+
+  // Topbar right slot — settings cog (owner only).
+  const right = document.createElement('div');
+  Object.assign(right.style, { display: 'flex', gap: '4px' });
+  if (test.is_owner) {
+    const cog = document.createElement('button');
+    cog.type = 'button';
+    cog.setAttribute('aria-label', t('common.settings') || 'Настройки');
+    Object.assign(cog.style, {
+      padding: '6px', color: 'var(--ink-fade)',
+      background: 'none', border: 'none', cursor: 'pointer',
+    });
+    cog.appendChild(iconEl('cog', 18));
+    cog.addEventListener('click', () => navigate(`/test/${testId}/edit`));
+    right.appendChild(cog);
+  }
+  const topbarEl = topBar({
+    title: test.title || '—',
+    back: true, backHref: '#/home',
+    right,
+  });
+
+  // Sticky CTA bar — Доступ + Начать тест.
+  const sticky = mSticky(
+    mBtn({
+      full: true,
+      onClick: () => switchTo('access'),
+    }, iconEl('share', 14), t('access.label') || 'Доступ'),
+    mBtn({
+      primary: true, full: true,
+      onClick: () => navigate(`/test/${testId}/start`),
+    }, iconEl('play', 14), t('test.start') || 'Начать тест'),
+  );
+
+  mShell({ root, topbar: topbarEl, body: bodyEl, sticky, hideNav: true });
 }

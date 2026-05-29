@@ -12,6 +12,7 @@
  */
 
 import { escHtml } from './escape.js';
+import { getAccessToken } from '../state.js';
 
 /**
  * Render a single inline item to HTML string.
@@ -95,6 +96,57 @@ export function renderContent(content, assetsBaseUrl) {
  */
 export function hasFormulas(html) {
   return html.includes('rb-formula');
+}
+
+/**
+ * Resolve `<img class="rb-image">` nodes by fetching them authenticated
+ * and swapping `src` to a blob URL.
+ *
+ * Asset endpoints (`/api/tests/<id>/assets/<path>`) require the same
+ * Bearer auth as the rest of the API — but plain `<img>` tags can't
+ * attach an Authorization header, so they 403 and disappear. We fetch
+ * each unique asset once via `fetch()` (which can carry the token from
+ * `getAccessToken()`), convert the response to a blob, and use
+ * `URL.createObjectURL` to produce a same-origin URL the browser will
+ * happily render.
+ *
+ * Idempotent — already-swapped `blob:` URLs are skipped. Safe to call
+ * multiple times against the same container.
+ *
+ * @param {Element} container Any DOM element. All `img.rb-image` under it are processed.
+ * @returns {Promise<void>}
+ */
+export async function attachAssets(container) {
+  if (!container) return;
+  const imgs = Array.from(container.querySelectorAll('img.rb-image'));
+  if (!imgs.length) return;
+  const tok = getAccessToken();
+  if (!tok) return;
+  // Deduplicate by src so we don't issue concurrent requests for the
+  // same asset (common when one material is reused across questions).
+  const cache = new Map();
+  for (const img of imgs) {
+    const src = img.getAttribute('src');
+    if (!src || src.startsWith('blob:')) continue;
+    if (!cache.has(src)) {
+      cache.set(src, fetch(src, {
+        headers: { Authorization: 'Bearer ' + tok },
+        credentials: 'include',
+      }).then(r => r.ok ? r.blob() : null)
+        .then(b => b ? URL.createObjectURL(b) : null)
+        .catch(() => null));
+    }
+  }
+  for (const img of imgs) {
+    const src = img.getAttribute('src');
+    if (!src || src.startsWith('blob:')) continue;
+    const url = await cache.get(src);
+    if (url) {
+      img.src = url;
+      // Reset the onerror-driven hide in case it already fired.
+      img.style.display = '';
+    }
+  }
 }
 
 /**

@@ -9,9 +9,9 @@ import { startAttempt, recordAnswer, finishAttempt, abandonAttempt } from '../..
 import { navigate } from '../../router.js';
 import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
-import { renderContent, typesetMath } from '../../utils/render-blocks.js';
+import { renderContent, typesetMath, attachAssets } from '../../utils/render-blocks.js';
 import { escHtml as esc } from '../../utils/escape.js';
-import { getClientId } from '../../utils/client-id.js';
+import { newUuid } from '../../utils/client-id.js';
 import { formatSeconds as formatTime } from '../../utils/format.js';
 
 // ── Module state ──────────────────────────────────────────────
@@ -31,7 +31,6 @@ const _s = {
     showAnswers: true,
   },
   attemptId: /** @type {string|null} */ (null),
-  clientId:  /** @type {string|null} */ (null),
   currentIdx: 0,
   /** @type {{ [qId: number]: { optionIdx: number, isCorrect: boolean } }} */
   answers: {},
@@ -70,31 +69,59 @@ async function beginAttempt() {
   }
 
   _s.questions   = pool.slice(0, Math.min(_s.settings.count, total));
+
+  // Per-question option shuffling. Stamp each option with `__origIdx`
+  // (its position in the canonical/server order) so the click handler
+  // can translate the shuffled position → canonical index before sending
+  // it to /answer. The server stores answers in canonical order; without
+  // the translation server-side `isCorrect` would be computed against
+  // the wrong option after a shuffle.
+  if (_s.settings.shuffleOptions) {
+    _s.questions = _s.questions.map(q => {
+      const opts = (Array.isArray(q.options) ? q.options : [])
+        .map((o, originalIdx) => ({ ...o, __origIdx: originalIdx }));
+      for (let i = opts.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [opts[i], opts[j]] = [opts[j], opts[i]];
+      }
+      return { ...q, options: opts };
+    });
+  }
   _s.currentIdx  = 0;
   _s.answers     = {};
   _s.flagged     = new Set();
-  _s.attemptId   = crypto.randomUUID();
-  _s.clientId    = getClientId();
+  _s.attemptId   = newUuid();
   _s.startTime   = Date.now();
   _s.timeLeft    = _s.settings.timeLimitMin > 0 ? _s.settings.timeLimitMin * 60 : null;
 
   startAttempt({
     attemptId: _s.attemptId,
     testId: _s.testId,
-    clientId: _s.clientId,
     settings: {
       count: _s.questions.length,
       order: _s.settings.order,
       timeLimitSeconds: _s.settings.timeLimitMin > 0 ? _s.settings.timeLimitMin * 60 : null,
       showAnswersImmediately: _s.settings.showAnswers,
     },
-    questions: _s.questions.map(q => ({
-      questionId: Number(q.id),
-      question: { question: q.question, options: q.options },
-    })),
+    // Always send the CANONICAL option order to the server so its
+    // `correct_option_index` matches the canonical answer-index that
+    // `onOptionClick` will translate to. If the question was shuffled,
+    // each option still carries the `__origIdx` stamp — sort by it
+    // to restore canonical order. Strip `__origIdx` from the payload
+    // since the server doesn't need it.
+    questions: _s.questions.map(q => {
+      const opts = Array.isArray(q.options) ? [...q.options] : [];
+      const canonical = opts.every(o => Number.isInteger(o.__origIdx))
+        ? [...opts].sort((a, b) => a.__origIdx - b.__origIdx)
+            .map(({ __origIdx, ...rest }) => rest)
+        : opts;
+      return {
+        questionId: Number(q.id),
+        question: { question: q.question, options: canonical },
+      };
+    }),
   }).catch(e => console.warn('[mob-taking] startAttempt:', e));
 
-  sessionStorage.setItem(`att:${_s.attemptId}:client`, _s.clientId);
   sessionStorage.setItem(`att:${_s.attemptId}:testId`, _s.testId || '');
 
   _s.phase = 'taking';
@@ -121,16 +148,22 @@ async function beginAttempt() {
 function onOptionClick(question, optionIdx) {
   if (_s.answers[question.id] !== undefined && _s.settings.showAnswers) return;
 
-  const isCorrect = question.options[optionIdx]?.isCorrect === true;
-  _s.answers[question.id] = { optionIdx, isCorrect };
+  const opt = question.options[optionIdx];
+  const isCorrect = opt?.isCorrect === true;
+  // Translate the on-screen (possibly shuffled) position back to the
+  // canonical index that the server uses. Falls back to `optionIdx` when
+  // the question wasn't shuffled (no `__origIdx`).
+  const canonical = (opt && Number.isInteger(opt.__origIdx)) ? opt.__origIdx : optionIdx;
+  _s.answers[question.id] = { optionIdx, canonical, isCorrect };
 
   const elapsed = Date.now() - (_s.startTime || Date.now());
   recordAnswer(_s.attemptId, {
     testId: _s.testId,
-    clientId: _s.clientId,
     questionId: question.id,
-    answerIndex: optionIdx,
-    canonicalAnswerIndex: optionIdx,
+    // answerIndex MUST be in canonical order — the server validates
+    // `options[answer_index].isCorrect` against the persisted question.
+    answerIndex: canonical,
+    canonicalAnswerIndex: canonical,
     isCorrect,
     durationMs: elapsed,
     isSkipped: false,
@@ -160,11 +193,14 @@ async function finishUp(timedOut) {
   try {
     const result = await finishAttempt(attemptId, {
       testId,
-      clientId: _s.clientId,
       totalDurationMs: totalMs,
     });
     sessionStorage.setItem(`att:${attemptId}:result`, JSON.stringify({
       ...result,
+      // Ensure questionCount is present for the results screen even if
+      // the finishAttempt response shape varies.
+      questionCount: result?.questionCount ?? _s.questions.length,
+      testTitle: _s.test?.title || result?.testTitle,
       questions: _s.questions.map(q => ({
         id: q.id,
         text: blocksToText(q.question?.blocks),
@@ -177,6 +213,8 @@ async function finishUp(timedOut) {
     console.error('[mob-taking] finishAttempt:', e);
     sessionStorage.setItem(`att:${attemptId}:result`, JSON.stringify({
       attemptId, testId, percentCorrect: null,
+      questionCount: _s.questions.length,
+      testTitle: _s.test?.title,
       questions: _s.questions.map(q => ({ id: q.id, text: blocksToText(q.question?.blocks) })),
       answersLocal: _s.answers,
       flaggedIds: [..._s.flagged],
@@ -424,6 +462,8 @@ function buildNavDrawer() {
       <span class="rs-qcell__icon">${icon}</span>`;
 
     cell.addEventListener('click', () => {
+      // Exam mode: forward-only navigation.
+      if (_s.settings.forwardOnly && i < _s.currentIdx) return;
       _s.currentIdx  = i;
       _s.drawerOpen  = false;
       _mount();
@@ -472,21 +512,34 @@ function buildTaking() {
   const progressWrap = document.createElement('div');
   progressWrap.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:3px;min-width:0;';
 
-  // Counter is tappable → opens question navigation drawer
-  const counterBtn = document.createElement('button');
-  counterBtn.type = 'button';
-  counterBtn.style.cssText = [
-    'background:none;border:none;padding:2px 6px;margin-left:-6px;',
-    'border-radius:var(--radius-sm);cursor:pointer;',
+  // Counter — plain label. Grid button next to it opens the
+  // navigation drawer (icon makes the affordance obvious).
+  const counterLabel = document.createElement('span');
+  counterLabel.style.cssText = [
     'font:400 11px/1 Inter,sans-serif;color:var(--ink-mute);',
   ].join('');
-  counterBtn.setAttribute('aria-label', t('taking.jump_to') || 'Jump to question');
-  counterBtn.innerHTML = `${_s.currentIdx + 1} / ${total}`;
-  counterBtn.addEventListener('click', () => { _s.drawerOpen = !_s.drawerOpen; _mount(); });
+  counterLabel.textContent = `${_s.currentIdx + 1} / ${total}`;
+
+  const gridBtn = document.createElement('button');
+  gridBtn.type = 'button';
+  gridBtn.style.cssText = [
+    'display:inline-flex;align-items:center;justify-content:center;',
+    'width:24px;height:24px;padding:0;background:none;',
+    'border:1px solid var(--ink-soft);border-radius:6px;cursor:pointer;',
+    'color:var(--ink-mute);',
+  ].join('');
+  gridBtn.setAttribute('aria-label', t('taking.jump_to') || 'Open question grid');
+  gridBtn.title = t('taking.jump_to') || 'Перейти к вопросу';
+  gridBtn.appendChild(iconEl('grid', 13));
+  gridBtn.addEventListener('click', () => { _s.drawerOpen = !_s.drawerOpen; _mount(); });
+
+  const counterWrap = document.createElement('div');
+  counterWrap.style.cssText = 'display:inline-flex;align-items:center;gap:6px;';
+  counterWrap.append(counterLabel, gridBtn);
 
   const topRow = document.createElement('div');
   topRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
-  topRow.appendChild(counterBtn);
+  topRow.appendChild(counterWrap);
   if (_s.timeLeft !== null) {
     const timerEl = document.createElement('span');
     timerEl.className = 'mob-tk__timer';
@@ -598,7 +651,7 @@ function buildTaking() {
   prevBtn.type = 'button';
   prevBtn.className = 'btn btn--ghost';
   prevBtn.style.cssText = 'flex:1;justify-content:center;';
-  prevBtn.disabled = _s.currentIdx === 0;
+  prevBtn.disabled = _s.currentIdx === 0 || !!_s.settings.forwardOnly;
   prevBtn.append(iconEl('chevL', 14), document.createTextNode(` ${t('taking.previous') || 'Prev'}`));
   prevBtn.addEventListener('click', () => {
     if (_s.currentIdx > 0) { _s.currentIdx--; _mount(); }
@@ -654,6 +707,7 @@ async function _mount() {
   if (_s.phase === 'taking')  {
     _root.appendChild(buildTaking());
     await typesetMath(_root);
+    attachAssets(_root).catch(() => {});
     return;
   }
 }
@@ -672,7 +726,7 @@ export default async function render(root, params = {}) {
     drawerOpen: false,
     startTime: null, timeLeft: null,
     timerHandle: null, advanceTimer: null,
-    attemptId: null, clientId: null,
+    attemptId: null,
   });
   _mount();
 
@@ -701,6 +755,36 @@ export default async function render(root, params = {}) {
         <p style="font-size:13px;color:var(--ink-mute);">Could not load test</p>
         <a href="#/home" class="btn btn--ghost btn--small">← ${t('common.back') || 'Back'}</a>
       </div>`;
+    return;
+  }
+
+  // Read settings written by mobile/pre-test.js. If none, fall back to
+  // the in-file pretest screen so direct deep-links to /test/:id/take
+  // still work (mostly a dev convenience now).
+  let preset = null;
+  try {
+    const raw = sessionStorage.getItem(`pretest:${_s.testId}`);
+    if (raw) preset = JSON.parse(raw);
+  } catch { /* private mode — keep preset null */ }
+
+  if (preset) {
+    // Map mobile pre-test schema → taking.js settings shape.
+    // Back-compat: old `shuffle` key maps to questions-shuffle.
+    const total = _s.allQuestions.length;
+    const requested = Math.max(1, Math.min(total, Number(preset.count) || total));
+    const shuffleQ = preset.shuffleQuestions ?? preset.shuffle ?? false;
+    const shuffleA = preset.shuffleAnswers   ?? false;
+    const mode = preset.mode || 'training';
+    _s.settings = {
+      mode,
+      count: requested,
+      order: shuffleQ ? 'random' : 'sequential',
+      shuffleOptions: !!shuffleA,
+      timeLimitMin: preset.timeLimitMin || 0,
+      showAnswers: mode === 'exam' ? false : !!preset.revealImmediately,
+      forwardOnly: mode === 'exam',
+    };
+    beginAttempt();
     return;
   }
 
