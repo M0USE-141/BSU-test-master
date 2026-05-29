@@ -1,0 +1,9 @@
+{% extends "base.txt" %}
+{% block body %}
+Hi {{ user.display_name or user.username }},
+
+{{ sharer_username }} shared the test "{{ test_title }}" with you.
+
+{% if action_url %}Open test: {{ action_url }}
+{% endif %}
+{% endblock %}

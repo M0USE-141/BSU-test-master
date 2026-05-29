@@ -1,0 +1,9 @@
+{% extends "base.txt" %}
+{% block body %}
+Salom, {{ user.display_name or user.username }}!
+
+{{ sharer_username }} sizga «{{ test_title }}» testini ulashdi.
+
+{% if action_url %}Testni ochish: {{ action_url }}
+{% endif %}
+{% endblock %}

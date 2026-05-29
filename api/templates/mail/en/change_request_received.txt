@@ -1,0 +1,10 @@
+{% extends "base.txt" %}
+{% block body %}
+Hi {{ user.display_name or user.username }},
+
+{{ proposer_username }} proposed changes to your test "{{ test_title }}". Open it to approve or reject.
+
+{% if action_url %}View request: {{ action_url }}
+{% endif %}
+You can change notification preferences in your profile.
+{% endblock %}

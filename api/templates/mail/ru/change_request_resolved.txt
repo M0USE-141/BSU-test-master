@@ -1,0 +1,9 @@
+{% extends "base.txt" %}
+{% block body %}
+Здравствуйте, {{ user.display_name or user.username }}!
+
+Ваш запрос к тесту «{{ test_title }}» был {{ verdict }}.{% if comment %} Комментарий рецензента: «{{ comment }}»{% endif %}
+
+{% if action_url %}Открыть тест: {{ action_url }}
+{% endif %}
+{% endblock %}

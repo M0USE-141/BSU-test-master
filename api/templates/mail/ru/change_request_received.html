@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>{{ subject }}</h1>
+<p>Здравствуйте, {{ user.display_name or user.username }}!</p>
+<p>{{ proposer_username }} предложил изменения к вашему тесту «{{ test_title }}». Откройте, чтобы одобрить или отклонить.</p>
+{% if action_url %}<p style="margin: 24px 0;"><a href="{{ action_url }}" class="btn">Посмотреть запрос</a></p>
+{% endif %}<p class="muted">Изменить настройки уведомлений можно в профиле.</p>
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "base.txt" %}
+{% block body %}
+Привет, {{ user.display_name or user.username }}!
+
+Спасибо за регистрацию. Откройте платформу и начните проходить тесты.
+
+{% if action_url %}Открыть TestMasterBSU: {{ action_url }}
+{% endif %}
+{% endblock %}

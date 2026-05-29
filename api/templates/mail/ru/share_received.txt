@@ -1,0 +1,9 @@
+{% extends "base.txt" %}
+{% block body %}
+Здравствуйте, {{ user.display_name or user.username }}!
+
+{{ sharer_username }} открыл вам доступ к тесту «{{ test_title }}».
+
+{% if action_url %}Перейти к тесту: {{ action_url }}
+{% endif %}
+{% endblock %}

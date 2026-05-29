@@ -1,0 +1,9 @@
+{% extends "base.txt" %}
+{% block body %}
+Hi {{ user.display_name or user.username }},
+
+Your change request for "{{ test_title }}" was {{ verdict }}.{% if comment %} Reviewer comment: "{{ comment }}"{% endif %}
+
+{% if action_url %}Open test: {{ action_url }}
+{% endif %}
+{% endblock %}

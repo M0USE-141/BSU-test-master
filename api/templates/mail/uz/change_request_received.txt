@@ -1,0 +1,10 @@
+{% extends "base.txt" %}
+{% block body %}
+Salom, {{ user.display_name or user.username }}!
+
+{{ proposer_username }} sizning «{{ test_title }}» testingizga o'zgartirish taklif qildi. Tasdiqlash yoki rad etish uchun oching.
+
+{% if action_url %}So'rovni ko'rish: {{ action_url }}
+{% endif %}
+Bildirishnoma sozlamalarini profil sahifasidan o'zgartirishingiz mumkin.
+{% endblock %}

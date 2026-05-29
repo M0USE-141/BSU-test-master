@@ -55,11 +55,11 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def issue_reset_token(db: DbSession, user: User, *, base_url: str) -> str:
-    """Create a single-use reset token for ``user``.
+def issue_reset_token(db: DbSession, user: User) -> str:
+    """Create a single-use reset token. Returns the plaintext value.
 
-    Stores only the hash. Returns the plaintext token (the caller is
-    responsible for delivery — email or console log).
+    Delivery is the caller's responsibility — the route hands the token
+    to `MailService.send_template` via `BackgroundTasks`.
     """
     plaintext = secrets.token_urlsafe(32)
     record = PasswordResetToken(
@@ -70,7 +70,6 @@ def issue_reset_token(db: DbSession, user: User, *, base_url: str) -> str:
     db.add(record)
     db.commit()
     db.refresh(record)
-    deliver_reset_link(user, plaintext, base_url=base_url)
     return plaintext
 
 

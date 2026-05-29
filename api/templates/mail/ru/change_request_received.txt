@@ -1,0 +1,10 @@
+{% extends "base.txt" %}
+{% block body %}
+Здравствуйте, {{ user.display_name or user.username }}!
+
+{{ proposer_username }} предложил изменения к вашему тесту «{{ test_title }}». Откройте, чтобы одобрить или отклонить.
+
+{% if action_url %}Посмотреть запрос: {{ action_url }}
+{% endif %}
+Изменить настройки уведомлений можно в профиле.
+{% endblock %}

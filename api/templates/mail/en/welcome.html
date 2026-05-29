@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>{{ subject }}</h1>
+<p>Hi {{ user.display_name or user.username }},</p>
+<p>Thanks for signing up. Open the platform and start taking tests.</p>
+{% if action_url %}<p style="margin: 24px 0;"><a href="{{ action_url }}" class="btn">Open TestMasterBSU</a></p>
+{% endif %}{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "base.txt" %}
+{% block body %}
+Salom, {{ user.display_name or user.username }}!
+
+«{{ test_title }}» testiga taklifingiz {{ verdict }}.{% if comment %} Sharh: «{{ comment }}»{% endif %}
+
+{% if action_url %}Testni ochish: {{ action_url }}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>{{ subject }}</h1>
+<p>Hi {{ user.display_name or user.username }},</p>
+<p>{{ sharer_username }} shared the test "{{ test_title }}" with you.</p>
+{% if action_url %}<p style="margin: 24px 0;"><a href="{{ action_url }}" class="btn">Open test</a></p>
+{% endif %}{% endblock %}

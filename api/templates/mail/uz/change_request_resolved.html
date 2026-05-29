@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>{{ subject }}</h1>
+<p>Salom, {{ user.display_name or user.username }}!</p>
+<p>«{{ test_title }}» testiga taklifingiz {{ verdict }}.{% if comment %} Sharh: «{{ comment }}»{% endif %}</p>
+{% if action_url %}<p style="margin: 24px 0;"><a href="{{ action_url }}" class="btn">Testni ochish</a></p>
+{% endif %}{% endblock %}

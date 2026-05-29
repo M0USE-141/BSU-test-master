@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>{{ subject }}</h1>
+<p>Salom, {{ user.display_name or user.username }}!</p>
+<p>{{ proposer_username }} sizning «{{ test_title }}» testingizga o'zgartirish taklif qildi. Tasdiqlash yoki rad etish uchun oching.</p>
+{% if action_url %}<p style="margin: 24px 0;"><a href="{{ action_url }}" class="btn">So'rovni ko'rish</a></p>
+{% endif %}<p class="muted">Bildirishnoma sozlamalarini profil sahifasidan o'zgartirishingiz mumkin.</p>
+{% endblock %}

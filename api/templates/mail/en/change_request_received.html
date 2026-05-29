@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>{{ subject }}</h1>
+<p>Hi {{ user.display_name or user.username }},</p>
+<p>{{ proposer_username }} proposed changes to your test "{{ test_title }}". Open it to approve or reject.</p>
+{% if action_url %}<p style="margin: 24px 0;"><a href="{{ action_url }}" class="btn">View request</a></p>
+{% endif %}<p class="muted">You can change notification preferences in your profile.</p>
+{% endblock %}

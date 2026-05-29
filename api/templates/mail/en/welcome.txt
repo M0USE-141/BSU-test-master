@@ -1,0 +1,9 @@
+{% extends "base.txt" %}
+{% block body %}
+Hi {{ user.display_name or user.username }},
+
+Thanks for signing up. Open the platform and start taking tests.
+
+{% if action_url %}Open TestMasterBSU: {{ action_url }}
+{% endif %}
+{% endblock %}

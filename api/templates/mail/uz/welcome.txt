@@ -1,0 +1,9 @@
+{% extends "base.txt" %}
+{% block body %}
+Salom, {{ user.display_name or user.username }}!
+
+Ro'yxatdan o'tganingiz uchun rahmat. Platformani oching va testlardan boshlang.
+
+{% if action_url %}TestMasterBSU ga kirish: {{ action_url }}
+{% endif %}
+{% endblock %}
