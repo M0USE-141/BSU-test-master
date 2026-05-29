@@ -27,6 +27,7 @@ from api.dependencies.storage import get_storage_backend
 from api.models.db.question import Question
 from api.models.db.test_collection import TestCollection
 from api.services import storage_keys
+from api.services.storage_keys import StorageKeyError
 
 log = logging.getLogger("backfill")
 
@@ -49,9 +50,13 @@ def _classify_ext(name: str) -> str:
     return ".png"  # safe default for unrecognized image suffixes
 
 
-def _migrate_image(storage, test_uuid: str, old_src: str) -> str | None:
+def _migrate_image(storage, test_uuid: str, old_src: str, *, dry_run: bool) -> str | None:
     """Returns the new short-id filename, or None if the legacy file is gone."""
-    old_key = storage_keys.material_key(test_uuid, PurePosixPath(old_src).name)
+    try:
+        old_key = storage_keys.material_key(test_uuid, PurePosixPath(old_src).name)
+    except StorageKeyError as exc:
+        log.warning("test=%s bad legacy src %r: %s", test_uuid, old_src, exc)
+        return None
     try:
         data = storage.get_object_bytes(old_key)
     except Exception as exc:
@@ -61,25 +66,25 @@ def _migrate_image(storage, test_uuid: str, old_src: str) -> str | None:
     ext = _classify_ext(old_src)
     new_name = f"{stem}{ext}"
     new_key = storage_keys.material_key(test_uuid, new_name)
-    if not storage.object_exists(new_key):
+    if not dry_run and not storage.object_exists(new_key):
         storage.put_object(new_key, io.BytesIO(data),
                            content_type="application/octet-stream",
                            length=len(data))
     return new_name
 
 
-def _migrate_formula(storage, test_uuid: str, mathml_xml: str) -> str:
+def _migrate_formula(storage, test_uuid: str, mathml_xml: str, *, dry_run: bool) -> str:
     encoded = mathml_xml.encode("utf-8")
     stem = _sha1_7(encoded)
     key = storage_keys.material_key(test_uuid, f"{stem}.mml")
-    if not storage.object_exists(key):
+    if not dry_run and not storage.object_exists(key):
         storage.put_object(key, io.BytesIO(encoded),
                            content_type="application/xml",
                            length=len(encoded))
     return stem
 
 
-def _walk_inlines(content_obj: dict, storage, test_uuid: str, stats: dict) -> bool:
+def _walk_inlines(content_obj: dict, storage, test_uuid: str, stats: dict, *, dry_run: bool) -> bool:
     """Mutates inlines inside a content object {blocks: [...]}. Returns True if any change was made."""
     changed = False
     blocks = content_obj.get("blocks")
@@ -92,7 +97,7 @@ def _walk_inlines(content_obj: dict, storage, test_uuid: str, stats: dict) -> bo
                 src = inl.get("src") or ""
                 if not src or not _is_legacy_image_src(src):
                     continue
-                new_name = _migrate_image(storage, test_uuid, src)
+                new_name = _migrate_image(storage, test_uuid, src, dry_run=dry_run)
                 if new_name is None:
                     stats["image_missing"] += 1
                     continue
@@ -105,7 +110,7 @@ def _walk_inlines(content_obj: dict, storage, test_uuid: str, stats: dict) -> bo
                 xml = inl.get("mathml")
                 if not xml:
                     continue
-                stem = _migrate_formula(storage, test_uuid, xml)
+                stem = _migrate_formula(storage, test_uuid, xml, dry_run=dry_run)
                 inl["id"] = stem
                 inl.pop("mathml", None)
                 stats["formula_extracted"] += 1
@@ -113,19 +118,19 @@ def _walk_inlines(content_obj: dict, storage, test_uuid: str, stats: dict) -> bo
     return changed
 
 
-def _walk_question_payload(payload: dict, storage, test_uuid: str, stats: dict) -> bool:
+def _walk_question_payload(payload: dict, storage, test_uuid: str, stats: dict, *, dry_run: bool) -> bool:
     """Question payload has keys: question/correct (content objects) +
     options[].content. Walk all of them."""
     changed = False
     for key in ("question", "correct"):
         sub = payload.get(key)
         if isinstance(sub, dict):
-            if _walk_inlines(sub, storage, test_uuid, stats):
+            if _walk_inlines(sub, storage, test_uuid, stats, dry_run=dry_run):
                 changed = True
     for opt in payload.get("options", []):
         sub = opt.get("content")
         if isinstance(sub, dict):
-            if _walk_inlines(sub, storage, test_uuid, stats):
+            if _walk_inlines(sub, storage, test_uuid, stats, dry_run=dry_run):
                 changed = True
     return changed
 
@@ -159,7 +164,7 @@ def run(only_test_id: str | None, dry_run: bool) -> int:
             for q in qs:
                 if not isinstance(q.payload, dict):
                     continue
-                if _walk_question_payload(q.payload, storage, test_uuid, per):
+                if _walk_question_payload(q.payload, storage, test_uuid, per, dry_run=dry_run):
                     # SQLAlchemy needs an explicit signal that a JSON column
                     # mutated in place — re-assign to itself.
                     q.payload = dict(q.payload)
