@@ -26,7 +26,6 @@ import { buildMailLayout } from '../../components/mail-layout.js';
 import { navigate } from '../../router.js';
 import { iconEl } from '../../icons.js';
 import { t } from '../../utils/locale.js';
-import { getClientId } from '../../utils/client-id.js';
 
 let _renderToken = 0;
 
@@ -241,7 +240,6 @@ async function renderDetail(detail, state, tests) {
   const csvBtn = document.createElement('a');
   csvBtn.className = 'btn btn--ghost btn--small';
   const params = new URLSearchParams();
-  params.set('clientId', getClientId());
   if (state.sel && state.sel !== 'all' && state.sel !== 'weak' && state.sel !== 'activity') {
     params.set('testId', state.sel);
   }
@@ -281,8 +279,7 @@ async function renderDetail(detail, state, tests) {
 async function renderSummaryView(body, state, tests) {
   body.innerHTML = '';
 
-  const clientId = getClientId();
-  const aggParams = { clientId: clientId };
+  const aggParams = {};
   if (state.sel !== 'all') aggParams.testId = state.sel;
   // Apply period as a date range via startDate.
   const days = state.period === '7' ? 7 : state.period === '30' ? 30 : null;
@@ -417,7 +414,7 @@ async function renderSummaryView(body, state, tests) {
   body.appendChild(hmCard.el);
 
   try {
-    const hm = await getHeatmap(53);
+    const hm = await getHeatmap(52);
     if (hm && Array.isArray(hm.days)) renderHeatmap(hmSlot, hm.days);
     else hmSlot.appendChild(emptyHint('Нет данных за год'));
   } catch (_) {
@@ -551,7 +548,7 @@ async function renderActivityView(body, state) {
   body.appendChild(hmCard.el);
 
   try {
-    const hm = await getHeatmap(53);
+    const hm = await getHeatmap(52);
     if (hm && Array.isArray(hm.days)) renderHeatmap(hmSlot, hm.days);
     else hmSlot.appendChild(emptyHint('Нет данных'));
   } catch (_) {
@@ -566,7 +563,7 @@ async function renderActivityView(body, state) {
   body.appendChild(attemptsCard.el);
 
   try {
-    const resp = await listAttempts({ clientId: getClientId(), limit: 30 });
+    const resp = await listAttempts({ limit: 30 });
     const items = Array.isArray(resp) ? resp : (resp.items || resp.attempts || []);
     if (items.length === 0) {
       listSlot.appendChild(emptyHint('Попыток ещё нет'));

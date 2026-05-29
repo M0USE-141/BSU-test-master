@@ -4,7 +4,7 @@
  */
 import { login, getMe } from '../../api/auth.js';
 import { navigate } from '../../router.js';
-import { setState } from '../../state.js';
+import { setState, getAccessToken, clearAccessToken } from '../../state.js';
 import { t, setLocale, getLocale } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
 import { setTheme, getResolvedTheme } from '../../utils/theme.js';
@@ -213,16 +213,16 @@ function parseApiError(err) {
 // ─── render ─────────────────────────────────────────────────
 
 export default async function render(root, params = {}) {
-  // Auto-redirect if token already valid
-  const existingToken = localStorage.getItem('access_token');
-  if (existingToken) {
+  // Auto-redirect if access token is still valid (set on boot by
+  // main.js's silent refresh).
+  if (getAccessToken()) {
     try {
       const user = await getMe();
       setState({ user });
       navigate('/home');
       return;
     } catch {
-      localStorage.removeItem('access_token');
+      clearAccessToken();
     }
   }
 
@@ -344,7 +344,7 @@ export default async function render(root, params = {}) {
     } catch (err) {
       setButtonLoading(false);
       // If token was already stored by login(), getMe() failed — navigate anyway
-      if (localStorage.getItem('access_token')) {
+      if (getAccessToken()) {
         navigate('/home');
         return;
       }

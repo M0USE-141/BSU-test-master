@@ -23,7 +23,7 @@
 import { addQuestion, updateQuestion, deleteQuestion } from '../api/questions.js';
 import { createChangeRequest } from '../api/change-requests.js';
 import { listMaterials, uploadMaterial } from '../api/materials.js';
-import { renderContent, typesetMath, hasFormulas } from '../utils/render-blocks.js';
+import { renderContent, typesetMath, hasFormulas, attachAssets } from '../utils/render-blocks.js';
 import { blocksToTokens, tokensToBlocks } from '../utils/token-blocks.js';
 import { toast } from './toast.js';
 import { confirm as confirmDialog } from './confirm-dialog.js';
@@ -449,14 +449,18 @@ function buildPreviewBody(state, sel, n) {
   const qHtml = renderContent(sel.question, state.assetsBase);
   qBox.innerHTML = qHtml || '<i style="color:var(--ink-tertiary);">(пустой вопрос)</i>';
   if (hasFormulas(qHtml)) typesetMath(qBox);
+  attachAssets(qBox).catch(() => {});
   body.appendChild(qBox);
 
   // Options.
   const opts = sel.options || [];
   const correctIdx = findCorrectIndex(opts);
   const optsWrap = document.createElement('div');
-  optsWrap.style.display = 'grid';
-  optsWrap.style.gridTemplateColumns = opts.length > 2 ? '1fr 1fr' : '1fr';
+  // One option per row — long formula-only options don't fit in a
+  // 2-column grid, and the visual ordering matches how questions are
+  // taken in the actual test.
+  optsWrap.style.display = 'flex';
+  optsWrap.style.flexDirection = 'column';
   optsWrap.style.gap = '8px';
   optsWrap.style.marginBottom = '18px';
   opts.forEach(function (opt, i) {
@@ -498,6 +502,7 @@ function buildPreviewBody(state, sel, n) {
     const optHtml = renderContent(opt.content, state.assetsBase);
     text.innerHTML = optHtml || '<i style="color:var(--ink-tertiary);">(пусто)</i>';
     if (hasFormulas(optHtml)) typesetMath(text);
+    attachAssets(text).catch(() => {});
     row.appendChild(text);
 
     if (isCorrect) {
@@ -794,11 +799,13 @@ function buildEditBody(state, sel, n) {
     const qHtml = renderContent(tokensToBlocks(draft.question, idMap), state.assetsBase);
     qPrev.innerHTML = qHtml || '<i style="color:var(--ink-tertiary);">пусто</i>';
     if (hasFormulas(qHtml)) typesetMath(qPrev);
+    attachAssets(qPrev).catch(() => {});
     draft.options.forEach(function (opt, i) {
       const html = renderContent(tokensToBlocks(opt.text, idMap), state.assetsBase);
       if (!optPrevs[i]) return;
       optPrevs[i].innerHTML = html || '<i style="color:var(--ink-tertiary);">пусто</i>';
       if (hasFormulas(html)) typesetMath(optPrevs[i]);
+      attachAssets(optPrevs[i]).catch(() => {});
     });
   }
 }

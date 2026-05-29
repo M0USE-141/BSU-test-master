@@ -5,7 +5,7 @@
 import { register, login, getMe } from '../../api/auth.js';
 import { buildPasswordChecklist } from './_password-checklist.js';
 import { navigate } from '../../router.js';
-import { setState } from '../../state.js';
+import { setState, getAccessToken, clearAccessToken, setAccessToken } from '../../state.js';
 import { t, setLocale, getLocale } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
 import { setTheme, getResolvedTheme } from '../../utils/theme.js';
@@ -221,16 +221,16 @@ function parseApiError(err) {
 // ─── render ─────────────────────────────────────────────────
 
 export default async function render(root, params = {}) {
-  // Auto-redirect if token already valid
-  const existingToken = localStorage.getItem('access_token');
-  if (existingToken) {
+  // Auto-redirect if access token is still valid (set on boot by
+  // main.js's silent refresh).
+  if (getAccessToken()) {
     try {
       const user = await getMe();
       setState({ user });
       navigate('/home');
       return;
     } catch {
-      localStorage.removeItem('access_token');
+      clearAccessToken();
     }
   }
 
@@ -418,12 +418,10 @@ export default async function render(root, params = {}) {
       return;
     }
 
-    // Step 2: Auto-login (registration already succeeded)
+    // Step 2: Auto-login (registration already succeeded). `login()`
+    // stores the access token in memory; nothing to mirror to storage.
     try {
-      const data = await login(username, password);
-      if (data?.access_token) {
-        localStorage.setItem('access_token', data.access_token);
-      }
+      await login(username, password);
       const user = await getMe();
       setState({ user });
       navigate('/home');

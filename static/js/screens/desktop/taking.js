@@ -8,9 +8,9 @@ import { startAttempt, recordAnswer, finishAttempt, abandonAttempt } from '../..
 import { navigate } from '../../router.js';
 import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
-import { renderContent, typesetMath } from '../../utils/render-blocks.js';
+import { renderContent, typesetMath, attachAssets } from '../../utils/render-blocks.js';
 import { escHtml } from '../../utils/escape.js';
-import { getClientId } from '../../utils/client-id.js';
+import { newUuid } from '../../utils/client-id.js';
 import { formatSeconds as formatTime } from '../../utils/format.js';
 
 // ── Module state ──────────────────────────────────────────────
@@ -33,7 +33,6 @@ const _s = {
     shuffleOptions: false,
   },
   attemptId: /** @type {string|null} */ (null),
-  clientId: /** @type {string|null} */ (null),
   currentIdx: 0,
   /** @type {{ [qId: number]: { optionIdx: number, isCorrect: boolean } }} */
   answers: {},
@@ -303,15 +302,13 @@ async function beginAttempt() {
   _s.currentIdx = 0;
   _s.answers = {};
   _s.flagged = new Set();
-  _s.attemptId = crypto.randomUUID();
-  _s.clientId = getClientId();
+  _s.attemptId = newUuid();
   _s.startTime = Date.now();
   _s.timeLeft = _s.settings.timeLimitMin > 0 ? _s.settings.timeLimitMin * 60 : null;
 
   startAttempt({
     attemptId: _s.attemptId,
     testId: _s.testId,
-    clientId: _s.clientId,
     settings: {
       // mode is required server-side — drives validation of the rest.
       mode: _s.settings.mode || 'training',
@@ -328,7 +325,6 @@ async function beginAttempt() {
     })),
   }).catch(e => console.warn('[taking] startAttempt:', e));
 
-  sessionStorage.setItem(`att:${_s.attemptId}:client`, _s.clientId);
   sessionStorage.setItem(`att:${_s.attemptId}:testId`, _s.testId || '');
 
   _s.phase = 'taking';
@@ -636,7 +632,6 @@ function onOptionClick(question, optionIdx) {
   const elapsed = Date.now() - (_s.startTime || Date.now());
   recordAnswer(_s.attemptId, {
     testId: _s.testId,
-    clientId: _s.clientId,
     questionId: question.id,
     answerIndex: optionIdx,
     canonicalAnswerIndex: optionIdx,
@@ -669,7 +664,6 @@ async function finishUp(timedOut) {
   try {
     const result = await finishAttempt(attemptId, {
       testId,
-      clientId: _s.clientId,
       totalDurationMs: totalMs,
     });
 
@@ -862,11 +856,13 @@ async function _mount() {
   if (_s.phase === 'taking')  {
     _root.appendChild(buildTakingScreen());
     await typesetMath(_root);
+    attachAssets(_root).catch(() => {});
     return;
   }
   if (_s.phase === 'review') {
     _root.appendChild(buildReviewScreen());
     await typesetMath(_root);
+    attachAssets(_root).catch(() => {});
     return;
   }
 }
@@ -885,7 +881,7 @@ export default async function render(root, params = {}) {
     currentIdx: 0, answers: {}, flagged: new Set(),
     startTime: null, timeLeft: null,
     timerHandle: null, advanceTimer: null,
-    attemptId: params.attemptId || null, clientId: null,
+    attemptId: params.attemptId || null,
     reviewSnap: null, _shuffleCache: {},
   });
   _mount();
@@ -958,16 +954,27 @@ export default async function render(root, params = {}) {
       const hand = JSON.parse(handoffRaw);
       // Apply settings.
       _s.settings.count = Math.max(1, parseInt(hand.count, 10) || _s.settings.count);
-      _s.settings.order = hand.shuffle ? 'random' : 'sequential';
+      // Question-order: accept the new `shuffleQuestions` key from the
+      // pre-test rewrite, fall back to the legacy `shuffle` key.
+      const shuffleQ = (typeof hand.shuffleQuestions === 'boolean')
+        ? hand.shuffleQuestions
+        : !!hand.shuffle;
+      _s.settings.order = shuffleQ ? 'random' : 'sequential';
       _s.settings.timeLimitMin = parseInt(hand.timeLimitMin, 10) || 0;
-      _s.settings.showAnswers = !!hand.revealImmediately;
-      // The render layer reads `shuffleOptions` — accept the explicit handoff
-      // value when present, otherwise leave the default.
+      _s.settings.mode = hand.mode || 'training';
+      // Exam mode locks reveal off (server enforces; mirror here so the
+      // UI flag is consistent with what `_validate_mode_settings` accepts).
+      _s.settings.showAnswers = _s.settings.mode === 'exam'
+        ? false
+        : !!hand.revealImmediately;
+      // Per-question option shuffle.
       if (typeof hand.shuffleAnswers === 'boolean') {
         _s.settings.shuffleOptions = hand.shuffleAnswers;
       }
       _s.settings.allowSkip = true;
-      _s.settings.mode = hand.mode || 'training';
+      // Exam: forward-only navigation (no backtracking in the palette
+      // or via the prev button). Render layer reads `forwardOnly`.
+      _s.settings.forwardOnly = _s.settings.mode === 'exam';
       _s.settings.source = hand.source || 'all';
       // Filter the question pool if a source produced an id list.
       if (Array.isArray(hand.filterIds) && hand.filterIds.length > 0) {

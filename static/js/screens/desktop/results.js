@@ -412,9 +412,8 @@ export default async function render(root, params = {}) {
     }
   }
 
-  // Fallback: load from API
-  const clientId = attemptId ? sessionStorage.getItem(`att:${attemptId}:client`) : null;
-  if (!attemptId || !clientId) {
+  // Fallback: load from API. Auth-only; the server checks ownership.
+  if (!attemptId) {
     root.innerHTML = `
       <div class="rs" style="align-items:center;justify-content:center;gap:12px;padding:var(--pad);">
         <p style="font-weight:600;">${t('common.error') || 'Error'}</p>
@@ -425,7 +424,7 @@ export default async function render(root, params = {}) {
   }
 
   try {
-    const data = await getAttempt(attemptId, clientId);
+    const data = await getAttempt(attemptId);
     root.innerHTML = '';
     root.appendChild(buildResultsScreen(data));
   } catch (e) {

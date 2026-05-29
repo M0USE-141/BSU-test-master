@@ -25,7 +25,6 @@ import { mountAppShell } from '../../components/app-shell.js';
 import { buildMailLayout } from '../../components/mail-layout.js';
 import { toast } from '../../components/toast.js';
 import { iconEl } from '../../icons.js';
-import { getClientId } from '../../utils/client-id.js';
 import { t } from '../../utils/locale.js';
 
 export default async function render(root, params) {
@@ -143,7 +142,8 @@ async function loadAttempt(testId, attemptId) {
     };
   }
 
-  // Path 2 (true deep-link): fetch both attempt + test.
+  // Path 2 (true deep-link): fetch both attempt + test. Auth-only; the
+  // server validates ownership of the attempt against the bearer user.
   const [attempt, test] = await Promise.all([
     getAttempt(attemptId).catch(function () { return null; }),
     getTest(testId).catch(function () { return null; }),
