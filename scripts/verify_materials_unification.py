@@ -1,7 +1,7 @@
 """Manual verification for Task 1-5: docx → unified materials.
 
 Run:
-    python scripts/test_word_extract_unification.py path/to/fixture.docx
+    python scripts/verify_materials_unification.py path/to/fixture.docx
 
 What it asserts:
   - Every image file in the assets dir is named <sha1[:7]>.<ext>.
@@ -108,6 +108,6 @@ def main(docx_path: Path) -> int:
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("usage: python scripts/test_word_extract_unification.py <fixture.docx>")
+        print("usage: python scripts/verify_materials_unification.py <fixture.docx>")
         sys.exit(2)
     sys.exit(main(Path(sys.argv[1])))
