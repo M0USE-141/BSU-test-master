@@ -69,7 +69,14 @@ def content_items_to_blocks(
                 "type": INLINE_FORMULA_TYPE,
                 "id": item.formula_id,
             }
-            if item.formula_text:
+            # Prefer referenced form. When `formula_id` is set, the extractor
+            # already mirrored the MathML to `<id>.mml` in materials/, so
+            # the frontend resolves it through the materials map. Only fall
+            # back to inline `mathml`/`latex` when there's no id (e.g. OMML
+            # XSLT missing → we got raw text we couldn't classify).
+            if item.formula_id:
+                pass
+            elif item.formula_text:
                 if _is_mathml(item.formula_text):
                     inline["mathml"] = item.formula_text
                 else:
