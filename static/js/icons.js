@@ -26,6 +26,8 @@ const PATHS = {
   chevL:  '<path d="M15 6l-6 6 6 6"/>',
   bell:   '<path d="M6 17h12l-2-2v-4a4 4 0 00-8 0v4z"/><path d="M10 20a2 2 0 004 0"/>',
   menu:   '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  grid:   '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
+  download: '<path d="M12 4v12m0 0l-4-4m4 4l4-4M4 18h16"/>',
   globe:  '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>',
   lock:   '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>',
   eye:    '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',

@@ -18,6 +18,8 @@ import { navigate, getCurrentRoute } from '../router.js';
 import { openSearchPalette } from '../search-palette.js';
 import { listNotifications } from '../api/notifications.js';
 import { getState } from '../state.js';
+import { setTheme, getResolvedTheme } from '../utils/theme.js';
+import { updateProfile } from '../api/users.js';
 
 const SHELL_ATTR = 'data-app-shell';
 const RAIL_KEYS = ['tests', 'stats', 'cr', 'notif', 'activity', 'import', 'profile'];
@@ -173,7 +175,22 @@ function buildTopbar() {
   bar.appendChild(actions);
   actions.appendChild(bellBtn);
 
-  actions.appendChild(topbarIconBtn('cog', () => navigate('/settings')));
+  // Theme toggle — replaces the old gear-to-settings shortcut. All
+  // settings now live inside /profile; toggling light/dark is the one
+  // thing common enough to deserve a one-click affordance.
+  const themeBtn = topbarIconBtn(
+    getResolvedTheme() === 'dark' ? 'sun' : 'moon',
+    () => {
+      const next = getResolvedTheme() === 'dark' ? 'light' : 'dark';
+      setTheme(next);
+      updateProfile({ theme: next }).catch(() => {});
+      // Swap icon in-place without rebuilding the entire shell.
+      const ico = themeBtn.querySelector('svg');
+      if (ico) ico.replaceWith(iconEl(next === 'dark' ? 'sun' : 'moon', 16));
+    },
+  );
+  themeBtn.setAttribute('aria-label', t('settings.theme.toggle') || 'Toggle theme');
+  actions.appendChild(themeBtn);
 
   const avatarBtn = document.createElement('button');
   avatarBtn.type = 'button';

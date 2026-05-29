@@ -23,6 +23,8 @@
  */
 import { getMyProfile, updateProfile, uploadAvatar, deleteAvatar } from '../../api/users.js';
 import { getMe } from '../../api/auth.js';
+import { setTheme, getResolvedTheme, setAccent, getAccent } from '../../utils/theme.js';
+import { setLocale, getLocale } from '../../utils/locale.js';
 // changePassword is loaded lazily on click — this lets profile.js render
 // even when an older auth.js is sitting in the browser's ES-module realm
 // cache (common during dev after auth.js gains a new export).
@@ -67,9 +69,18 @@ export default async function render(root, params) {
   }
   main.innerHTML = '';
 
+  // Accept both `?sub=` (legacy) and `?section=` (post-unification with
+  // /settings redirect). Known sub-panes:
+  //   personal | security | access | sessions | notif (Профиль/Уведомления)
+  //   appearance         (Внешний вид: тема/акцент/язык в одном пане)
+  //   data               (Данные: экспорт + очистить кэш)
+  //   about              (О приложении: версия)
+  const requestedSub = params.section || params.sub || 'personal';
+  const KNOWN_SUBS = ['personal','security','access','sessions','notif',
+                      'appearance','data','about'];
   const state = {
     profile: profile,
-    sub: params.sub || 'personal',  // personal | security | access | sessions | notif
+    sub: KNOWN_SUBS.includes(requestedSub) ? requestedSub : 'personal',
   };
 
   const built = buildMailLayout(main, { sidebarWidth: 252 });
@@ -128,10 +139,49 @@ function renderSidebar(sidebar, detail, state) {
   navItem(nav, 'user',   'Личные данные',         state, 'personal',  detail);
   navItem(nav, 'lock',   'Безопасность',          state, 'security',  detail);
   navItem(nav, 'share',  'Доступ к моим тестам',  state, 'access',    detail);
-  navItem(nav, 'clock',  'Сессии',                state, 'sessions',  detail);
+
+  nav.appendChild(sectionLabel('Внешний вид'));
+  navItem(nav, 'sun',    'Тема, акцент, язык',    state, 'appearance', detail);
 
   nav.appendChild(sectionLabel('Уведомления'));
   navItem(nav, 'bell',   'Email / push',          state, 'notif',     detail);
+
+  nav.appendChild(sectionLabel('Данные'));
+  navItem(nav, 'download', 'Экспорт + кэш',       state, 'data',      detail);
+
+  nav.appendChild(sectionLabel('О приложении'));
+  navItem(nav, 'info',   'Версия',                state, 'about',     detail);
+
+  // Сеанс: sessions list + logout. Sits just above the danger zone so
+  // logout is discoverable without being adjacent to "Delete account".
+  nav.appendChild(sectionLabel('Сеанс'));
+  navItem(nav, 'clock', 'Сессии', state, 'sessions', detail);
+  const logoutRow = document.createElement('button');
+  logoutRow.type = 'button';
+  logoutRow.className = 'mail-row';
+  const lMain = document.createElement('div');
+  lMain.className = 'mail-row__main';
+  lMain.style.display = 'flex';
+  lMain.style.alignItems = 'center';
+  lMain.style.gap = '8px';
+  const lIc = document.createElement('span');
+  lIc.style.lineHeight = '0';
+  lIc.appendChild(iconEl('arrowL', 14));
+  lMain.appendChild(lIc);
+  const lTitle = document.createElement('div');
+  lTitle.className = 'mail-row__title';
+  lTitle.textContent = t('profile.row.logout') || 'Выйти';
+  lMain.appendChild(lTitle);
+  logoutRow.appendChild(lMain);
+  logoutRow.addEventListener('click', async function () {
+    try {
+      const { logout } = await import('../../api/auth.js');
+      await logout();
+    } catch { /* best-effort */ }
+    setState({ user: null });
+    navigate('/auth/login');
+  });
+  nav.appendChild(logoutRow);
 
   nav.appendChild(sectionLabel('Опасная зона'));
   const dangerRow = document.createElement('button');
@@ -221,11 +271,14 @@ function renderDetail(detail, state) {
   detail.appendChild(wrap);
 
   const subTitle = {
-    personal: 'Личные данные',
-    security: 'Безопасность',
-    access:   'Доступ',
-    sessions: 'Сессии',
-    notif:    'Уведомления',
+    personal:   'Личные данные',
+    security:   'Безопасность',
+    access:     'Доступ',
+    sessions:   'Сессии',
+    notif:      'Уведомления',
+    appearance: 'Тема, акцент, язык',
+    data:       'Данные',
+    about:      'О приложении',
   }[state.sub] || '';
 
   const caps = document.createElement('div');
@@ -246,6 +299,203 @@ function renderDetail(detail, state) {
   else if (state.sub === 'sessions') renderSessions(wrap);
   else if (state.sub === 'access') renderAccessStub(wrap);
   else if (state.sub === 'notif') renderNotifStub(wrap);
+  else if (state.sub === 'appearance') renderAppearance(wrap);
+  else if (state.sub === 'data') renderData(wrap);
+  else if (state.sub === 'about') renderAbout(wrap);
+}
+
+// ─── Appearance / Data / About panes (moved from /settings) ───────
+
+function renderAppearance(wrap) {
+  // Theme card.
+  const themeCard = buildSettingsCard('Тема');
+  const themeRow = document.createElement('div');
+  themeRow.style.cssText = 'display:flex;gap:8px;';
+  const current = getResolvedTheme();
+  ['light', 'dark'].forEach(function (mode) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip' + (current === mode ? ' chip--active' : '');
+    chip.textContent = mode === 'light'
+      ? (t('settings.theme.light') || 'Светлая')
+      : (t('settings.theme.dark')  || 'Тёмная');
+    chip.addEventListener('click', function () {
+      setTheme(mode);
+      updateProfile({ theme: mode }).catch(function () {});
+      renderAppearance(wrap);
+      wrap.querySelectorAll('.card').forEach(function (c) { c.remove(); });
+    });
+    themeRow.appendChild(chip);
+  });
+  themeCard.body.appendChild(themeRow);
+  wrap.appendChild(themeCard.el);
+
+  // Accent card.
+  const accentCard = buildSettingsCard('Акцент');
+  accentCard.el.style.marginTop = '12px';
+  const accentRow = document.createElement('div');
+  accentRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+  const swatches = [
+    ['green',  '#4f9b6a', 'Green'],
+    ['coral',  '#e07a5f', 'Coral'],
+    ['yellow', '#e6b54a', 'Yellow'],
+    ['blue',   '#4a78c4', 'Blue'],
+    ['mono',   '#3a3530', 'Mono'],
+  ];
+  const activeAccent = getAccent();
+  swatches.forEach(function (entry) {
+    const key = entry[0], color = entry[1], label = entry[2];
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.dataset.accent = key;
+    btn.style.cssText = [
+      'padding:5px 10px 5px 6px;display:inline-flex;align-items:center;gap:6px;',
+      'border-radius:999px;font-size:12px;cursor:pointer;color:var(--ink);',
+      'background:' + (activeAccent === key ? 'var(--accent-soft)' : 'var(--paper)') + ';',
+      'border:1.5px solid ' + (activeAccent === key ? 'var(--ink)' : 'var(--ink-soft)') + ';',
+    ].join('');
+    const dot = document.createElement('span');
+    dot.style.cssText = 'width:14px;height:14px;border-radius:50%;background:' + color + ';flex-shrink:0;';
+    btn.appendChild(dot);
+    const labelEl = document.createElement('span');
+    labelEl.textContent = label;
+    btn.appendChild(labelEl);
+    btn.addEventListener('click', function () {
+      setAccent(key);
+      updateProfile({ accent: key }).catch(function () {});
+      accentRow.querySelectorAll('button').forEach(function (b) {
+        const isActive = b.dataset.accent === key;
+        b.style.background = isActive ? 'var(--accent-soft)' : 'var(--paper)';
+        b.style.border = '1.5px solid ' + (isActive ? 'var(--ink)' : 'var(--ink-soft)');
+      });
+      toast(t('common.save') || 'Сохранено', { tone: 'success', timeout: 1200 });
+    });
+    accentRow.appendChild(btn);
+  });
+  accentCard.body.appendChild(accentRow);
+  wrap.appendChild(accentCard.el);
+
+  // Language card.
+  const langCard = buildSettingsCard('Язык интерфейса');
+  langCard.el.style.marginTop = '12px';
+  const langRow = document.createElement('div');
+  langRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+  const langs = [['ru', 'Русский'], ['en', 'English'], ['uz', 'Oʻzbek']];
+  const activeLang = getLocale();
+  langs.forEach(function (entry) {
+    const code = entry[0], label = entry[1];
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip' + (activeLang === code ? ' chip--active' : '');
+    chip.textContent = label;
+    chip.addEventListener('click', async function () {
+      await setLocale(code);
+      updateProfile({ language: code }).catch(function () {});
+      toast(label, { tone: 'success', timeout: 1200 });
+    });
+    langRow.appendChild(chip);
+  });
+  langCard.body.appendChild(langRow);
+  wrap.appendChild(langCard.el);
+}
+
+function renderData(wrap) {
+  const exportCard = buildSettingsCard('Экспорт');
+  const exportDesc = document.createElement('div');
+  exportDesc.style.cssText = 'font-size:13px;color:var(--ink-secondary);margin-bottom:10px;';
+  exportDesc.textContent = 'Скачайте все ваши попытки в формате JSON.';
+  exportCard.body.appendChild(exportDesc);
+  const exportBtn = document.createElement('button');
+  exportBtn.type = 'button';
+  exportBtn.className = 'btn btn--small';
+  exportBtn.textContent = 'Экспортировать попытки';
+  exportBtn.addEventListener('click', async function () {
+    try {
+      const { listAttempts } = await import('../../api/statistics.js');
+      const resp = await listAttempts({ limit: 1000 });
+      const blob = new Blob([JSON.stringify(resp, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'testmaster-attempts.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast('Экспорт готов', { tone: 'success' });
+    } catch (e) {
+      toast(e?.message || 'Не удалось экспортировать', { tone: 'error' });
+    }
+  });
+  exportCard.body.appendChild(exportBtn);
+  wrap.appendChild(exportCard.el);
+
+  const cacheCard = buildSettingsCard('Локальный кэш');
+  cacheCard.el.style.marginTop = '12px';
+  const cacheDesc = document.createElement('div');
+  cacheDesc.style.cssText = 'font-size:13px;color:var(--ink-secondary);margin-bottom:10px;';
+  cacheDesc.textContent = 'Сохранённые предпочтения интерфейса, prefetch-кэш списков. Не влияет на ваши данные на сервере.';
+  cacheCard.body.appendChild(cacheDesc);
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
+  clearBtn.className = 'btn btn--small';
+  clearBtn.textContent = 'Очистить кэш';
+  clearBtn.addEventListener('click', function () {
+    try {
+      const keepKeys = ['theme', 'accent', 'locale'];
+      const saved = {};
+      keepKeys.forEach(function (k) { saved[k] = localStorage.getItem(k); });
+      localStorage.clear();
+      sessionStorage.clear();
+      keepKeys.forEach(function (k) { if (saved[k] != null) localStorage.setItem(k, saved[k]); });
+      toast('Кэш очищен', { tone: 'success' });
+    } catch (e) {
+      toast(e?.message || 'Не удалось очистить', { tone: 'error' });
+    }
+  });
+  cacheCard.body.appendChild(clearBtn);
+  wrap.appendChild(cacheCard.el);
+}
+
+function renderAbout(wrap) {
+  const card = buildSettingsCard();
+  const ver = (typeof window !== 'undefined' && window.__APP_VERSION__) || 'dev';
+  const rows = [
+    ['Версия', String(ver)],
+    ['Сборка', 'SPA / hash-router'],
+    ['Стек', 'FastAPI + Postgres + MinIO'],
+  ];
+  const dl = document.createElement('div');
+  dl.style.cssText = 'display:grid;grid-template-columns:max-content 1fr;gap:8px 14px;font-size:13px;';
+  rows.forEach(function (r) {
+    const k = document.createElement('div');
+    k.style.color = 'var(--ink-tertiary)';
+    k.textContent = r[0];
+    const v = document.createElement('div');
+    v.style.color = 'var(--ink)';
+    v.style.fontFamily = "'JetBrains Mono', monospace";
+    v.style.fontSize = '12px';
+    v.textContent = r[1];
+    dl.appendChild(k); dl.appendChild(v);
+  });
+  card.body.appendChild(dl);
+  wrap.appendChild(card.el);
+}
+
+function buildSettingsCard(title) {
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.style.padding = '0';
+  if (title) {
+    const head = document.createElement('div');
+    head.style.cssText = 'padding:12px 14px;border-bottom:1px solid var(--ink-soft);';
+    const titleEl = document.createElement('div');
+    titleEl.style.cssText = 'font-size:13px;font-weight:var(--fw-semibold);';
+    titleEl.textContent = title;
+    head.appendChild(titleEl);
+    el.appendChild(head);
+  }
+  const body = document.createElement('div');
+  body.style.padding = '14px';
+  el.appendChild(body);
+  return { el: el, body: body };
 }
 
 // ─── Personal ────────────────────────────────────────────────

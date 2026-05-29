@@ -7,7 +7,7 @@
  */
 
 import { isMobile, onBreakpointChange } from './utils/device.js';
-import { setState } from './state.js';
+import { setState, getAccessToken } from './state.js';
 
 /**
  * Cache-bust version: injected by the server as window.__APP_VERSION__ (stable
@@ -52,17 +52,23 @@ let _root = null;
 const ROUTES = [
   {
     pattern: '/auth/login',
-    module: () => import(`./screens/auth/login.js?v=${_V}`),
+    module: () => isMobile()
+      ? import(`./screens/mobile/auth/login.js?v=${_V}`)
+      : import(`./screens/auth/login.js?v=${_V}`),
     shell: false,
   },
   {
     pattern: '/auth/register',
-    module: () => import(`./screens/auth/register.js?v=${_V}`),
+    module: () => isMobile()
+      ? import(`./screens/mobile/auth/register.js?v=${_V}`)
+      : import(`./screens/auth/register.js?v=${_V}`),
     shell: false,
   },
   {
     pattern: '/auth/forgot',
-    module: () => import(`./screens/auth/forgot.js?v=${_V}`),
+    module: () => isMobile()
+      ? import(`./screens/mobile/auth/forgot.js?v=${_V}`)
+      : import(`./screens/auth/forgot.js?v=${_V}`),
     shell: false,
   },
   {
@@ -72,12 +78,16 @@ const ROUTES = [
   },
   {
     pattern: '/error/403',
-    module: () => import(`./screens/errors/403.js?v=${_V}`),
+    module: () => isMobile()
+      ? import(`./screens/mobile/errors/403.js?v=${_V}`)
+      : import(`./screens/errors/403.js?v=${_V}`),
     shell: false,
   },
   {
     pattern: '/error/404',
-    module: () => import(`./screens/errors/404.js?v=${_V}`),
+    module: () => isMobile()
+      ? import(`./screens/mobile/errors/404.js?v=${_V}`)
+      : import(`./screens/errors/404.js?v=${_V}`),
     shell: false,
   },
   {
@@ -106,15 +116,31 @@ const ROUTES = [
   },
   {
     pattern: '/test/:id/start',
-    module: () => import(`./screens/desktop/pre-test.js?v=${_V}`),
+    module: () => isMobile()
+      ? import(`./screens/mobile/pre-test.js?v=${_V}`)
+      : import(`./screens/desktop/pre-test.js?v=${_V}`),
   },
   {
     pattern: '/test/:id/edit',
-    module: () => import(`./screens/desktop/edit-collection.js?v=${_V}`),
+    module: () => isMobile()
+      ? import(`./screens/mobile/edit-collection.js?v=${_V}`)
+      : import(`./screens/desktop/edit-collection.js?v=${_V}`),
   },
   {
+    // Mobile-only route for the single-question editor (M6). On
+    // desktop this URL falls back to the embedded panel inside
+    // edit-collection, so we redirect.
+    pattern: '/test/:id/q/:qid',
+    module: () => isMobile()
+      ? import(`./screens/mobile/question.js?v=${_V}`)
+      : import(`./screens/desktop/edit-collection.js?v=${_V}`),
+  },
+  {
+    // Legacy alias — /discover now lives inside /home as the Public
+    // chip. Redirect for any bookmarks/back-buttons still pointing
+    // at the old path.
     pattern: '/discover',
-    module: () => import(`./screens/desktop/discover.js?v=${_V}`),
+    redirect: '/home?filter=public',
   },
   {
     pattern: '/activity',
@@ -135,7 +161,9 @@ const ROUTES = [
   },
   {
     pattern: '/test/:id/results/:attemptId/q/:n',
-    module: () => import(`./screens/desktop/per-question.js?v=${_V}`),
+    module: () => isMobile()
+      ? import(`./screens/mobile/per-question.js?v=${_V}`)
+      : import(`./screens/desktop/per-question.js?v=${_V}`),
   },
   {
     pattern: '/profile',
@@ -144,10 +172,15 @@ const ROUTES = [
       : import(`./screens/desktop/profile.js?v=${_V}`),
   },
   {
+    // Mobile keeps the dedicated settings screen because mobile profile
+    // is row-based and pushes users to dedicated sheets/panes — the
+    // existing mobile/settings.js fits that pattern. Desktop folds
+    // everything into /profile, so /settings on desktop redirects.
     pattern: '/settings',
     module: () => isMobile()
       ? import(`./screens/mobile/settings.js?v=${_V}`)
-      : import(`./screens/desktop/settings.js?v=${_V}`),
+      : null,
+    desktopRedirect: '/profile?section=appearance',
   },
   {
     pattern: '/notifications',
@@ -241,7 +274,10 @@ async function handleRoute(pathOrObj) {
 
   // Auth guard — redirect unauthenticated users to login
   const publicRoutes = ['/auth/login', '/auth/register', '/auth/forgot', '/auth/reset', '/error/403', '/error/404'];
-  if (!publicRoutes.includes(effectivePath) && !localStorage.getItem('access_token')) {
+  // Auth guard uses the in-memory access token (set by login or by the
+  // boot-time silent refresh in main.js). localStorage is no longer
+  // touched — see Phase A of the auth refactor.
+  if (!publicRoutes.includes(effectivePath) && !getAccessToken()) {
     navigate('/auth/login');
     return;
   }
@@ -254,6 +290,13 @@ async function handleRoute(pathOrObj) {
   for (const route of ROUTES) {
     const match = matchPattern(route.pattern, effectivePath);
     if (match !== null) {
+      // Redirect routes — unconditional, or only-on-desktop.
+      const wantsRedirect = route.redirect
+        || (route.desktopRedirect && !isMobile());
+      if (wantsRedirect) {
+        navigate(route.redirect || route.desktopRedirect);
+        return;
+      }
       matchedModule = route.module;
       matchedRoute = route;
       // Merge path params + query params (path params take precedence)
