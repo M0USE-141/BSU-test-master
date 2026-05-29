@@ -1,17 +1,23 @@
 from __future__ import annotations
 
-import cloudconvert
 import logging
 import os
-import requests
+import shutil
+import subprocess
 from pathlib import Path
 
+import cloudconvert
+import requests
 from PIL import Image, UnidentifiedImageError
 
 log = logging.getLogger(__name__)
 
 
 METAFILE_EXTENSIONS = {".wmf", ".emf"}
+
+# Cap Inkscape per-file. Real-world WMF/EMF conversions finish in
+# under 5s; longer than this is almost certainly a stuck subprocess.
+INKSCAPE_TIMEOUT_SEC = 30
 
 
 def _convert_with_pillow(image_path: Path, output_path: Path) -> Path | None:
@@ -21,6 +27,49 @@ def _convert_with_pillow(image_path: Path, output_path: Path) -> Path | None:
             img.save(output_path, format="PNG")
     except (UnidentifiedImageError, OSError) as exc:
         log.warning("Failed to convert metafile %s to PNG: %s", image_path.name, exc)
+        return None
+    return output_path
+
+
+def _convert_with_inkscape(image_path: Path, output_path: Path) -> Path | None:
+    """Convert WMF/EMF → PNG via headless Inkscape (Linux container).
+
+    Inkscape ships with `libwmf2-svg` support and renders both WMF and
+    EMF off the box. On systems without `inkscape` in PATH we just
+    return None and let the caller fall back to CloudConvert (or
+    skip).
+    """
+    if not shutil.which("inkscape"):
+        return None
+    try:
+        result = subprocess.run(
+            [
+                "inkscape",
+                str(image_path),
+                "--export-type=png",
+                f"--export-filename={output_path}",
+                "--export-dpi=150",
+                # Suppress GTK/X11 chatter; we don't have a display in
+                # the container and Inkscape complains anyway.
+                "--export-background=white",
+                "--export-background-opacity=0",
+            ],
+            capture_output=True,
+            timeout=INKSCAPE_TIMEOUT_SEC,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        log.warning("Inkscape timed out converting %s", image_path.name)
+        return None
+    if result.returncode != 0:
+        log.warning(
+            "Inkscape failed on %s (rc=%s): %s",
+            image_path.name, result.returncode,
+            result.stderr.decode("utf-8", errors="replace").strip()[:500],
+        )
+        return None
+    if not output_path.exists():
+        log.warning("Inkscape produced no output for %s", image_path.name)
         return None
     return output_path
 
@@ -99,7 +148,17 @@ def convert_metafile_to_png(image_path: Path, out_dir: Path) -> Path | None:
             log.info("Converted metafile %s to %s", image_path.name, output_path.name)
         return converted
 
-    converted = _convert_with_cloudconvert(image_path, out_dir)
-    if not converted:
-        log.info("Metafile conversion unavailable for %s", image_path.name)
-    return converted
+    # Linux/macOS: Inkscape first (no external API, runs in the same
+    # container), CloudConvert as an opt-in fallback if its API key is set.
+    converted = _convert_with_inkscape(image_path, output_path)
+    if converted:
+        log.info("Converted metafile %s to %s via Inkscape", image_path.name, output_path.name)
+        return converted
+
+    if os.environ.get("CLOUDCONVERT_API_KEY"):
+        converted = _convert_with_cloudconvert(image_path, out_dir)
+        if converted:
+            return converted
+
+    log.warning("Metafile conversion unavailable for %s (no Inkscape, no CloudConvert)", image_path.name)
+    return None
