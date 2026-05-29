@@ -38,12 +38,13 @@ class Attempt(Base):
     # Primary key - UUID string from frontend
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
 
-    # References
+    # References. Anonymous attempts were removed: every attempt is now
+    # owned by a logged-in user. `client_id` is gone — `user_id` is the
+    # single source of identity for both ownership and authorization.
     test_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
-    user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    client_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
 
     # Timing
     started_at: Mapped[datetime] = mapped_column(

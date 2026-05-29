@@ -78,7 +78,6 @@ def format_attempt_stats(
     return {
         "attemptId": attempt.id,
         "testId": attempt.test_id,
-        "clientId": attempt.client_id,
         "userId": attempt.user_id,
         "status": attempt.status,
         "startedAt": attempt.started_at.isoformat() if attempt.started_at else None,
@@ -102,9 +101,7 @@ def format_attempt_stats(
 
 def get_attempts_list(
     db: DBSession,
-    client_id: str | None = None,
     user_id: int | None = None,
-    match_any: bool = False,
     test_id: str | None = None,
     status: str | None = None,
     start_date: datetime | None = None,
@@ -116,26 +113,18 @@ def get_attempts_list(
     Get list of attempts with basic stats (for attempt list view).
     Returns tuple of (attempts_list, total_count).
 
-    When ``match_any=True`` and both client_id and user_id are supplied,
-    rows matching *either* are returned (a logged-in user sees attempts
-    they made before logging in via client_id, plus attempts already
-    bound to their user_id from another device).
+    All attempts belong to a logged-in user — anonymous `client_id`
+    tracking was removed. Callers must scope by `user_id` (own history)
+    or `test_id` (owner analytics).
     """
-    from sqlalchemy import or_
-
     # Build base query
     query = select(Attempt)
     count_query = select(func.count(Attempt.id))
 
     # Apply filters
     conditions = []
-    if match_any and client_id and user_id:
-        conditions.append(or_(Attempt.client_id == client_id, Attempt.user_id == user_id))
-    else:
-        if client_id:
-            conditions.append(Attempt.client_id == client_id)
-        if user_id:
-            conditions.append(Attempt.user_id == user_id)
+    if user_id:
+        conditions.append(Attempt.user_id == user_id)
     if test_id:
         conditions.append(Attempt.test_id == test_id)
     if status:
@@ -162,7 +151,6 @@ def get_attempts_list(
         results.append({
             "attemptId": attempt.id,
             "testId": attempt.test_id,
-            "clientId": attempt.client_id,
             "userId": attempt.user_id,
             "status": attempt.status,
             "startedAt": attempt.started_at.isoformat() if attempt.started_at else None,
@@ -179,7 +167,6 @@ def get_attempts_list(
 
 def get_aggregate_stats(
     db: DBSession,
-    client_id: str | None = None,
     user_id: int | None = None,
     test_id: str | None = None,
     start_date: datetime | None = None,
@@ -189,8 +176,6 @@ def get_aggregate_stats(
     Calculate aggregate statistics across multiple attempts using server-side SQL.
     """
     conditions = [Attempt.status == AttemptStatus.COMPLETED.value]
-    if client_id:
-        conditions.append(Attempt.client_id == client_id)
     if user_id:
         conditions.append(Attempt.user_id == user_id)
     if test_id:
@@ -296,7 +281,6 @@ def get_test_owner_stats(
         attempt_list.append({
             "attemptId": attempt.id,
             "userId": attempt.user_id,
-            "clientId": attempt.client_id,
             "startedAt": attempt.started_at.isoformat() if attempt.started_at else None,
             "finishedAt": attempt.finished_at.isoformat() if attempt.finished_at else None,
             "questionCount": attempt.question_count,
@@ -366,7 +350,12 @@ def get_streak(db: DBSession, user_id: int) -> int:
     if not rows:
         return 0
 
-    days = [date.fromisoformat(r[0]) for r in rows]
+    # Postgres returns DATE columns as `datetime.date` objects; SQLite
+    # returns them as ISO-format strings. Normalize.
+    days = [
+        r[0] if isinstance(r[0], date) else date.fromisoformat(r[0])
+        for r in rows
+    ]
     today = date.today()
     streak = 0
     current = today

@@ -1,10 +1,13 @@
 """Validation utilities."""
+from __future__ import annotations
+
 import re
 from pathlib import Path
 
 from fastapi import HTTPException
+from sqlalchemy.orm import Session as DbSession
 
-from api.utils.paths import payload_path
+from api.services.questions_service import test_exists as _db_test_exists
 
 # UUID hex (32 lowercase hex chars) — format produced by uuid.uuid4().hex
 TEST_ID_PATTERN = r"^[a-f0-9]{32}$"
@@ -30,7 +33,7 @@ def validate_test_id(test_id: str) -> str:
     return test_id
 
 
-def validate_test_exists(test_id: str) -> None:
-    """Validate that test exists."""
-    if not payload_path(test_id).exists():
+def validate_test_exists(db: DbSession, test_id: str) -> None:
+    """Validate that the test exists in the DB."""
+    if not _db_test_exists(db, test_id):
         raise HTTPException(status_code=404, detail="Test not found")

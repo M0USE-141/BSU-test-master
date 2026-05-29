@@ -25,6 +25,16 @@ def get_test_collection_with_owner(db: DbSession, test_id: str) -> TestCollectio
     return db.execute(stmt).scalar_one_or_none()
 
 
+def count_user_tests(db: DbSession, owner_id: int) -> int:
+    """Return how many test_collections the user owns."""
+    from sqlalchemy import func
+    return db.execute(
+        select(func.count()).select_from(TestCollection).where(
+            TestCollection.owner_id == owner_id
+        )
+    ).scalar_one()
+
+
 def get_or_create_collection(
     db: DbSession,
     test_id: str,

@@ -40,6 +40,13 @@ class User(Base):
     language: Mapped[str | None] = mapped_column(String(10), nullable=True, default=None) # ru|en|uz
     accent: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)   # green|coral|yellow|blue|mono
 
+    # Email preferences (Phase 6 mail service)
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    email_notifications: Mapped[bool] = mapped_column(default=True, nullable=False)
+    email_digest: Mapped[bool] = mapped_column(default=False, nullable=False)
+
     # Relationships
     sessions: Mapped[list["Session"]] = relationship(
         "Session",
@@ -82,6 +89,14 @@ class Session(Base):
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    # Refresh-token rotation. Nullable for backwards-compat with rows created
+    # before refresh-flow was introduced. New logins always populate both.
+    refresh_jti: Mapped[str | None] = mapped_column(
+        String(255), unique=True, index=True, nullable=True
+    )
+    refresh_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     __table_args__ = (
         Index("ix_sessions_active_expires", "is_active", "expires_at"),

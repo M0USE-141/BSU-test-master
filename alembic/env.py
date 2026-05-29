@@ -3,6 +3,14 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
+# Load .env first so DATABASE_URL etc. are visible to api.config.
+# main.py does this for uvicorn; alembic doesn't go through main.py.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from alembic import context
 
 # Import our database configuration and models
@@ -16,7 +24,16 @@ from api.models.db import (  # noqa: F401
     Attempt, AttemptAnswer, AttemptStatus,
     QuestionPerformance,
     Notification,
+    Question,
+    ImportJob, ImportJobStatus,
+    OutgoingEmail, OutgoingEmailStatus,
 )
+# Side-effect imports — register models that aren't re-exported but still
+# need to live in Base.metadata for `create_all`/autogenerate.
+from api.models.db.password_reset import PasswordResetToken  # noqa: F401
+from api.models.db.flagged_question import FlaggedQuestion  # noqa: F401
+from api.models.db.access_request import AccessRequest  # noqa: F401
+from api.models.db.activity_event import ActivityEvent  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

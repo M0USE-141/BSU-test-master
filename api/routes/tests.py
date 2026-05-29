@@ -1,30 +1,108 @@
-"""Test management endpoints."""
-import shutil
+"""Test management endpoints — DB-backed (Phase 4 cutover).
+
+Payload now lives in `test_collections` (metadata) + `questions` (rows).
+The docx upload flow extracts to a temporary directory, mirrors extracted
+assets into storage, and writes question rows in one shot via
+`questions_service.replace_all`. Phase 5 will convert the upload to
+202-Accepted + BackgroundTasks; for now it stays synchronous.
+"""
+from __future__ import annotations
+
+import logging
 import uuid
 from pathlib import Path as FilePath
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, UploadFile
-from sqlalchemy import select
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Path, Query, UploadFile
+from fastapi.responses import JSONResponse
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession, joinedload
 
-from api.config import DATA_DIR
+from api.config import MAX_DOCX_UPLOAD_BYTES, MAX_TESTS_PER_USER
 from api.database import get_db
 from api.dependencies.auth import get_current_user, get_optional_user
+from api.dependencies.storage import get_storage, get_storage_backend
 from api.models import TestCreate, TestUpdate
 from api.models.db.attempt import Attempt, AttemptStatus
-from api.models.db.user import User
+from api.models.db.question import Question
 from api.models.db.test_collection import AccessLevel, TestCollection
-from api.services import access_service
-from sqlalchemy import func
-from api.utils import assets_dir, json_load, payload_path, test_dir, write_json_atomic
+from api.models.db.user import User
+from api.services import access_service, import_service, questions_service
+from api.services import storage_keys
+from api.services.storage_keys import StorageKeyError
+from api.services.storage_service import StorageBackend
 from api.utils.validation import TEST_ID_PATTERN
-from api.services.test_service import load_test_payload, save_test_payload
-from core.serialization import serialize_metadata, serialize_test_payload
-from core.word_extract import WordTestExtractor
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tests", tags=["tests"])
 
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _metadata_for(tc: TestCollection, question_count: int) -> dict[str, object]:
+    """Build a serialize_metadata-shaped dict directly from the DB row."""
+    return {
+        "id": tc.test_id,
+        "title": tc.title or "",
+        "description": tc.description or "",
+        "questionCount": question_count,
+    }
+
+
+def _enforce_test_quota(db: DbSession, user: User) -> None:
+    """Raise 409 if the user has hit the per-owner test cap."""
+    used = access_service.count_user_tests(db, user.id)
+    if used >= MAX_TESTS_PER_USER:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "test_limit_reached",
+                "message": (
+                    f"You've reached the {MAX_TESTS_PER_USER}-test limit. "
+                    "Delete an existing test before creating a new one."
+                ),
+                "limit": MAX_TESTS_PER_USER,
+                "used": used,
+            },
+        )
+
+
+def _drop_storage_prefix(test_id: str) -> None:
+    """Best-effort cleanup of a test's storage objects."""
+    try:
+        storage = get_storage_backend()
+        storage.delete_prefix(storage_keys.test_prefix(test_id))
+    except (StorageKeyError, Exception) as exc:  # noqa: BLE001
+        log.warning("storage cleanup failed for test %s: %s", test_id, exc)
+
+
+def _augment_with_ownership(
+    payload: dict[str, object],
+    tc: TestCollection | None,
+    current_user: User | None,
+) -> dict[str, object]:
+    """Inject ownership fields into a test payload (same as legacy behavior)."""
+    if tc is not None:
+        payload["is_owner"] = bool(
+            current_user is not None and tc.owner_id == current_user.id
+        )
+        payload["owner_id"] = tc.owner_id
+        payload["owner_username"] = tc.owner.username if tc.owner else None
+        payload["access_level"] = tc.access_level
+    else:
+        payload["is_owner"] = False
+        payload["owner_id"] = None
+        payload["owner_username"] = None
+        payload["access_level"] = "public"
+    return payload
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
 
 @router.get("")
 def list_tests(
@@ -36,87 +114,59 @@ def list_tests(
     with_stats: bool = Query(False, alias="with_stats"),
     sort: str | None = Query(None, pattern="^(new|popular|best)$"),
 ) -> dict[str, object]:
-    """List all tests accessible to the current user."""
-    # Collect test directories from disk
-    test_entries = [
-        (d, d / "test.json")
-        for d in sorted(DATA_DIR.iterdir())
-        if d.is_dir() and (d / "test.json").exists()
-    ]
-    all_test_ids = [entry[0].name for entry in test_entries]
+    """List tests accessible to the current user (DB-backed)."""
+    # Pull every collection + owner in one query (no N+1).
+    stmt = select(TestCollection).options(joinedload(TestCollection.owner))
+    collections: list[TestCollection] = list(
+        db.execute(stmt).scalars().unique().all()
+    )
+    if not collections:
+        return {"tests": [], "total": 0, "offset": offset, "limit": limit}
 
-    # --- Bulk-load all TestCollections with owners (single query, no N+1) ---
-    if all_test_ids:
-        stmt = (
-            select(TestCollection)
-            .options(joinedload(TestCollection.owner))
-            .where(TestCollection.test_id.in_(all_test_ids))
-        )
-        collections_dict: dict[str, TestCollection] = {
-            c.test_id: c
-            for c in db.execute(stmt).scalars().unique().all()
-        }
-    else:
-        collections_dict = {}
+    # Per-test question counts in one grouped query.
+    counts = dict(
+        db.execute(
+            select(Question.test_collection_id, func.count(Question.id))
+            .where(
+                Question.test_collection_id.in_([c.id for c in collections])
+            )
+            .group_by(Question.test_collection_id)
+        ).all()
+    )
 
-    # Get accessible test IDs from database
     accessible_ids = set(access_service.get_accessible_test_ids(db, current_user))
 
-    tests = []
-    for test_directory, payload_file in test_entries:
-        test_id = test_directory.name
-        payload = payload_file.read_text(encoding="utf-8")
-        metadata = serialize_metadata(json_load(payload))
+    tests: list[dict[str, object]] = []
+    for tc in collections:
+        if tc.test_id not in accessible_ids:
+            continue
+        is_owner = current_user is not None and tc.owner_id == current_user.id
+        if filter_type == "my" and not is_owner:
+            continue
+        if filter_type == "shared" and (
+            is_owner or tc.access_level == AccessLevel.PUBLIC.value
+        ):
+            continue
+        if filter_type == "public" and tc.access_level != AccessLevel.PUBLIC.value:
+            continue
+        meta = _metadata_for(tc, counts.get(tc.id, 0))
+        meta["access_level"] = tc.access_level
+        meta["owner_id"] = tc.owner_id
+        meta["owner_username"] = tc.owner.username if tc.owner else None
+        meta["is_owner"] = is_owner
+        tests.append(meta)
 
-        collection = collections_dict.get(test_id)
-        if collection:
-            # Test has access control — check if accessible
-            if test_id not in accessible_ids:
-                continue
-            metadata["access_level"] = collection.access_level
-            metadata["owner_id"] = collection.owner_id
-            metadata["owner_username"] = collection.owner.username
-            is_owner = current_user and collection.owner_id == current_user.id
-            metadata["is_owner"] = is_owner
-
-            # Apply filter
-            if filter_type == "my":
-                if not is_owner:
-                    continue
-            elif filter_type == "shared":
-                # Shared means: not owner and not public
-                if is_owner or collection.access_level == AccessLevel.PUBLIC:
-                    continue
-            elif filter_type == "public":
-                if collection.access_level != AccessLevel.PUBLIC:
-                    continue
-        else:
-            # No access control record — show to everyone (backwards compatibility)
-            metadata["access_level"] = "public"
-            metadata["owner_id"] = None
-            metadata["owner_username"] = None
-            metadata["is_owner"] = False
-
-            # Apply filter for legacy tests (no owner)
-            if filter_type == "my" or filter_type == "shared":
-                continue
-
-        tests.append(metadata)
-
-    # Optional per-test attempt aggregates — drives Discover sort by
-    # popular / best. Single bulk query keyed by test_id avoids N+1.
+    # Attempt stats — optional, drives Discover sort.
     if with_stats or sort in {"popular", "best"}:
-        # Compute COUNT(completed) and AVG(percent_correct) per test_id.
-        # SQLite/SA cast keeps avg as float; round to int for display.
-        accessed_ids = [t["id"] for t in tests]
+        accessed_ids = [str(t["id"]) for t in tests]
         if accessed_ids:
             stats_rows = db.execute(
                 select(
                     Attempt.test_id,
                     func.count(Attempt.id).label("attempts_count"),
                     func.avg(
-                        (Attempt.correct_count * 100.0) /
-                        func.nullif(Attempt.question_count, 0)
+                        (Attempt.correct_count * 100.0)
+                        / func.nullif(Attempt.question_count, 0)
                     ).label("avg_score"),
                 )
                 .where(
@@ -139,32 +189,29 @@ def list_tests(
             t["attempts_count"] = s["attempts_count"]
             t["avg_score"] = s["avg_score"]
 
-    # Sort. Default order is whatever the disk listing returned (mtime-ish).
     if sort == "popular":
         tests.sort(key=lambda t: t.get("attempts_count", 0), reverse=True)
     elif sort == "best":
-        # Tests with no completed attempts sink to the bottom rather than
-        # being treated as zero.
-        tests.sort(key=lambda t: (t.get("avg_score") is None, -(t.get("avg_score") or 0)))
+        tests.sort(
+            key=lambda t: (t.get("avg_score") is None, -(t.get("avg_score") or 0))
+        )
     elif sort == "new":
-        # Sort newest first — assumes test directories carry creation order.
-        # No-op here since list_tests already iterates sorted dirs; could
-        # be extended later with a created_at column on TestCollection.
-        pass
+        # Newest first by created_at — we have it on TestCollection now.
+        # The simplest stable approach: re-sort the result list by the
+        # collection's created_at.
+        tc_by_id = {c.test_id: c for c in collections}
+        tests.sort(
+            key=lambda t: tc_by_id[t["id"]].created_at,
+            reverse=True,
+        )
 
-    # Apply pagination
     total = len(tests)
     if offset:
         tests = tests[offset:]
     if limit:
         tests = tests[:limit]
 
-    return {
-        "tests": tests,
-        "total": total,
-        "offset": offset,
-        "limit": limit,
-    }
+    return {"tests": tests, "total": total, "offset": offset, "limit": limit}
 
 
 @router.post("")
@@ -173,43 +220,45 @@ def create_test(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> dict[str, object]:
-    """Create a new test."""
+    """Create an empty test (DB-backed)."""
     title = payload.title.strip()
     if not title:
         raise HTTPException(status_code=400, detail="Title is required")
+    _enforce_test_quota(db, current_user)
 
     test_id = uuid.uuid4().hex
-    test_directory = test_dir(test_id)
-    test_directory.mkdir(parents=True, exist_ok=True)
-
-    assets_directory = assets_dir(test_id)
-    assets_directory.mkdir(parents=True, exist_ok=True)
-
-    test_payload = serialize_test_payload(test_id, title, [], assets_directory)
-    if payload.description:
-        test_payload["description"] = payload.description.strip()
-    save_test_payload(test_id, test_payload)
-
-    # Create TestCollection record with ownership
     access_level = AccessLevel.PRIVATE
     if payload.access_level:
         try:
             access_level = AccessLevel(payload.access_level)
         except ValueError:
-            pass  # Use default if invalid
+            pass
     access_service.get_or_create_collection(db, test_id, current_user.id, access_level)
+    questions_service.save_test_settings(
+        db, test_id,
+        title=title,
+        description=(payload.description.strip() if payload.description else None),
+    )
 
-    # Log activity (Phase 5 final).
     try:
         from api.services import activity_service
         activity_service.log(
             db, current_user.id, "test_created",
-            test_id=test_id, payload={"title": title, "accessLevel": access_level.value},
+            test_id=test_id,
+            payload={"title": title, "accessLevel": access_level.value},
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 — activity is best-effort
         pass
 
-    return {"metadata": serialize_metadata(test_payload), "payload": test_payload}
+    test_payload = questions_service.get_test_payload(db, test_id) or {}
+    test_payload["assetsBaseUrl"] = f"/api/tests/{test_id}/assets"
+    return {
+        "metadata": _metadata_for(
+            access_service.get_test_collection(db, test_id),
+            len(test_payload.get("questions", [])),
+        ),
+        "payload": test_payload,
+    }
 
 
 @router.get("/{test_id}")
@@ -218,32 +267,15 @@ def get_test(
     current_user: Annotated[User | None, Depends(get_optional_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> dict[str, object]:
-    """Get test payload."""
-    payload_file = payload_path(test_id)
-    if not payload_file.exists():
+    """Return the test payload (DB-backed)."""
+    payload = questions_service.get_test_payload(db, test_id)
+    if payload is None:
         raise HTTPException(status_code=404, detail="Test not found")
-
-    # Check access permission
     if not access_service.can_view_test(db, test_id, current_user):
         raise HTTPException(status_code=403, detail="Access denied")
-
-    payload = payload_file.read_text(encoding="utf-8")
-    result = json_load(payload)
-
-    # Add ownership info
-    collection = access_service.get_test_collection_with_owner(db, test_id)
-    if collection:
-        result["is_owner"] = current_user and collection.owner_id == current_user.id
-        result["owner_id"] = collection.owner_id
-        result["owner_username"] = collection.owner.username
-        result["access_level"] = collection.access_level
-    else:
-        result["is_owner"] = False
-        result["owner_id"] = None
-        result["owner_username"] = None
-        result["access_level"] = "public"
-
-    return result
+    payload["assetsBaseUrl"] = f"/api/tests/{test_id}/assets"
+    tc = access_service.get_test_collection_with_owner(db, test_id)
+    return _augment_with_ownership(payload, tc, current_user)
 
 
 @router.patch("/{test_id}")
@@ -253,12 +285,9 @@ def update_test(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> dict[str, object]:
-    """Update test metadata."""
-    payload_file = payload_path(test_id)
-    if not payload_file.exists():
+    """Update test metadata (title/description)."""
+    if not questions_service.test_exists(db, test_id):
         raise HTTPException(status_code=404, detail="Test not found")
-
-    # Check edit permission
     if not access_service.can_edit_test(db, test_id, current_user):
         raise HTTPException(status_code=403, detail="Only owner can edit test")
 
@@ -266,13 +295,19 @@ def update_test(
     if not title:
         raise HTTPException(status_code=400, detail="Title is required")
 
-    payload = json_load(payload_file.read_text(encoding="utf-8"))
-    payload["title"] = title
-    if update.description is not None:
-        payload["description"] = update.description.strip()
-    write_json_atomic(payload_file, payload)
+    questions_service.save_test_settings(
+        db, test_id,
+        title=title,
+        description=(update.description.strip() if update.description is not None else None),
+    )
 
-    return serialize_metadata(payload)
+    tc = access_service.get_test_collection(db, test_id)
+    counts = db.execute(
+        select(func.count(Question.id)).where(
+            Question.test_collection_id == tc.id
+        )
+    ).scalar_one()
+    return _metadata_for(tc, counts)
 
 
 @router.delete("/{test_id}")
@@ -281,19 +316,14 @@ def delete_test(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> dict[str, str]:
-    """Delete test."""
-    test_directory = test_dir(test_id)
-    if not test_directory.exists() or not test_directory.is_dir():
+    """Delete a test (and its questions via CASCADE) + storage cleanup."""
+    if not questions_service.test_exists(db, test_id):
         raise HTTPException(status_code=404, detail="Test not found")
-
-    # Check edit permission
     if not access_service.can_edit_test(db, test_id, current_user):
         raise HTTPException(status_code=403, detail="Only owner can delete test")
 
-    # Delete TestCollection record
     access_service.delete_test_collection(db, test_id)
-
-    shutil.rmtree(test_directory)
+    _drop_storage_prefix(test_id)
     return {"status": "deleted"}
 
 
@@ -301,51 +331,87 @@ def delete_test(
 def upload_test(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
+    storage: Annotated[StorageBackend, Depends(get_storage)],
     file: UploadFile = File(...),
-    symbol: str = Form("*"),
+    # Symbol/text that marks the correct answer in the docx. Any string
+    # works since the extractor uses plain `startswith` (no regex), but
+    # we cap at 32 chars to keep payloads sane and prevent abuse.
+    symbol: str = Form("*", max_length=32),
     log_small_tables: bool = Form(False),
     access_level: str = Form("private"),
+    title: str | None = Form(None),
+    description: str | None = Form(None),
 ) -> dict[str, object]:
-    """Upload test from Word document."""
-    file_name = file.filename or ""
-    if FilePath(file_name).suffix.lower() == ".doc":
+    """Import a .docx and return the full test payload.
+
+    The SPA's import wizard expects a synchronous `{metadata, payload}`
+    response so it can render the review step immediately. We still
+    record an `ImportJob` row for audit + crash recovery (the row goes
+    straight to `done` on success or `failed` with the error message).
+    For very large files the request blocks until extraction finishes —
+    typical processing time is a few seconds on a modern host. If we
+    ever need 202 + polling, switch to BackgroundTasks here and update
+    `static/js/screens/desktop/import.js` to poll `/api/import-jobs/`.
+    """
+    file_name = file.filename or "upload.docx"
+    suffix = FilePath(file_name).suffix.lower()
+    if suffix == ".doc":
+        raise HTTPException(status_code=400, detail="Поддерживаются только .docx")
+    if suffix and suffix != ".docx":
         raise HTTPException(status_code=400, detail="Поддерживаются только .docx")
 
-    test_id = uuid.uuid4().hex
-    test_directory = test_dir(test_id)
-    test_directory.mkdir(parents=True, exist_ok=True)
+    # Per-user test cap — check before reading the body so abusive
+    # uploads don't get a chance to consume bandwidth.
+    _enforce_test_quota(db, current_user)
 
-    assets_directory = assets_dir(test_id)
-    assets_directory.mkdir(parents=True, exist_ok=True)
-
-    safe_name = FilePath(file.filename or f"upload_{test_id}.docx").name
-    file_path = test_directory / safe_name
-    file_path.write_bytes(file.file.read())
-
-    extractor = WordTestExtractor(
-        file_path,
-        symbol,
-        log_small_tables,
-        assets_directory,
-    )
-    try:
-        tests = extractor.extract()
-        test_payload = serialize_test_payload(
-            test_id, file_path.stem, tests, assets_directory
+    docx_bytes = file.file.read()
+    if not docx_bytes:
+        raise HTTPException(status_code=400, detail="Empty upload")
+    if len(docx_bytes) > MAX_DOCX_UPLOAD_BYTES:
+        mb = MAX_DOCX_UPLOAD_BYTES // (1024 * 1024)
+        raise HTTPException(
+            status_code=413,
+            detail={
+                "code": "file_too_large",
+                "message": f"File exceeds the {mb} MB limit.",
+                "limit_bytes": MAX_DOCX_UPLOAD_BYTES,
+                "size_bytes": len(docx_bytes),
+            },
         )
-        write_json_atomic(payload_path(test_id), test_payload)
-    finally:
-        extractor.cleanup()
 
-    # Create TestCollection record with ownership
-    try:
-        parsed_access_level = AccessLevel(access_level)
-    except ValueError:
-        parsed_access_level = AccessLevel.PRIVATE
-    access_service.get_or_create_collection(db, test_id, current_user.id, parsed_access_level)
+    job_id = import_service.start_import(
+        db, storage, current_user.id, FilePath(file_name).name, docx_bytes,
+    )
+    # Synchronous run — same code path the BackgroundTasks worker uses.
+    # Errors raise (caught and recorded by import_service.run_import); on
+    # exit the job is either `done` (with test_collection_id) or `failed`.
+    import_service.run_import(
+        job_id,
+        symbol=symbol,
+        log_small_tables=log_small_tables,
+        access_level=access_level,
+        title_override=(title.strip() if title and title.strip() else None),
+        description_override=(description.strip() if description and description.strip() else None),
+    )
 
+    # Re-read the job to inspect outcome (the worker used its own session).
+    db.expire_all()
+    from api.models.db.import_job import ImportJob, ImportJobStatus
+    job = db.get(ImportJob, job_id)
+    if job is None or job.status != ImportJobStatus.DONE.value:
+        detail = (job.error_message if job else None) or "Import failed"
+        raise HTTPException(status_code=500, detail=detail)
+
+    # The job stores the INT PK; access_service uses the public slug,
+    # so fetch via the ORM directly.
+    tc = db.get(TestCollection, job.test_collection_id)
+    if tc is None:
+        raise HTTPException(status_code=500, detail="Import succeeded but test missing")
+    payload = questions_service.get_test_payload(db, tc.test_id) or {}
+    payload["assetsBaseUrl"] = f"/api/tests/{tc.test_id}/assets"
     return {
-        "metadata": serialize_metadata(test_payload),
-        "payload": test_payload,
-        "logs": extractor.logs,
+        "metadata": _metadata_for(tc, len(payload.get("questions", []))),
+        "payload": payload,
+        "logs": [],
+        "jobId": job_id,
     }

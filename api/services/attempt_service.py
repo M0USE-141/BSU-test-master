@@ -95,13 +95,12 @@ def get_or_create_attempt(
     db: DBSession,
     attempt_id: str,
     test_id: str,
-    client_id: str,
-    user_id: int | None = None,
+    user_id: int,
     settings: dict[str, Any] | None = None,
 ) -> Attempt:
     """
     Get existing attempt or create a new one.
-    Validates that test_id and client_id match for existing attempts.
+    Validates that test_id and user_id match for existing attempts.
     """
     attempt = db.get(Attempt, attempt_id)
 
@@ -109,15 +108,14 @@ def get_or_create_attempt(
         # Validate existing attempt matches
         if attempt.test_id != test_id:
             raise HTTPException(status_code=400, detail="Mismatched testId")
-        if attempt.client_id != client_id:
-            raise HTTPException(status_code=400, detail="Mismatched clientId")
+        if attempt.user_id != user_id:
+            raise HTTPException(status_code=404, detail="Attempt not found")
         return attempt
 
     # Create new attempt
     attempt = Attempt(
         id=attempt_id,
         test_id=test_id,
-        client_id=client_id,
         user_id=user_id,
         status=AttemptStatus.IN_PROGRESS.value,
     )
@@ -134,8 +132,7 @@ def start_attempt(
     db: DBSession,
     attempt_id: str,
     test_id: str,
-    client_id: str,
-    user_id: int | None = None,
+    user_id: int,
     settings: dict[str, Any] | None = None,
     questions: list[dict[str, Any]] | None = None,
 ) -> Attempt:
@@ -146,8 +143,7 @@ def start_attempt(
         db: Database session
         attempt_id: Unique attempt identifier
         test_id: Test being attempted
-        client_id: Client identifier (for anonymous users)
-        user_id: Optional authenticated user ID
+        user_id: Authenticated user ID (required — no anonymous attempts)
         settings: Attempt settings (question count, randomization, etc.)
         questions: List of questions in the attempt (from session)
     """
@@ -158,7 +154,7 @@ def start_attempt(
         _validate_mode_settings(settings, len(questions or []))
 
     attempt = get_or_create_attempt(
-        db, attempt_id, test_id, client_id, user_id, settings
+        db, attempt_id, test_id, user_id, settings
     )
 
     # Store question snapshots
@@ -373,29 +369,6 @@ def get_attempt(db: DBSession, attempt_id: str) -> Attempt | None:
     ).unique().scalar_one_or_none()
 
 
-def get_attempts_by_client(
-    db: DBSession,
-    client_id: str,
-    test_id: str | None = None,
-    status: str | None = None,
-    limit: int = 100,
-    offset: int = 0,
-) -> list[Attempt]:
-    """
-    Get attempts for a client, optionally filtered by test_id and status.
-    """
-    query = select(Attempt).where(Attempt.client_id == client_id)
-
-    if test_id:
-        query = query.where(Attempt.test_id == test_id)
-    if status:
-        query = query.where(Attempt.status == status)
-
-    query = query.order_by(Attempt.started_at.desc()).limit(limit).offset(offset)
-
-    return list(db.execute(query).scalars().all())
-
-
 def get_attempts_by_user(
     db: DBSession,
     user_id: int,
@@ -441,7 +414,6 @@ def get_attempts_by_test(
 
 def count_attempts(
     db: DBSession,
-    client_id: str | None = None,
     user_id: int | None = None,
     test_id: str | None = None,
     status: str | None = None,
@@ -449,8 +421,6 @@ def count_attempts(
     """Count attempts matching criteria."""
     query = select(func.count(Attempt.id))
 
-    if client_id:
-        query = query.where(Attempt.client_id == client_id)
     if user_id:
         query = query.where(Attempt.user_id == user_id)
     if test_id:
@@ -476,10 +446,12 @@ def upsert_question_performance(db: DBSession, attempt: Attempt) -> None:
     """
     Upsert QuestionPerformance rows after attempt finalization.
 
-    Uses INSERT OR IGNORE + UPDATE pattern for SQLite compatibility.
-    Handles NULL user_id (anonymous) by using IS NULL comparison in the
-    UPDATE WHERE clause, since SQLite does not consider NULL == NULL in
-    unique constraints.
+    Uses dialect-aware UPSERT:
+      - Postgres → INSERT ... ON CONFLICT DO UPDATE
+      - SQLite (legacy dev path) → INSERT OR IGNORE + UPDATE
+
+    Anonymous attempts no longer exist (Phase C), so `attempt.user_id`
+    is always set — no `IS NULL` branch needed.
     """
     from datetime import datetime, timezone as tz
     now = datetime.now(tz.utc)
@@ -488,6 +460,8 @@ def upsert_question_performance(db: DBSession, attempt: Attempt) -> None:
         select(AttemptAnswer).where(AttemptAnswer.attempt_id == attempt.id)
     ).scalars().all()
 
+    dialect = db.bind.dialect.name if db.bind else "postgresql"
+
     for answer in answers:
         if answer.is_skipped or answer.answer_index is None:
             continue
@@ -495,44 +469,44 @@ def upsert_question_performance(db: DBSession, attempt: Attempt) -> None:
         is_correct_int = 1 if answer.is_correct else 0
         dur = answer.duration_ms or 0
 
-        # INSERT OR IGNORE creates the row if it doesn't exist yet
-        # We use a sentinel for the unique constraint: NULL user_id is stored as-is
-        # but the UPDATE uses IS NULL comparison to target the right row
-        db.execute(
-            text(
-                "INSERT OR IGNORE INTO question_performance "
-                "(test_id, user_id, question_id, correct_count, total_count, "
-                "total_duration_ms, last_seen_at) "
-                "VALUES (:test_id, :user_id, :qid, 0, 0, 0, NULL)"
-            ),
-            {
-                "test_id": attempt.test_id,
-                "user_id": attempt.user_id,
-                "qid": answer.question_id,
-            }
-        )
-
-        # UPDATE the matching row. For NULL user_id we use IS NULL comparison.
-        if attempt.user_id is None:
+        if dialect == "postgresql":
+            # One-shot UPSERT — single statement, atomic per row.
             db.execute(
                 text(
-                    "UPDATE question_performance SET "
-                    "correct_count = correct_count + :correct, "
-                    "total_count = total_count + 1, "
-                    "total_duration_ms = total_duration_ms + :dur, "
-                    "last_seen_at = :now "
-                    "WHERE test_id = :test_id AND question_id = :qid "
-                    "AND user_id IS NULL"
+                    "INSERT INTO question_performance "
+                    "(test_id, user_id, question_id, correct_count, total_count, "
+                    "total_duration_ms, last_seen_at) "
+                    "VALUES (:test_id, :user_id, :qid, :correct, 1, :dur, :now) "
+                    "ON CONFLICT (test_id, user_id, question_id) DO UPDATE SET "
+                    "correct_count = question_performance.correct_count + EXCLUDED.correct_count, "
+                    "total_count = question_performance.total_count + 1, "
+                    "total_duration_ms = question_performance.total_duration_ms + EXCLUDED.total_duration_ms, "
+                    "last_seen_at = EXCLUDED.last_seen_at"
                 ),
                 {
+                    "test_id": attempt.test_id,
+                    "user_id": attempt.user_id,
+                    "qid": answer.question_id,
                     "correct": is_correct_int,
                     "dur": dur,
-                    "now": now.isoformat(),
-                    "test_id": attempt.test_id,
-                    "qid": answer.question_id,
-                }
+                    "now": now,
+                },
             )
         else:
+            # SQLite fallback for the light-dev path. INSERT OR IGNORE then UPDATE.
+            db.execute(
+                text(
+                    "INSERT OR IGNORE INTO question_performance "
+                    "(test_id, user_id, question_id, correct_count, total_count, "
+                    "total_duration_ms, last_seen_at) "
+                    "VALUES (:test_id, :user_id, :qid, 0, 0, 0, NULL)"
+                ),
+                {
+                    "test_id": attempt.test_id,
+                    "user_id": attempt.user_id,
+                    "qid": answer.question_id,
+                },
+            )
             db.execute(
                 text(
                     "UPDATE question_performance SET "
@@ -550,7 +524,7 @@ def upsert_question_performance(db: DBSession, attempt: Attempt) -> None:
                     "test_id": attempt.test_id,
                     "qid": answer.question_id,
                     "user_id": attempt.user_id,
-                }
+                },
             )
 
     db.commit()

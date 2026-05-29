@@ -33,14 +33,9 @@ _apply_locks_meta = threading.Lock()
 from api.models.db.change_request import ChangeRequest, ChangeRequestStatus, ChangeRequestType
 from api.models.db.test_collection import TestCollection
 from api.models.db.user import User
-from api.services import access_service
-from api.services.test_service import (
-    extract_blocks,
-    find_question,
-    load_test_payload,
-    save_test_payload,
-    text_to_blocks,
-)
+from api.services import access_service, questions_service
+from api.services.test_service import extract_blocks, text_to_blocks
+from api.database import SessionLocal
 
 
 def get_test_collection(db: DbSession, test_id: str) -> TestCollection | None:
@@ -353,127 +348,82 @@ def _apply_change_request(test_id: str, change_request: ChangeRequest) -> None:
             _apply_edit_settings(test_id, payload)
 
 
-def _apply_add_question(test_id: str, payload: dict) -> None:
-    """Apply add question change."""
-    test_payload = load_test_payload(test_id)
-    questions = test_payload.get("questions", [])
-    if not isinstance(questions, list):
-        questions = []
+def _build_question_payload(payload: dict, *, existing: dict | None = None) -> dict:
+    """Render a CR-style payload into the stored question dict shape.
 
-    question_blocks = extract_blocks(payload.get("question"))
-    question_text = payload.get("questionText")
-    if question_blocks is None:
-        if isinstance(question_text, str) and question_text.strip():
-            question_blocks = text_to_blocks(question_text)
-        else:
-            question_blocks = text_to_blocks("")
-
-    options_payload = payload.get("options", [])
-    if not isinstance(options_payload, list):
-        options_payload = []
-
-    next_id = max((q.get("id", 0) for q in questions if isinstance(q, dict)), default=0) + 1
-    options = []
-    correct_blocks = extract_blocks(payload.get("correct"))
-
-    for index, option in enumerate(options_payload, start=1):
-        if not isinstance(option, dict):
-            continue
-
-        content_blocks = extract_blocks(option.get("content"))
-        if content_blocks is None:
-            option_text = str(option.get("text", ""))
-            content_blocks = text_to_blocks(option_text)
-
-        is_correct = bool(option.get("isCorrect"))
-        if is_correct and correct_blocks is None:
-            correct_blocks = content_blocks
-
-        options.append({
-            "id": index,
-            "content": {"blocks": content_blocks},
-            "isCorrect": is_correct,
-        })
-
-    new_question = {
-        "id": next_id,
-        "question": {"blocks": question_blocks},
-        "options": options,
-        "correct": {"blocks": correct_blocks or text_to_blocks("")},
-    }
-
-    objects_payload = payload.get("objects")
-    if isinstance(objects_payload, list):
-        new_question["objects"] = objects_payload
-
-    questions.append(new_question)
-    test_payload["questions"] = questions
-    save_test_payload(test_id, test_payload)
-
-
-def _apply_edit_question(test_id: str, question_id: int, payload: dict) -> None:
-    """Apply edit question change."""
-    test_payload = load_test_payload(test_id)
-    question, _ = find_question(test_payload, question_id)
+    Mirrors `routes.questions._build_question_dict` — kept here so the
+    CR worker doesn't import a route helper. The two converge on the
+    same shape; keep changes in lock-step.
+    """
+    out: dict = dict(existing or {})
 
     question_blocks = extract_blocks(payload.get("question"))
     question_text = payload.get("questionText")
     if question_blocks is not None:
-        question["question"] = {"blocks": question_blocks}
+        out["question"] = {"blocks": question_blocks}
     elif question_text is not None:
-        question["question"] = {"blocks": text_to_blocks(str(question_text))}
+        out["question"] = {"blocks": text_to_blocks(str(question_text))}
+    elif existing is None:
+        out["question"] = {"blocks": text_to_blocks("")}
 
     options_payload = payload.get("options")
     if options_payload is not None and isinstance(options_payload, list):
-        options = []
+        options: list[dict] = []
         correct_blocks = extract_blocks(payload.get("correct"))
-
         for index, option in enumerate(options_payload, start=1):
             if not isinstance(option, dict):
                 continue
-
             content_blocks = extract_blocks(option.get("content"))
             if content_blocks is None:
-                option_text = str(option.get("text", ""))
-                content_blocks = text_to_blocks(option_text)
-
+                content_blocks = text_to_blocks(str(option.get("text", "")))
             is_correct = bool(option.get("isCorrect"))
             if is_correct and correct_blocks is None:
                 correct_blocks = content_blocks
-
             options.append({
                 "id": index,
                 "content": {"blocks": content_blocks},
                 "isCorrect": is_correct,
             })
-
-        question["options"] = options
-        question["correct"] = {"blocks": correct_blocks or text_to_blocks("")}
+        out["options"] = options
+        out["correct"] = {"blocks": correct_blocks or text_to_blocks("")}
+    elif existing is None:
+        out["options"] = []
+        out["correct"] = {"blocks": text_to_blocks("")}
 
     objects_payload = payload.get("objects")
-    if objects_payload is not None and isinstance(objects_payload, list):
-        question["objects"] = objects_payload
+    if isinstance(objects_payload, list):
+        out["objects"] = objects_payload
 
-    save_test_payload(test_id, test_payload)
+    return out
+
+
+def _apply_add_question(test_id: str, payload: dict) -> None:
+    """Append a new question via questions_service (own DB session — CR
+    apply runs outside the route's request scope)."""
+    with SessionLocal() as db:
+        new_question = _build_question_payload(payload)
+        questions_service.add_question(db, test_id, new_question)
+
+
+def _apply_edit_question(test_id: str, question_id: int, payload: dict) -> None:
+    with SessionLocal() as db:
+        existing, _ = questions_service.get_question(db, test_id, question_id)
+        merged = _build_question_payload(payload, existing=existing)
+        questions_service.replace_question_payload(db, test_id, question_id, merged)
 
 
 def _apply_delete_question(test_id: str, question_id: int) -> None:
-    """Apply delete question change."""
-    test_payload = load_test_payload(test_id)
-    _, index = find_question(test_payload, question_id)
-
-    questions = test_payload.get("questions", [])
-    if isinstance(questions, list) and 0 <= index < len(questions):
-        questions.pop(index)
-        test_payload["questions"] = questions
-        save_test_payload(test_id, test_payload)
+    with SessionLocal() as db:
+        questions_service.delete_question(db, test_id, question_id)
 
 
 def _apply_edit_settings(test_id: str, payload: dict) -> None:
-    """Apply edit settings change."""
-    test_payload = load_test_payload(test_id)
-
-    if "title" in payload:
-        test_payload["title"] = payload["title"]
-
-    save_test_payload(test_id, test_payload)
+    with SessionLocal() as db:
+        kwargs: dict = {}
+        if "title" in payload:
+            kwargs["title"] = payload.get("title")
+        if "description" in payload:
+            kwargs["description"] = payload.get("description")
+        if not kwargs:
+            return
+        questions_service.save_test_settings(db, test_id, **kwargs)

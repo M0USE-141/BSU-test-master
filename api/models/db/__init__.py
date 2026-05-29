@@ -9,8 +9,16 @@ from api.models.db.password_reset import PasswordResetToken
 from api.models.db.flagged_question import FlaggedQuestion
 from api.models.db.access_request import AccessRequest, AccessRequestStatus
 from api.models.db.activity_event import ActivityEvent
+from api.models.db.question import Question
+from api.models.db.import_job import ImportJob, ImportJobStatus
+from api.models.db.outgoing_email import OutgoingEmail, OutgoingEmailStatus
 
 __all__ = [
+    "Question",
+    "ImportJob",
+    "ImportJobStatus",
+    "OutgoingEmail",
+    "OutgoingEmailStatus",
     "User",
     "Session",
     "AccessLevel",

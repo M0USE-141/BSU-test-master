@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from api.config import ALLOWED_ORIGINS, APP_VERSION, STATIC_DIR, validate_secret_key
 from api.database import init_db
-from api.routes import access, activity, assets, attempts, auth, change_requests, notifications, questions, search, statistics, tests, users
+from api.routes import access, activity, assets, attempts, auth, change_requests, dev_storage, health, import_jobs, notifications, questions, search, statistics, tests, users
 from api.services.cleanup_service import schedule_events_cleanup
 from core.logging_setup import setup_console_logging
 
@@ -24,7 +24,15 @@ async def lifespan(app: FastAPI):
     init_db()
     validate_secret_key()
     cleanup_thread, stop_event = schedule_events_cleanup()
-    logger.info("Application started (SQLite storage, lifespan active)")
+    # Recover docx-import jobs whose worker died mid-processing.
+    try:
+        from api.services import import_service
+        n = import_service.recover_stale_jobs()
+        if n:
+            logger.info("recovered %s stale import jobs", n)
+    except Exception:  # noqa: BLE001 — startup best-effort
+        logger.exception("import_service.recover_stale_jobs failed")
+    logger.info("Application started (lifespan active)")
 
     yield
 
@@ -40,7 +48,9 @@ app = FastAPI(title="Test Extractor API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=False,
+    # True so the browser sends the refresh-token cookie to /api/auth/refresh.
+    # Requires `allow_origins` to be an explicit list (no wildcard).
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
@@ -115,3 +125,6 @@ app.include_router(statistics.router)
 app.include_router(notifications.router)
 app.include_router(search.router)
 app.include_router(activity.router)
+app.include_router(dev_storage.router)
+app.include_router(import_jobs.router)
+app.include_router(health.router)

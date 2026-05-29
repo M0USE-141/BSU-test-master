@@ -13,9 +13,11 @@ from sqlalchemy import ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from api.database import Base
+from api.models.db.types import JsonDict
 
 if TYPE_CHECKING:
     from api.models.db.change_request import ChangeRequest
+    from api.models.db.question import Question
     from api.models.db.user import User
 
 
@@ -44,6 +46,12 @@ class TestCollection(Base):
     access_level: Mapped[str] = mapped_column(
         String(20), default=AccessLevel.PRIVATE.value, nullable=False
     )
+    # Test-level metadata: title, description, time_limit, randomization
+    # flags, etc. Migrated from `test.json`'s top-level keys. Per-question
+    # blocks live in the `questions` table.
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    description: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    settings: Mapped[dict | None] = mapped_column(JsonDict, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -67,6 +75,12 @@ class TestCollection(Base):
     )
     change_requests: Mapped[list["ChangeRequest"]] = relationship(
         "ChangeRequest", back_populates="test_collection", cascade="all, delete-orphan"
+    )
+    questions: Mapped[list["Question"]] = relationship(
+        "Question",
+        back_populates="test_collection",
+        cascade="all, delete-orphan",
+        order_by="Question.order_index",
     )
 
 

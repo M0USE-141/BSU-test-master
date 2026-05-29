@@ -1,4 +1,10 @@
-"""Attempt management endpoints using SQLite database."""
+"""Attempt management endpoints.
+
+All endpoints require authentication — anonymous attempts were dropped
+in favour of `user_id`-only ownership. The previous `clientId` query/body
+parameter is gone; authorization compares `attempt.user_id` against
+the bearer's `current_user.id`.
+"""
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DbSession
 
 from api.database import get_db
-from api.dependencies.auth import get_optional_user
+from api.dependencies.auth import get_current_user
 from api.models.db.user import User
 from api.services.attempt_service import (
     start_attempt,
@@ -26,7 +32,6 @@ class StartAttemptRequest(BaseModel):
     """Request to start a new attempt."""
     attemptId: str = Field(..., min_length=1)
     testId: str = Field(..., min_length=1)
-    clientId: str = Field(..., min_length=1)
     settings: dict[str, Any] | None = None
     questions: list[dict[str, Any]] | None = None
 
@@ -34,7 +39,6 @@ class StartAttemptRequest(BaseModel):
 class RecordAnswerRequest(BaseModel):
     """Request to record an answer."""
     testId: str = Field(..., min_length=1)
-    clientId: str = Field(..., min_length=1)
     questionId: int
     answerIndex: int | None = None
     canonicalAnswerIndex: int | None = None
@@ -45,34 +49,37 @@ class RecordAnswerRequest(BaseModel):
 class FinishAttemptRequest(BaseModel):
     """Request to finish an attempt."""
     testId: str = Field(..., min_length=1)
-    clientId: str = Field(..., min_length=1)
     totalDurationMs: int = 0
+
+
+def _own_attempt_or_404(db: DbSession, attempt_id: str, user_id: int):
+    """Fetch the attempt and raise 404 if it doesn't belong to `user_id`.
+
+    404 (not 403) on the wrong-owner case to avoid leaking attempt-id
+    existence to other users.
+    """
+    attempt = get_attempt(db, attempt_id)
+    if not attempt or attempt.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+    return attempt
 
 
 @router.post("/start")
 def start_new_attempt(
     payload: StartAttemptRequest,
     db: Annotated[DbSession, Depends(get_db)],
-    current_user: Annotated[User | None, Depends(get_optional_user)] = None,
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, Any]:
-    """
-    Start a new test attempt.
-
-    Creates the attempt record and stores question snapshots for later preview.
-    """
+    """Start a new test attempt for the current user."""
     attempt_id = validate_id("attemptId", payload.attemptId)
     test_id = validate_id("testId", payload.testId)
-    client_id = validate_id("clientId", payload.clientId)
-    validate_test_exists(test_id)
-
-    user_id = current_user.id if current_user else None
+    validate_test_exists(db, test_id)
 
     attempt = start_attempt(
         db=db,
         attempt_id=attempt_id,
         test_id=test_id,
-        client_id=client_id,
-        user_id=user_id,
+        user_id=current_user.id,
         settings=payload.settings,
         questions=payload.questions,
     )
@@ -90,22 +97,15 @@ def record_attempt_answer(
     attempt_id: str,
     payload: RecordAnswerRequest,
     db: Annotated[DbSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, Any]:
-    """
-    Record an answer for a question in the attempt.
-    """
+    """Record an answer for a question in the attempt."""
     attempt_id = validate_id("attemptId", attempt_id)
     test_id = validate_id("testId", payload.testId)
-    client_id = validate_id("clientId", payload.clientId)
 
-    # Validate attempt exists and matches
-    attempt = get_attempt(db, attempt_id)
-    if not attempt:
-        raise HTTPException(status_code=404, detail="Attempt not found")
+    attempt = _own_attempt_or_404(db, attempt_id, current_user.id)
     if attempt.test_id != test_id:
         raise HTTPException(status_code=400, detail="Mismatched testId")
-    if attempt.client_id != client_id:
-        raise HTTPException(status_code=400, detail="Mismatched clientId")
 
     if payload.isSkipped:
         answer = skip_question(
@@ -141,22 +141,15 @@ def finish_test_attempt(
     attempt_id: str,
     payload: FinishAttemptRequest,
     db: Annotated[DbSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, Any]:
-    """
-    Finish an attempt and calculate final statistics.
-    """
+    """Finish an attempt and calculate final statistics."""
     attempt_id = validate_id("attemptId", attempt_id)
     test_id = validate_id("testId", payload.testId)
-    client_id = validate_id("clientId", payload.clientId)
 
-    # Validate attempt exists and matches
-    attempt = get_attempt(db, attempt_id)
-    if not attempt:
-        raise HTTPException(status_code=404, detail="Attempt not found")
+    attempt = _own_attempt_or_404(db, attempt_id, current_user.id)
     if attempt.test_id != test_id:
         raise HTTPException(status_code=400, detail="Mismatched testId")
-    if attempt.client_id != client_id:
-        raise HTTPException(status_code=400, detail="Mismatched clientId")
 
     attempt = finish_attempt(
         db=db,
@@ -179,16 +172,14 @@ def finish_test_attempt(
 def abandon_test_attempt(
     attempt_id: str,
     db: Annotated[DbSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, Any]:
-    """
-    Mark an attempt as abandoned (user left without finishing).
-    """
+    """Mark an attempt as abandoned (user left without finishing)."""
     attempt_id = validate_id("attemptId", attempt_id)
 
-    attempt = abandon_attempt(db, attempt_id)
-    if not attempt:
-        raise HTTPException(status_code=404, detail="Attempt not found")
+    _own_attempt_or_404(db, attempt_id, current_user.id)
 
+    attempt = abandon_attempt(db, attempt_id)
     return {
         "status": "abandoned",
         "attemptId": attempt.id,
@@ -198,20 +189,12 @@ def abandon_test_attempt(
 @router.get("/{attempt_id}")
 def get_attempt_details(
     attempt_id: str,
-    client_id: str,
     db: Annotated[DbSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, Any]:
-    """
-    Get details for a specific attempt.
-    """
+    """Get details for a specific attempt (must belong to current user)."""
     attempt_id = validate_id("attemptId", attempt_id)
-    client_id = validate_id("clientId", client_id)
-
-    attempt = get_attempt(db, attempt_id)
-    if not attempt:
-        raise HTTPException(status_code=404, detail="Attempt not found")
-    if attempt.client_id != client_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    attempt = _own_attempt_or_404(db, attempt_id, current_user.id)
 
     # Format answers for response
     answers = []
