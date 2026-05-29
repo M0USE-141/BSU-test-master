@@ -1,11 +1,14 @@
 /**
- * attempts.js — test attempts API wrapper
+ * attempts.js — test attempts API wrapper.
+ *
+ * All endpoints require auth; `clientId` is gone. Each attempt belongs
+ * to a single logged-in user, derived from the bearer token server-side.
  */
 import { apiFetch } from './_fetch.js';
 
 /**
  * Start a new attempt.
- * @param {{ test_id: string, client_id?: string }} data
+ * @param {{ attemptId: string, testId: string, settings?: object, questions?: object[] }} data
  */
 export async function startAttempt(data) {
   return apiFetch('POST', '/api/attempts/start', data);
@@ -14,7 +17,7 @@ export async function startAttempt(data) {
 /**
  * Record an answer for a question in an attempt.
  * @param {string} attemptId
- * @param {{ question_id: string, selected: number|number[] }} data
+ * @param {{ testId: string, questionId: number, answerIndex?: number, canonicalAnswerIndex?: number, durationMs?: number, isSkipped?: boolean }} data
  */
 export async function recordAnswer(attemptId, data) {
   return apiFetch('POST', `/api/attempts/${attemptId}/answer`, data);
@@ -23,7 +26,7 @@ export async function recordAnswer(attemptId, data) {
 /**
  * Finish an attempt.
  * @param {string} attemptId
- * @param {{ testId: string, clientId: string, totalDurationMs?: number }} data
+ * @param {{ testId: string, totalDurationMs?: number }} data
  */
 export async function finishAttempt(attemptId, data) {
   return apiFetch('POST', `/api/attempts/${attemptId}/finish`, data);
@@ -38,11 +41,9 @@ export async function abandonAttempt(attemptId) {
 }
 
 /**
- * Get a specific attempt's details.
+ * Get a specific attempt's details (must belong to the current user).
  * @param {string} attemptId
- * @param {string} [clientId]
  */
-export async function getAttempt(attemptId, clientId) {
-  const qs = clientId ? `?client_id=${encodeURIComponent(clientId)}` : '';
-  return apiFetch('GET', `/api/attempts/${attemptId}${qs}`);
+export async function getAttempt(attemptId) {
+  return apiFetch('GET', `/api/attempts/${attemptId}`);
 }

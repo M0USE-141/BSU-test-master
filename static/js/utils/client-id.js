@@ -1,18 +1,40 @@
 /**
- * utils/client-id.js — Persistent anonymous client UUID
+ * utils/client-id.js — UUID helper.
  *
- * Used for anonymous attempt tracking. Stored in localStorage.
+ * Historically this also persisted an anonymous client-id in
+ * `localStorage`. That whole concept is gone (Phase C of the auth
+ * refactor): attempts now require auth and identity is the bearer
+ * user. Only `newUuid()` remains, used by taking screens to mint a
+ * fresh attempt id.
+ *
+ * Uses `crypto.randomUUID` when available (secure contexts: HTTPS or
+ * localhost), falls back to a v4 built from `crypto.getRandomValues`
+ * (works on insecure HTTP / LAN IPs), then Math.random as the last
+ * resort.
  */
 
-/**
- * Get or create a persistent client ID.
- * @returns {string}
- */
-export function getClientId() {
-  let id = localStorage.getItem('client_id');
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem('client_id', id);
-  }
-  return id;
+function _uuid() {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+  } catch { /* fall through */ }
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+      bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant
+      const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    }
+  } catch { /* fall through */ }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }
+
+/** Generate a fresh v4 UUID (no persistence). */
+export function newUuid() { return _uuid(); }
