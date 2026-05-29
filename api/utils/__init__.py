@@ -1,27 +1,21 @@
-"""Utility modules."""
-from api.utils.file_utils import safe_asset_path, save_upload_file
+"""Utility modules.
+
+Phase 4 retired the filesystem-based test layout. The legacy `paths`
+helpers (`test_dir`, `payload_path`, `assets_dir`) and `safe_asset_path`
+are gone — use `api.services.storage_service` + `storage_keys` instead.
+"""
 from api.utils.json_utils import (
     json_dump,
     json_load,
     write_json_atomic,
 )
-from api.utils.paths import (
-    assets_dir,
-    payload_path,
-    test_dir,
-)
 from api.utils.time_utils import parse_iso_timestamp, utc_now
 from api.utils.validation import validate_id, validate_test_exists, validate_test_id
 
 __all__ = [
-    "safe_asset_path",
-    "save_upload_file",
     "json_dump",
     "json_load",
     "write_json_atomic",
-    "assets_dir",
-    "payload_path",
-    "test_dir",
     "parse_iso_timestamp",
     "utc_now",
     "validate_id",

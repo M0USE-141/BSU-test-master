@@ -1,0 +1,62 @@
+# docker-compose.dev.yml — local MinIO for testing the S3StorageBackend.
+#
+# Phase 3 of the postgres+minio migration. Postgres lands in a parallel
+# stanza when Phase 4 ships. Keep this file project-local so existing
+# `data/testmaster.db` workflows are unaffected.
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up -d
+#   bash scripts/provision_minio_local.sh
+#
+# Then set in your .env:
+#   STORAGE_BACKEND=s3
+#   S3_ENDPOINT=http://localhost:9000
+#   S3_PUBLIC_ENDPOINT=http://localhost:9000
+#   S3_ACCESS_KEY=testmaster_app
+#   S3_SECRET_KEY=testmaster_app_secret
+#   S3_BUCKET_ASSETS=testmaster-assets
+#   S3_BUCKET_AVATARS=testmaster-avatars
+
+name: testmaster-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: testmaster_dev_pg
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: testmaster
+      POSTGRES_PASSWORD: testmaster_dev
+      POSTGRES_DB: testmaster
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testmaster -d testmaster"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: testmaster_dev_minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # web console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  minio_data:
+  pg_data:
