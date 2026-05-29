@@ -98,9 +98,12 @@ class WordTestExtractor:
             if converted_path is not None and converted_path != image_path:
                 # WMF/EMF → PNG yields a sibling file; re-name it under the
                 # same sha1[:7] stem so the filename still encodes content.
+                # Also drop the original .wmf/.emf — otherwise it ends up
+                # mirrored to storage as a useless material alongside the PNG.
                 new_path = self.extract_dir / f"{stem}.png"
                 if converted_path != new_path:
                     converted_path.replace(new_path)
+                image_path.unlink(missing_ok=True)
                 image_path = new_path
             else:
                 image_path = converted_path or image_path
