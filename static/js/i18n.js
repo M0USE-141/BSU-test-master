@@ -51,13 +51,34 @@ export async function initI18n() {
 
 /**
  * Translate a key, interpolating {{var}} placeholders.
- * Falls back to Russian, then to the key itself.
+ *
+ * Resolution order:
+ *   1. Current locale (`_messages[key]`).
+ *   2. Russian fallback (`_fallback[key]`).
+ *   3. Empty string — lets the common `t('foo') || 'Default'` pattern
+ *      surface the inline default. Returning the dotted key here (the
+ *      pre-Phase 8 behavior) would make the `||` short-circuit useless
+ *      because the key string is truthy, so the UI would render the
+ *      literal "foo.bar".
+ *
+ * In dev (`localStorage.i18nDebug === '1'`) we log a single warning per
+ * unresolved key to make missing entries discoverable without spamming.
+ *
  * @param {string} key
  * @param {Record<string, string|number>} [vars]
  * @returns {string}
  */
+const _missingLogged = new Set();
 export function t(key, vars) {
-  let msg = _messages[key] ?? _fallback[key] ?? key;
+  let msg = _messages[key];
+  if (msg === undefined || msg === null) msg = _fallback[key];
+  if (msg === undefined || msg === null) {
+    if (localStorage.getItem('i18nDebug') === '1' && !_missingLogged.has(key)) {
+      _missingLogged.add(key);
+      console.warn(`[i18n] missing key: ${key}`);
+    }
+    msg = '';
+  }
   if (vars) {
     for (const [k, v] of Object.entries(vars)) {
       msg = msg.replaceAll(`{{${k}}}`, String(v));
