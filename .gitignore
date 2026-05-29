@@ -17,3 +17,18 @@ nul
 # Design-canvas IDE state
 design-plans/.design-canvas.state.json
 design-plans/.thumbnail
+
+# Dev artifacts — not committed
+.env
+.env.local
+tmp_prototype/
+scripts/test_*.py
+scripts/live_e2e.py
+scripts/verify_docx_pipeline.py
+scripts/audit_i18n.py
+scripts/generate_mail_templates.py
+scripts/test_mobile_atoms.js
+
+# Mail debug eml dumps + local FS storage
+data/mail-debug/
+data/storage/
