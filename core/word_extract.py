@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import shutil
@@ -21,6 +22,16 @@ NS = {
     "v": "urn:schemas-microsoft-com:vml",
     "o": "urn:schemas-microsoft-com:office:office",
 }
+
+
+def _short_id_for_bytes(data: bytes) -> str:
+    """First 7 hex chars of sha1 — same scheme as `api/routes/assets.py`.
+
+    Two callers must agree on this: the upload route uses sha1[:7] for
+    manually uploaded materials; we use the same here so docx-extracted
+    assets dedupe against manual uploads.
+    """
+    return hashlib.sha1(data).hexdigest()[:7]
 
 
 class WordTestExtractor:
