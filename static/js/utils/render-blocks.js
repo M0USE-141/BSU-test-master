@@ -7,8 +7,10 @@
  *   { type: "paragraph", inlines: [ { type: "text"|"image"|"formula"|"line_break", ... } ] }
  *
  * Formula inline:
- *   { type: "formula", mathml: "<math...>" }   ← from Word OMML
+ *   { type: "formula", mathml: "<math...>" }   ← inline MathML (legacy/fallback)
  *   { type: "formula", latex: "x^2+y^2" }      ← plain LaTeX
+ *   { type: "formula", id: "abc1234" }         ← refers to materials/<id>.mml
+ *                                                (resolved by attachAssets)
  */
 
 import { escHtml } from './escape.js';
@@ -45,6 +47,16 @@ function renderInline(inline, assetsBaseUrl) {
       if (inline.latex) {
         // LaTeX — use MathJax delimiters \(...\)
         return `<span class="rb-formula">\\(${inline.latex}\\)</span>`;
+      }
+      if (inline.id) {
+        // Referenced MathML — actual XML lives at
+        // `<assetsBaseUrl>/<id>.mml`. We can't inline it here
+        // (renderInline is sync), so emit a placeholder span that
+        // `attachAssets` will fill in after an auth'd fetch.
+        const url = assetsBaseUrl
+          ? `${assetsBaseUrl}/${inline.id}.mml`
+          : `${inline.id}.mml`;
+        return `<span class="rb-formula rb-formula--ref" data-mml-url="${escHtml(url)}"></span>`;
       }
       return '';
     }
@@ -99,37 +111,36 @@ export function hasFormulas(html) {
 }
 
 /**
- * Resolve `<img class="rb-image">` nodes by fetching them authenticated
- * and swapping `src` to a blob URL.
+ * Resolve auth-gated assets in `container`: swap `img.rb-image` src to
+ * blob URLs, and fill `span.rb-formula--ref` placeholders with their
+ * fetched MathML XML.
  *
- * Asset endpoints (`/api/tests/<id>/assets/<path>`) require the same
- * Bearer auth as the rest of the API — but plain `<img>` tags can't
- * attach an Authorization header, so they 403 and disappear. We fetch
- * each unique asset once via `fetch()` (which can carry the token from
- * `getAccessToken()`), convert the response to a blob, and use
- * `URL.createObjectURL` to produce a same-origin URL the browser will
- * happily render.
+ * Asset endpoints (`/api/tests/<id>/assets/<path>`) require Bearer auth —
+ * plain `<img>` tags can't carry an Authorization header, so they 403.
+ * We fetch each unique URL once via `fetch()`, convert images to blob
+ * URLs, and inject MathML text into formula placeholder spans.
  *
- * Idempotent — already-swapped `blob:` URLs are skipped. Safe to call
- * multiple times against the same container.
+ * Idempotent — already-resolved nodes are skipped. Safe to call
+ * multiple times against the same container. The caller should invoke
+ * `typesetMath()` afterwards if formula refs may be present.
  *
- * @param {Element} container Any DOM element. All `img.rb-image` under it are processed.
+ * @param {Element} container Any DOM element. All `img.rb-image` and
+ *   `span.rb-formula--ref[data-mml-url]` under it are processed.
  * @returns {Promise<void>}
  */
 export async function attachAssets(container) {
   if (!container) return;
-  const imgs = Array.from(container.querySelectorAll('img.rb-image'));
-  if (!imgs.length) return;
   const tok = getAccessToken();
   if (!tok) return;
-  // Deduplicate by src so we don't issue concurrent requests for the
-  // same asset (common when one material is reused across questions).
-  const cache = new Map();
+
+  // ---- Images ----
+  const imgs = Array.from(container.querySelectorAll('img.rb-image'));
+  const imgCache = new Map();
   for (const img of imgs) {
     const src = img.getAttribute('src');
     if (!src || src.startsWith('blob:')) continue;
-    if (!cache.has(src)) {
-      cache.set(src, fetch(src, {
+    if (!imgCache.has(src)) {
+      imgCache.set(src, fetch(src, {
         headers: { Authorization: 'Bearer ' + tok },
         credentials: 'include',
       }).then(r => r.ok ? r.blob() : null)
@@ -140,11 +151,52 @@ export async function attachAssets(container) {
   for (const img of imgs) {
     const src = img.getAttribute('src');
     if (!src || src.startsWith('blob:')) continue;
-    const url = await cache.get(src);
+    const url = await imgCache.get(src);
     if (url) {
       img.src = url;
-      // Reset the onerror-driven hide in case it already fired.
       img.style.display = '';
+    }
+  }
+
+  // ---- Referenced MathML formulas ----
+  // Spans emitted by renderInline as <span class="rb-formula rb-formula--ref"
+  // data-mml-url="…/<id>.mml">. Fetch each unique URL once, inject the XML
+  // as the span's innerHTML. The caller is responsible for typesetMath()
+  // afterwards (same as before for inline MathML).
+  const refs = Array.from(container.querySelectorAll('span.rb-formula--ref[data-mml-url]'));
+  if (refs.length) {
+    const mmlCache = new Map();
+    for (const span of refs) {
+      const url = span.getAttribute('data-mml-url');
+      if (!url || span.dataset.resolved === '1') continue;
+      if (!mmlCache.has(url)) {
+        mmlCache.set(url, fetch(url, {
+          headers: { Authorization: 'Bearer ' + tok },
+          credentials: 'include',
+        }).then(r => r.ok ? r.text() : null)
+          .catch(() => null));
+      }
+    }
+    for (const span of refs) {
+      const url = span.getAttribute('data-mml-url');
+      if (!url || span.dataset.resolved === '1') continue;
+      const xml = await mmlCache.get(url);
+      if (xml) {
+        // Parse as XML so we get a proper <math> element, not raw HTML.
+        // This avoids innerHTML-based XSS: DOMParser in "application/xml"
+        // mode does not execute scripts or event handlers. We then import
+        // the root node and append it — no innerHTML touching HTML parser.
+        try {
+          const doc = new DOMParser().parseFromString(xml, 'application/xml');
+          const root = doc.documentElement;
+          if (root && root.nodeName !== 'parsererror') {
+            span.appendChild(document.importNode(root, true));
+            span.dataset.resolved = '1';
+          }
+        } catch (_) {
+          // Malformed XML — leave the placeholder empty rather than crashing.
+        }
+      }
     }
   }
 }

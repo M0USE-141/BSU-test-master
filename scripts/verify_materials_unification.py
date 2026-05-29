@@ -69,11 +69,16 @@ def main(docx_path: Path) -> int:
         if stem != expected:
             errors.append(f"asset {f.name} stem != sha1[:7] of bytes (got {expected})")
 
-    # 3. Every formula in payload has an id, and a matching .mml in assets
+    # 3. Every formula in payload has an id, and a matching .mml in assets.
+    # Walk question, correct, and every option's content — formulas can live
+    # in any of them, and a bug that only manifests in option content would
+    # otherwise pass this check.
     formula_ids: list[str] = []
     inline_only_count = 0
-    for q in payload["questions"]:
-        for block in q["question"]["blocks"]:
+
+    def _scan_content(content_obj: dict) -> None:
+        nonlocal inline_only_count
+        for block in content_obj.get("blocks", []) or []:
             for inl in block.get("inlines", []):
                 if inl.get("type") != "formula":
                     continue
@@ -85,6 +90,16 @@ def main(docx_path: Path) -> int:
                         errors.append(f"formula id={fid} has no {mml_path.name}")
                 else:
                     inline_only_count += 1
+
+    for q in payload["questions"]:
+        for key in ("question", "correct"):
+            sub = q.get(key)
+            if isinstance(sub, dict):
+                _scan_content(sub)
+        for opt in q.get("options", []):
+            sub = opt.get("content")
+            if isinstance(sub, dict):
+                _scan_content(sub)
     if inline_only_count:
         warnings.append(
             f"{inline_only_count} formulas have no id "

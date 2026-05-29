@@ -79,7 +79,7 @@ def _migrate_formula(storage, test_uuid: str, mathml_xml: str, *, dry_run: bool)
     key = storage_keys.material_key(test_uuid, f"{stem}.mml")
     if not dry_run and not storage.object_exists(key):
         storage.put_object(key, io.BytesIO(encoded),
-                           content_type="application/xml",
+                           content_type="application/mathml+xml",
                            length=len(encoded))
     return stem
 
