@@ -21,6 +21,7 @@ NS = {
     "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
     "v": "urn:schemas-microsoft-com:vml",
     "o": "urn:schemas-microsoft-com:office:office",
+    "mc": "http://schemas.openxmlformats.org/markup-compatibility/2006",
 }
 
 
@@ -238,6 +239,19 @@ class WordTestExtractor:
 
                 # runs/hyperlinks
                 if tag.endswith("}r") or tag.endswith("}hyperlink"):
+                    # If this run wraps an mc:AlternateContent with a Choice
+                    # that contains an oMath, prefer the formula and skip the
+                    # Fallback image — those are the rasterized previews Word
+                    # ships for older readers. Without this guard each formula
+                    # would appear twice (once as ContentItem("formula",...)
+                    # and once as a 30x12px PNG via v:imagedata).
+                    formula_from_choice = child.find(
+                        ".//mc:AlternateContent/mc:Choice//m:oMath", namespaces=NS
+                    )
+                    if formula_from_choice is not None:
+                        push_formula(self._omml_to_mathml(formula_from_choice))
+                        continue
+
                     # text
                     for t in child.findall(".//w:t", namespaces=NS):
                         if t.text:
