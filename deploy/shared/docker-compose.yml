@@ -1,0 +1,81 @@
+# /srv/shared/docker-compose.yml — multi-project foundation.
+#
+# Brings up Caddy (auto-TLS reverse proxy) + Postgres + MinIO. Each
+# per-project app stack (testmaster, etc.) joins the `edge` and `data`
+# networks defined here and connects to the shared DB / object store.
+#
+# Bootstrap:
+#   cp .env.example .env && $EDITOR .env
+#   docker compose up -d
+#   bash ../../scripts/provision_project.sh testmaster
+#
+# Networks created here are referenced as `external: true` from each
+# per-project compose file — that's why they MUST exist before any
+# project stack starts.
+
+name: shared
+
+networks:
+  edge:
+    name: edge
+  data:
+    name: data
+
+volumes:
+  pg_data:
+  minio_data:
+  caddy_data:
+  caddy_config:
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    networks: [edge]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks: [data]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ROOT_PASSWORD}
+      POSTGRES_DB: postgres
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./init-databases.sh:/docker-entrypoint-initdb.d/01-init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    # 5432 is NOT published — access only from the data network.
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    networks:
+      - data    # apps talk to minio:9000 internally
+      - edge    # caddy proxies s3.${DOMAIN} → minio:9000 from this side
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BROWSER_REDIRECT_URL: https://s3-console.${DOMAIN}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 5s
+      retries: 5

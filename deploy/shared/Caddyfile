@@ -1,0 +1,50 @@
+# Caddy configuration for multi-project shared stack.
+#
+# Adds one block per project subdomain. Caddy's automatic HTTPS handles
+# Let's Encrypt issuance + renewal — make sure DNS A/AAAA records for
+# every subdomain point at this host BEFORE the first start, or LE
+# will rate-limit failed challenges.
+
+{
+    email {$ACME_EMAIL}
+    # Uncomment for staging while debugging DNS:
+    # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+# ---------- testmaster ----------
+testmaster.{$DOMAIN} {
+    encode gzip
+    # Match the docx upload cap in api.config.MAX_DOCX_UPLOAD_BYTES. If
+    # those drift apart the app returns 413 while Caddy still accepted
+    # the bytes — wasteful — or vice versa with a confusing 408.
+    request_body {
+        max_size 50MB
+    }
+    reverse_proxy testmaster_app:8000 {
+        # Health checks against the app; gives 503 if the container is
+        # rolling instead of returning a stale or partial response.
+        health_uri /api/health
+        health_interval 30s
+        health_timeout 5s
+    }
+}
+
+# ---------- MinIO API + console ----------
+s3.{$DOMAIN} {
+    encode gzip
+    reverse_proxy minio:9000
+    # Browsers PUT presigned URLs from the SPA can be sizable assets.
+    request_body {
+        max_size 100MB
+    }
+}
+
+s3-console.{$DOMAIN} {
+    encode gzip
+    reverse_proxy minio:9001
+}
+
+# Add additional projects below, e.g.
+# myproject.{$DOMAIN} {
+#     reverse_proxy myproject_app:8000
+# }
