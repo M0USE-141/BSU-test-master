@@ -171,7 +171,7 @@ export default async function render(root) {
 
   const agg     = aggRes.status     === 'fulfilled' ? aggRes.value     : null;
   const streak  = streakRes.status  === 'fulfilled' ? (streakRes.value?.streak ?? 0) : 0;
-  const trend   = trendRes.status   === 'fulfilled' ? (trendRes.value?.points || trendRes.value?.values || trendRes.value || []) : [];
+  const trend   = trendRes.status   === 'fulfilled' ? (trendRes.value?.trend || []) : [];
   const heatmap = heatRes.status    === 'fulfilled' ? (heatRes.value?.days || heatRes.value || []) : [];
   const tests   = testsRes.status   === 'fulfilled' ? (testsRes.value?.tests || testsRes.value || []) : [];
   const recentAttempts = attemptsRes.status === 'fulfilled'

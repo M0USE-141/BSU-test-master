@@ -115,11 +115,10 @@ export default async function render(root, params) {
     return ar - br;
   }).map(function (q) { return q.questionId; });
   const untakenIds = kdList.filter(function (q) { return q.totalCount === 0; }).map(function (q) { return q.questionId; });
-  const weakIds = new Set(weakOrdered);
   const untakenSet = new Set(untakenIds);
   const flaggedIds = new Set(flaggedResp.flagged || []);
 
-  const counts = { total: totalQs, weak: weakIds.size, flagged: flaggedIds.size, untaken: untakenSet.size };
+  const counts = { total: totalQs, weak: weakOrdered.length, flagged: flaggedIds.size, untaken: untakenSet.size };
   const state  = makeState(totalQs);
 
   card.innerHTML = '';

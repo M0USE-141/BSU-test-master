@@ -2,7 +2,8 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, func, select, text
+from sqlalchemy import and_, cast, func, select, text
+from sqlalchemy.types import String as SAString
 from sqlalchemy.orm import Session as DBSession
 
 from api.models.db.attempt import Attempt, AttemptAnswer, AttemptStatus
@@ -366,16 +367,16 @@ def get_my_question_kd(db: DBSession, test_id: str, user_id: int) -> list[dict]:
     """Per-question personal K/D for every question of a test.
 
     Enumerates ALL questions (LEFT JOIN performance) so never-answered
-    questions appear with k=0,d=0,totalCount=0,rank="none" — this powers
-    the "untaken" practice source. Ordered by question order_index.
+    questions appear with k=0,d=0,totalCount=0,rank="none" — powers the
+    "untaken" practice source. Ordered by question order_index.
 
-    The join key is the 1-based payload question id (`order_index + 1`),
-    NOT `Question.id` (a UUID): `question_performance.question_id` stores
-    the same 1-based id the serializer/frontend use.
+    JOIN KEY: the stable public id `payload["id"]` (NOT `order_index`, which
+    shifts on delete, and NOT `Question.id`, a UUID). `question_performance.
+    question_id` stores this same public id (the serializer/frontend id).
     """
     rows = db.execute(
         select(
-            Question.order_index,
+            Question.payload["id"],
             QuestionPerformance.correct_count,
             QuestionPerformance.total_count,
             QuestionPerformance.total_duration_ms,
@@ -384,7 +385,8 @@ def get_my_question_kd(db: DBSession, test_id: str, user_id: int) -> list[dict]:
         .outerjoin(
             QuestionPerformance,
             and_(
-                QuestionPerformance.question_id == Question.order_index + 1,
+                cast(QuestionPerformance.question_id, SAString)
+                == cast(Question.payload["id"], SAString),
                 QuestionPerformance.user_id == user_id,
                 QuestionPerformance.test_id == test_id,
             ),
@@ -394,12 +396,16 @@ def get_my_question_kd(db: DBSession, test_id: str, user_id: int) -> list[dict]:
     ).all()
 
     result: list[dict] = []
-    for order_index, correct, total, dur in rows:
+    for pid_raw, correct, total, dur in rows:
+        try:
+            qid = int(pid_raw)
+        except (TypeError, ValueError):
+            continue
         correct = correct or 0
         total = total or 0
         ratio, rank = compute_kd(correct, total)
         result.append({
-            "questionId": order_index + 1,
+            "questionId": qid,
             "k": correct,
             "d": total - correct,
             "ratio": ratio,
