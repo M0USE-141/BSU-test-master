@@ -6,7 +6,7 @@ in non-request contexts (CLI scripts, background workers).
 from __future__ import annotations
 
 import logging
-from functools import lru_cache
+import threading
 
 from api import config
 from api.services.storage_local import LocalStorageBackend
@@ -15,14 +15,49 @@ from api.services.storage_service import StorageBackend
 log = logging.getLogger(__name__)
 
 
-@lru_cache(maxsize=1)
+# Double-checked-locking singleton instead of @lru_cache.
+#
+# Why not lru_cache: CPython's lru_cache lock protects the CACHE TABLE from
+# corruption, but it does NOT serialize concurrent calls to the underlying
+# user_function when the cache is cold. If N threads hit a cold cache at
+# the same time, all N enter the user function and create separate
+# objects; only the last writer's result becomes the cached one. Verified
+# empirically — 40 parallel threads → 40 calls to the init body.
+#
+# In prod, this manifested as ~40 lines of "Initializing S3 storage
+# backend" during startup, each creating its own urllib3.PoolManager
+# (with our 32-connection ceiling). That fragmented the R2 connection
+# budget across 40 pools instead of pooling cleanly, and made the
+# subsequent "Connection pool is full" warnings noisier than needed.
+#
+# Double-checked locking gives true single-instance semantics: the fast
+# path is a lock-free read of an already-set variable; the slow path
+# (cold cache) is serialized by the lock.
+
+_backend_instance: StorageBackend | None = None
+_backend_lock = threading.Lock()
+
+
 def get_storage_backend() -> StorageBackend:
-    """Return the configured storage backend (cached singleton).
+    """Return the configured storage backend (process-wide singleton).
 
     Selection is driven by `STORAGE_BACKEND` env var:
       * "local" (default) — `LocalStorageBackend` rooted at `data/storage/`.
-      * "s3"              — `S3StorageBackend` (added in Phase 3).
+      * "s3"              — `S3StorageBackend`.
     """
+    global _backend_instance
+    # Fast path — already created. The vast majority of calls hit this.
+    if _backend_instance is not None:
+        return _backend_instance
+    # Slow path — first call(s) race for the lock; only one wins.
+    with _backend_lock:
+        if _backend_instance is not None:
+            return _backend_instance
+        _backend_instance = _build_backend()
+        return _backend_instance
+
+
+def _build_backend() -> StorageBackend:
     backend_name = (config.STORAGE_BACKEND or "local").lower()
     if backend_name == "s3":
         # Imported lazily so `minio-py` is optional for dev installs.

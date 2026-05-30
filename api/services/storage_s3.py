@@ -76,7 +76,7 @@ _R2_RETRY = Retry(
     raise_on_status=False,
     respect_retry_after_header=True,
 )
-_R2_POOL_MAXSIZE = 32
+_R2_POOL_MAXSIZE = 64  # ↑ from 32 — page loads fire 100+ parallel asset GETs
 
 # Per-operation HTTP timeouts. Connect is cheap and should fail fast.
 # Read covers the entire body transfer for streaming responses; we

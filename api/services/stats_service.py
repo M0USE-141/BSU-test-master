@@ -568,10 +568,26 @@ def get_activity_heatmap(db: DBSession, user_id: int, weeks: int = 12) -> dict:
 
 
 def get_activity_by_week(db: DBSession, test_id: str, weeks: int = 4) -> list[dict]:
-    """Attempt count per ISO week, last N weeks."""
+    """Attempt count per ISO week, last N weeks.
+
+    Dialect-aware: `strftime` is SQLite-only. On Postgres we use
+    `to_char(ts, 'IYYY-"W"IW')` which yields the same `YYYY-Www` format
+    (ISO year + ISO week, e.g. `2026-W22`). The prod incident that
+    surfaced this: `psycopg2.errors.UndefinedFunction: function
+    strftime(unknown, timestamp with time zone) does not exist` →
+    `GET /api/tests/.../owner-analytics` returned 500.
+    """
+    dialect = db.bind.dialect.name if db.bind is not None else "sqlite"
+    if dialect == "postgresql":
+        # `IYYY` = ISO year, `IW` = ISO week number (01-53), `"W"`
+        # injects a literal "W" between them. Matches the SQLite format.
+        week_expr = "to_char(started_at, 'IYYY-\"W\"IW')"
+    else:
+        week_expr = "strftime('%Y-W%W', started_at)"
+
     rows = db.execute(
         text(
-            "SELECT strftime('%Y-W%W', started_at) as week, COUNT(*) as cnt "
+            f"SELECT {week_expr} as week, COUNT(*) as cnt "
             "FROM attempts WHERE test_id = :tid AND status = 'completed' "
             "GROUP BY week ORDER BY week DESC LIMIT :w"
         ),
