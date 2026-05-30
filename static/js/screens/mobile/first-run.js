@@ -107,10 +107,12 @@ export function renderFirstRun(root) {
   importCard.appendChild(importLabel);
   actions.appendChild(importCard);
 
-  // Public catalog secondary.
+  // Public catalog secondary. Dismiss first-run before navigating —
+  // otherwise home re-detects "no tests yet" and renders this very screen
+  // again, trapping the user. Matches the Skip button's behaviour.
   actions.appendChild(mBtn({
     full: true,
-    onClick: () => navigate('/home?filter=public'),
+    onClick: () => { dismissFirstRun(); navigate('/home?filter=public'); },
   }, iconEl('globe', 14), ' ' + (t('firstrun.cta.public') || 'Public-каталог')));
 
   wrap.appendChild(actions);

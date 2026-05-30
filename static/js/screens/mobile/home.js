@@ -280,7 +280,12 @@ export default async function render(root, params = {}) {
   // through and let the user browse the public catalog from /home
   // (lazy-loaded when they tap the Public chip, default for users
   // with no own tests).
-  if (!isFirstRunDismissed()) {
+  //
+  // We skip first-run when the user explicitly arrived at /home with a
+  // non-default filter (`?filter=public`/`shared`) — that signals intent
+  // ("show me what's out there") and the onboarding card would re-trap
+  // them on the empty hello screen. Mirrors desktop home.js behaviour.
+  if (!isFirstRunDismissed() && initialFilter === 'my') {
     if (ownedCount === 0 && totalAttempts === 0) {
       renderFirstRun(root);
       return;
