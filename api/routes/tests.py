@@ -379,17 +379,26 @@ def upload_test(
             },
         )
 
+    # Snapshot every attribute of `current_user` we'll need BEFORE
+    # start_import closes the shared FastAPI request session. The User
+    # instance comes from `Depends(get_current_user)`, which is bound to
+    # the same `Depends(get_db)` session passed in via `db`. When
+    # start_import closes that session, current_user gets detached and
+    # any later attribute access raises DetachedInstanceError (we hit
+    # this in prod after the previous deploy — see incident logs).
+    current_user_id = current_user.id
+
+    # CRITICAL: release the request-scoped DB connection BEFORE the
+    # import runs. start_import itself closes `db` after committing
+    # the job row and BEFORE its multi-MB R2 PUT of the source docx;
+    # without that, this handler held one pooled connection for the
+    # full ~4s of extract + WMF conversion + 26x R2 PUTs and
+    # concurrent uploads exhausted the pool.
     job_id = import_service.start_import(
-        db, storage, current_user.id, FilePath(file_name).name, docx_bytes,
+        db, storage, current_user_id, FilePath(file_name).name, docx_bytes,
     )
-    # CRITICAL: release the request-scoped DB connection BEFORE running
-    # the import. Otherwise this handler holds one pooled connection for
-    # the full ~4s of extract + WMF conversion + 26x R2 PUTs, which on
-    # concurrent uploads exhausts the pool (the bug we just hit in prod —
-    # `QueuePool limit reached` cascades visible in cleanup_service logs).
-    # `run_import` opens its own sessions internally; we only need a fresh
-    # one afterwards to inspect the job row.
-    current_user_id = current_user.id  # snapshot before session closes
+    # start_import already closed `db`; calling close() again is a no-op,
+    # but kept for defensive clarity in case start_import is refactored.
     db.close()
 
     # Synchronous run — same code path the BackgroundTasks worker uses.
