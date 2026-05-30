@@ -9,7 +9,8 @@
  * Bottom nav is hidden to give the tab strip + sticky bar room.
  */
 import { getTest } from '../../api/tests.js';
-import { listAttempts } from '../../api/statistics.js';
+import { listAttempts, getMyQuestionStats } from '../../api/statistics.js';
+import { kdBadge } from '../../utils/charts.js';
 import { getTestShares, updateTestAccess, addShare } from '../../api/access.js';
 import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
@@ -210,7 +211,7 @@ function renderOverviewTab(test, attempts) {
   return wrap;
 }
 
-function renderQuestionsTab(test) {
+function renderQuestionsTab(test, kdByQ = {}) {
   const wrap = document.createElement('div');
   Object.assign(wrap.style, {
     padding: '12px 16px 24px',
@@ -299,6 +300,12 @@ function renderQuestionsTab(test) {
       });
       num.textContent = `Q${q.id ?? (idx + 1)}`;
       head.appendChild(num);
+      const qs = kdByQ[String(q.id ?? (idx + 1))];
+      if (qs) {
+        const b = document.createElement('span');
+        b.innerHTML = kdBadge(qs.k, qs.d, qs.ratio, qs.rank);
+        head.appendChild(b);
+      }
       if (test.is_owner) {
         const chev = iconEl('chevR', 12);
         chev.style.color = 'var(--ink-mute)';
@@ -626,6 +633,13 @@ export default async function render(root, params = {}) {
   let activeTab = (params.tab && ['overview','questions','stats','access','activity'].includes(params.tab))
     ? params.tab : 'overview';
 
+  // Fetch K/D stats once for the questions tab.
+  let kdByQ = {};
+  try {
+    const ks = await getMyQuestionStats(testId);
+    for (const s of (ks.questions || [])) kdByQ[String(s.questionId)] = s;
+  } catch (_) { kdByQ = {}; }
+
   // Assemble body — strip stays at top, tab body underneath.
   const bodyEl = document.createElement('div');
   let strip = buildTabStrip(activeTab, switchTo);
@@ -636,7 +650,7 @@ export default async function render(root, params = {}) {
   function renderActive() {
     tabBody.replaceChildren();
     if (activeTab === 'overview')       tabBody.appendChild(renderOverviewTab(test, attempts));
-    else if (activeTab === 'questions') tabBody.appendChild(renderQuestionsTab(test));
+    else if (activeTab === 'questions') tabBody.appendChild(renderQuestionsTab(test, kdByQ));
     else if (activeTab === 'stats')     tabBody.appendChild(renderStatsTab(test, attempts));
     else if (activeTab === 'access')    tabBody.appendChild(renderAccessTab(test));
     else if (activeTab === 'activity')  tabBody.appendChild(renderActivityTab(test, attempts));

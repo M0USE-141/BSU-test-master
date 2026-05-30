@@ -9,6 +9,8 @@ import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
 import { getState } from '../../state.js';
 import { escHtml as esc } from '../../utils/escape.js';
+import { getMyQuestionStats } from '../../api/statistics.js';
+import { kdBadge } from '../../utils/charts.js';
 
 function accessChip(level) {
   const map = { public: 'public', shared: 'shared', private: 'private' };
@@ -39,6 +41,13 @@ export default async function render(root, params = {}) {
     root.innerHTML = `<div class="screen" style="padding:var(--pad);color:var(--ink-mute);">${t('test.notFound') || 'Test not found.'}</div>`;
     return;
   }
+
+  // Fetch K/D stats once; degrade gracefully on failure (403, network, etc.)
+  let kdByQ = {};
+  try {
+    const ks = await getMyQuestionStats(testId);
+    for (const s of (ks.questions || [])) kdByQ[String(s.questionId)] = s;
+  } catch (_) { kdByQ = {}; }
 
   const state = getState();
   const isOwner = test.is_owner ?? (state.user?.id === test.owner_id);
@@ -72,7 +81,9 @@ export default async function render(root, params = {}) {
                     const qText = typeof q.question === 'string'
                       ? q.question
                       : (q.question?.blocks?.[0]?.text || q.question?.blocks?.[0]?.value || `Q${i + 1}`);
-                    return `<li style="font-size:13px;color:var(--ink);line-height:1.4;">${esc(String(qText).slice(0, 160))}${String(qText).length > 160 ? '…' : ''}</li>`;
+                    const s = kdByQ[String(q.id ?? (i + 1))];
+                    const badge = s ? kdBadge(s.k, s.d, s.ratio, s.rank) : '';
+                    return `<li style="font-size:13px;color:var(--ink);line-height:1.4;display:flex;align-items:baseline;gap:6px;"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-mute);font-weight:600;flex-shrink:0;">Q${q.id ?? (i + 1)}</span>${badge}<span>${esc(String(qText).slice(0, 160))}${String(qText).length > 160 ? '…' : ''}</span></li>`;
                   }).join('')}
                   ${questions.length > 20 ? `<li style="color:var(--ink-mute);font-size:12px;">…and ${questions.length - 20} more</li>` : ''}
                 </ol>`
