@@ -9,8 +9,8 @@ import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
 import { getState } from '../../state.js';
 import { escHtml as esc } from '../../utils/escape.js';
-import { getMyQuestionStats } from '../../api/statistics.js';
-import { kdBadge } from '../../utils/charts.js';
+import { getMyQuestionStats, getMyAggregate, getMyTrend } from '../../api/statistics.js';
+import { kdBadge, donut, areaLine } from '../../utils/charts.js';
 
 function accessChip(level) {
   const map = { public: 'public', shared: 'shared', private: 'private' };
@@ -42,12 +42,22 @@ export default async function render(root, params = {}) {
     return;
   }
 
-  // Fetch K/D stats once; degrade gracefully on failure (403, network, etc.)
+  // Fetch K/D stats, aggregate, and trend in parallel; degrade gracefully on failure.
   let kdByQ = {};
-  try {
-    const ks = await getMyQuestionStats(testId);
-    for (const s of (ks.questions || [])) kdByQ[String(s.questionId)] = s;
-  } catch (_) { kdByQ = {}; }
+  let agg = null;
+  let trendData = null;
+  {
+    const [ksRes, aggRes, trendRes] = await Promise.allSettled([
+      getMyQuestionStats(testId),
+      getMyAggregate({ test_id: testId }),
+      getMyTrend(30),
+    ]);
+    if (ksRes.status === 'fulfilled') {
+      for (const s of (ksRes.value?.questions || [])) kdByQ[String(s.questionId)] = s;
+    }
+    if (aggRes.status === 'fulfilled') agg = aggRes.value;
+    if (trendRes.status === 'fulfilled') trendData = trendRes.value;
+  }
 
   const state = getState();
   const isOwner = test.is_owner ?? (state.user?.id === test.owner_id);
@@ -124,6 +134,43 @@ export default async function render(root, params = {}) {
             ${iconEl('home', 16)?.outerHTML || ''}
             ${t('nav.home') || 'Back to Home'}
           </button>
+
+          ${(() => {
+            // Stats section — only render if we have any data.
+            const attemptCount = agg?.attemptCount || 0;
+            const avgPct = Math.round(agg?.avgPercentCorrect || 0);
+            const trendPoints = (trendData?.trend || []).map(d => ({ y: Math.round(d.avg_score || 0), label: d.date }));
+            const kdEntries = Object.entries(kdByQ).sort(([a], [b]) => Number(a) - Number(b));
+            if (!agg && kdEntries.length === 0) return '';
+            return `
+          <div class="card" style="padding:16px;margin-top:0;">
+            <div style="font:600 13px/1 Inter,sans-serif;margin-bottom:12px;color:var(--ink);">Статистика</div>
+
+            ${agg ? `
+            <div style="display:flex;gap:8px;justify-content:center;margin-bottom:12px;">
+              ${donut(avgPct, 100, { unit: '%', label: 'Средний %' })}
+              ${donut(attemptCount, Math.max(1, attemptCount), { label: 'Попытки' })}
+            </div>` : ''}
+
+            ${trendPoints.length >= 2 ? `
+            <div style="margin-bottom:12px;">
+              <div style="font:500 11px/1 Inter,sans-serif;color:var(--ink-mute);margin-bottom:6px;">Тренд (30 дней)</div>
+              ${areaLine(trendPoints, { height: 96 })}
+            </div>` : ''}
+
+            ${kdEntries.length > 0 ? `
+            <div>
+              <div style="font:500 11px/1 Inter,sans-serif;color:var(--ink-mute);margin-bottom:6px;">K/D по вопросам</div>
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                ${kdEntries.map(([qId, s]) => `
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-top:1px solid var(--ink-soft);">
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-mute);font-weight:600;">Q${esc(qId)}</span>
+                    ${kdBadge(s.k, s.d, s.ratio, s.rank)}
+                  </div>`).join('')}
+              </div>
+            </div>` : ''}
+          </div>`;
+          })()}
         </div>
       </div>
     </div>`;
