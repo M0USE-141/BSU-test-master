@@ -6,7 +6,9 @@ from sqlalchemy import and_, func, select, text
 from sqlalchemy.orm import Session as DBSession
 
 from api.models.db.attempt import Attempt, AttemptAnswer, AttemptStatus
+from api.models.db.question import Question
 from api.models.db.question_performance import QuestionPerformance
+from api.models.db.test_collection import TestCollection
 
 
 # K/D rank thresholds (single source of truth — frontend only colors by rank).
@@ -356,6 +358,50 @@ def get_weak_questions(
             "totalCount": row.total_count,
             "accuracyRate": round(rate * 100, 1),
             "avgDurationMs": row.total_duration_ms // row.total_count,
+        })
+    return result
+
+
+def get_my_question_kd(db: DBSession, test_id: str, user_id: int) -> list[dict]:
+    """Per-question personal K/D for every question of a test.
+
+    Enumerates ALL questions (LEFT JOIN performance) so never-answered
+    questions appear with k=0,d=0,totalCount=0,rank="none" — this powers
+    the "untaken" practice source. Ordered by question order_index.
+    """
+    rows = db.execute(
+        select(
+            Question.id,
+            QuestionPerformance.correct_count,
+            QuestionPerformance.total_count,
+            QuestionPerformance.total_duration_ms,
+        )
+        .join(TestCollection, Question.test_collection_id == TestCollection.id)
+        .outerjoin(
+            QuestionPerformance,
+            and_(
+                QuestionPerformance.question_id == Question.id,
+                QuestionPerformance.user_id == user_id,
+                QuestionPerformance.test_id == test_id,
+            ),
+        )
+        .where(TestCollection.test_id == test_id)
+        .order_by(Question.order_index)
+    ).all()
+
+    result: list[dict] = []
+    for qid, correct, total, dur in rows:
+        correct = correct or 0
+        total = total or 0
+        ratio, rank = compute_kd(correct, total)
+        result.append({
+            "questionId": qid,
+            "k": correct,
+            "d": total - correct,
+            "ratio": ratio,
+            "rank": rank,
+            "totalCount": total,
+            "avgDurationMs": (dur // total) if total else 0,
         })
     return result
 
