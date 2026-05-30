@@ -465,49 +465,6 @@ async function renderSummaryView(body, state, tests) {
   }
 }
 
-function renderTrendBars(slot, rows) {
-  slot.innerHTML = '';
-  // Normalise to fill 15 slots; rows are sparse (only days with attempts).
-  const wrap = document.createElement('div');
-  wrap.style.display = 'flex';
-  wrap.style.alignItems = 'flex-end';
-  wrap.style.gap = '4px';
-  wrap.style.height = '120px';
-  wrap.style.padding = '8px 0';
-
-  const maxScore = 100;
-  rows.slice(-15).forEach(function (r) {
-    const col = document.createElement('div');
-    col.style.flex = '1';
-    col.style.display = 'flex';
-    col.style.flexDirection = 'column';
-    col.style.alignItems = 'center';
-    col.style.gap = '4px';
-    col.title = r.date + ' · ' + r.avg_score + '% · ' + r.attempts_count + ' поп.';
-
-    const bar = document.createElement('div');
-    bar.style.width = '100%';
-    bar.style.minHeight = '4px';
-    const h = Math.max(4, Math.round((r.avg_score || 0) / maxScore * 96));
-    bar.style.height = h + 'px';
-    bar.style.background = (r.avg_score >= 70) ? 'var(--accent)'
-                          : (r.avg_score >= 50) ? 'var(--warning)'
-                          : 'var(--error)';
-    bar.style.borderRadius = '3px';
-    col.appendChild(bar);
-
-    const lbl = document.createElement('div');
-    lbl.style.fontSize = '10px';
-    lbl.style.color = 'var(--ink-tertiary)';
-    const dt = r.date && r.date.slice(5).replace('-', '.');
-    lbl.textContent = dt || '';
-    col.appendChild(lbl);
-
-    wrap.appendChild(col);
-  });
-  slot.appendChild(wrap);
-}
-
 async function renderWeakView(body, state, tests) {
   body.innerHTML = '';
 

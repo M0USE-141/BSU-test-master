@@ -77,48 +77,6 @@ function thinBar(value, max) {
   return wrap;
 }
 
-function buildSparkline(values, h = 70) {
-  if (!Array.isArray(values) || values.length < 2) return null;
-  const NS = 'http://www.w3.org/2000/svg';
-  const W = 280, H = h, P = 6;
-  const max = Math.max(...values, 1);
-  const min = Math.min(...values);
-  const range = max - min || 1;
-  const step = (W - P * 2) / (values.length - 1);
-  const pts = values.map((v, i) => {
-    const x = P + i * step;
-    const y = H - P - ((v - min) / range) * (H - P * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  svg.setAttribute('width', '100%');
-  svg.setAttribute('height', String(H));
-  svg.setAttribute('preserveAspectRatio', 'none');
-  svg.style.display = 'block';
-  const line = document.createElementNS(NS, 'polyline');
-  line.setAttribute('points', pts);
-  line.setAttribute('fill', 'none');
-  line.setAttribute('stroke', 'var(--accent)');
-  line.setAttribute('stroke-width', '2');
-  line.setAttribute('stroke-linecap', 'round');
-  line.setAttribute('stroke-linejoin', 'round');
-  svg.appendChild(line);
-  values.forEach((v, i) => {
-    const x = P + i * step;
-    const y = H - P - ((v - min) / range) * (H - P * 2);
-    const last = i === values.length - 1;
-    const dot = document.createElementNS(NS, 'circle');
-    dot.setAttribute('cx', x.toFixed(1));
-    dot.setAttribute('cy', y.toFixed(1));
-    dot.setAttribute('r', last ? '4' : '2.5');
-    dot.setAttribute('fill', 'var(--accent)');
-    dot.setAttribute('opacity', last ? '1' : '0.5');
-    svg.appendChild(dot);
-  });
-  return svg;
-}
-
 function buildHeatmap(data, weeks) {
   const WEEKS = Math.max(1, Number(weeks) || 12);
   const today = new Date();
@@ -226,15 +184,6 @@ export default async function render(root) {
   // Total time (ms → hours, one decimal).
   const totalMs = Number(agg?.totalDurationMs ?? agg?.total_duration_ms ?? 0);
   const totalHours = totalMs > 0 ? (totalMs / 3.6e6).toFixed(1) + 'ч' : '—';
-
-  // Extract numeric series for the sparkline. Trend payload may be a
-  // list of objects {date, avg_score} or raw numbers — handle both.
-  const trendValues = Array.isArray(trend)
-    ? trend.map(p => {
-      if (typeof p === 'number') return p;
-      return Math.round(p.avg_score ?? p.avgScore ?? p.score ?? 0);
-    }).filter(n => Number.isFinite(n))
-    : [];
 
   // ── Build body ───────────────────────────────────────────────
   const body = document.createElement('div');
