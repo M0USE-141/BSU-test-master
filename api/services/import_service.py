@@ -17,6 +17,7 @@ import logging
 import shutil
 import tempfile
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -238,30 +239,72 @@ def _hyphenate(uuid_hex: str) -> str:
     return str(uuid.UUID(uuid_hex))
 
 
+# Concurrency for the asset mirror. Each file is one PUT to R2/MinIO. 8
+# wide is comfortably below R2's per-bucket rate (thousands ops/sec) and
+# leaves headroom for normal traffic on the shared urllib3 pool. The
+# minio-py HTTP pool defaults to maxsize=10 — keeping mirror at 8 avoids
+# starving other concurrent S3 work in the same process.
+_MIRROR_MAX_WORKERS = 8
+
+
 def _mirror_assets_to_storage(
     test_id: str,
     assets_directory: Path,
     storage: StorageBackend,
 ) -> None:
-    """Push extracted assets into the materials/ prefix of the new test."""
+    """Push extracted assets into the materials/ prefix of the new test.
+
+    Concurrency: a ThreadPoolExecutor fans out PUTs across `_MIRROR_MAX_WORKERS`
+    threads. On a typical docx with ~25 materials this cuts mirror wall-clock
+    from ~5s (sequential) to ~0.5s.
+
+    No HEAD-before-PUT: the object key is `<sha1-prefix><ext>` derived from
+    the content. Re-uploading the same bytes to the same key is idempotent
+    on every S3-compatible backend we support (MinIO, Cloudflare R2), so
+    the previous `if storage.object_exists(key): continue` was a wasted
+    round-trip — 26 HEAD 404s per fresh import showed up as red lines in
+    the platform log.
+
+    Errors: any failing PUT raises; we collect through `as_completed` so
+    the caller sees the first error and aborts the import. Partial state
+    in R2 from earlier successful PUTs is acceptable — the test row never
+    gets written, so those orphans are just bytes (cleanable by lifecycle
+    rule or a future sweeper).
+    """
     if not assets_directory.exists():
         return
-    for src in assets_directory.iterdir():
-        if not src.is_file():
-            continue
+    files = [src for src in assets_directory.iterdir() if src.is_file()]
+    if not files:
+        return
+
+    def _upload_one(src: Path) -> str | None:
         try:
             key = storage_keys.material_key(test_id, src.name)
         except StorageKeyError as exc:
             log.warning("skip mirror of %s: %s", src.name, exc)
-            continue
-        if storage.object_exists(key):
-            continue
+            return None
+        size = src.stat().st_size
+        # Open per-task: file handles aren't thread-safe. Streaming via the
+        # open file (not pre-reading into memory) keeps memory flat even
+        # for large WMF/PNG outputs.
         with src.open("rb") as fh:
             storage.put_object(
                 key, fh,
                 content_type="application/octet-stream",
-                length=src.stat().st_size,
+                length=size,
             )
+        return key
+
+    # `ThreadPoolExecutor` over network-bound work — the GIL doesn't hurt
+    # because each thread spends its time in C/socket code waiting on R2.
+    workers = min(_MIRROR_MAX_WORKERS, len(files))
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="mirror") as pool:
+        futures = [pool.submit(_upload_one, src) for src in files]
+        for fut in as_completed(futures):
+            # Re-raise on first failure. The remaining futures still run
+            # to completion (ThreadPoolExecutor doesn't cancel running
+            # tasks), but we won't wait on their results.
+            fut.result()
 
 
 def _set_status(

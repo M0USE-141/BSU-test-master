@@ -27,13 +27,61 @@ from datetime import timedelta
 from typing import BinaryIO
 from urllib.parse import urlparse
 
+import urllib3
 from minio import Minio
 from minio.error import S3Error
+from urllib3.util.retry import Retry
 
 from api.services.storage_keys import split_logical_key
 from api.services.storage_service import ObjectNotFoundError, StorageError
 
 log = logging.getLogger(__name__)
+
+
+# Shared HTTP pool config for the underlying minio-py client.
+#
+# Why we build our own urllib3.PoolManager instead of letting minio-py
+# create its default one:
+#
+#   1. Retry on transient failures. R2 occasionally returns 429 (SlowDown),
+#      503, or 5xx during edge restarts. minio-py's defaults don't retry
+#      429 on PUT, so a single Cloudflare hiccup mid-import would surface
+#      to the user as a 500. With exponential backoff (0.5s, 1s, 2s, 4s,
+#      8s ≈ 15s total worst case) we ride out edge-level transients
+#      transparently.
+#
+#   2. Wider connection pool. minio-py's default is maxsize=10 per host.
+#      With the new ThreadPoolExecutor(8) in import_service.mirror plus
+#      concurrent asset GETs from page loads, 10 sockets becomes the
+#      bottleneck — extra threads wait on the urllib3 lock, not on R2.
+#      32 leaves comfortable headroom for both flows.
+#
+# Methods covered: every S3 verb we issue. urllib3's default `allowed_methods`
+# excludes POST and PUT, which are exactly the ones we need.
+_R2_RETRY = Retry(
+    total=5,
+    connect=3,
+    read=3,
+    status=5,
+    backoff_factor=0.5,
+    status_forcelist=(408, 429, 500, 502, 503, 504),
+    allowed_methods=frozenset(("GET", "HEAD", "PUT", "POST", "DELETE")),
+    raise_on_status=False,  # let minio-py classify the final response
+    respect_retry_after_header=True,
+)
+_R2_POOL_MAXSIZE = 32
+
+
+def _make_http_client(secure: bool) -> urllib3.PoolManager:
+    """Build the urllib3 PoolManager that minio-py will use for all I/O."""
+    # `cert_reqs` follows the secure flag: HTTPS → verify the chain;
+    # HTTP (internal MinIO) → no TLS at all, so cert config is irrelevant.
+    return urllib3.PoolManager(
+        timeout=urllib3.Timeout(connect=10, read=60),
+        maxsize=_R2_POOL_MAXSIZE,
+        retries=_R2_RETRY,
+        cert_reqs="CERT_REQUIRED" if secure else "CERT_NONE",
+    )
 
 
 class S3StorageBackend:
@@ -63,10 +111,13 @@ class S3StorageBackend:
             secret_key=secret_key,
             region=region,
             secure=internal_secure,
+            http_client=_make_http_client(internal_secure),
         )
 
         # Separate client for presigned URLs — its `endpoint` is what gets
-        # baked into the signed URL the browser fetches.
+        # baked into the signed URL the browser fetches. The presigning
+        # client never makes outbound requests itself, so it gets its own
+        # minimal http_client (still configured with retries for symmetry).
         if public_endpoint and public_endpoint != endpoint:
             public_host, public_secure = _split_endpoint(
                 public_endpoint, fallback_secure=True,
@@ -77,6 +128,7 @@ class S3StorageBackend:
                 secret_key=secret_key,
                 region=region,
                 secure=public_secure,
+                http_client=_make_http_client(public_secure),
             )
         else:
             # Same as internal — fine for single-host dev.

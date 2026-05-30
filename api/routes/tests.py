@@ -19,7 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession, joinedload
 
 from api.config import MAX_DOCX_UPLOAD_BYTES, MAX_TESTS_PER_USER
-from api.database import get_db
+from api.database import SessionLocal, get_db
 from api.dependencies.auth import get_current_user, get_optional_user
 from api.dependencies.storage import get_storage, get_storage_backend
 from api.models import TestCreate, TestUpdate
@@ -382,6 +382,16 @@ def upload_test(
     job_id = import_service.start_import(
         db, storage, current_user.id, FilePath(file_name).name, docx_bytes,
     )
+    # CRITICAL: release the request-scoped DB connection BEFORE running
+    # the import. Otherwise this handler holds one pooled connection for
+    # the full ~4s of extract + WMF conversion + 26x R2 PUTs, which on
+    # concurrent uploads exhausts the pool (the bug we just hit in prod —
+    # `QueuePool limit reached` cascades visible in cleanup_service logs).
+    # `run_import` opens its own sessions internally; we only need a fresh
+    # one afterwards to inspect the job row.
+    current_user_id = current_user.id  # snapshot before session closes
+    db.close()
+
     # Synchronous run — same code path the BackgroundTasks worker uses.
     # Errors raise (caught and recorded by import_service.run_import); on
     # exit the job is either `done` (with test_collection_id) or `failed`.
@@ -394,23 +404,27 @@ def upload_test(
         description_override=(description.strip() if description and description.strip() else None),
     )
 
-    # Re-read the job to inspect outcome (the worker used its own session).
-    db.expire_all()
+    # Re-open a short session to inspect the import outcome AND build the
+    # response payload. Same session for both so we don't checkout twice.
     from api.models.db.import_job import ImportJob, ImportJobStatus
-    job = db.get(ImportJob, job_id)
-    if job is None or job.status != ImportJobStatus.DONE.value:
-        detail = (job.error_message if job else None) or "Import failed"
-        raise HTTPException(status_code=500, detail=detail)
+    with SessionLocal() as fresh_db:
+        job = fresh_db.get(ImportJob, job_id)
+        if job is None or job.status != ImportJobStatus.DONE.value:
+            detail = (job.error_message if job else None) or "Import failed"
+            raise HTTPException(status_code=500, detail=detail)
 
-    # The job stores the INT PK; access_service uses the public slug,
-    # so fetch via the ORM directly.
-    tc = db.get(TestCollection, job.test_collection_id)
-    if tc is None:
-        raise HTTPException(status_code=500, detail="Import succeeded but test missing")
-    payload = questions_service.get_test_payload(db, tc.test_id) or {}
-    payload["assetsBaseUrl"] = f"/api/tests/{tc.test_id}/assets"
+        # The job stores the INT PK; access_service uses the public slug,
+        # so fetch via the ORM directly.
+        tc = fresh_db.get(TestCollection, job.test_collection_id)
+        if tc is None:
+            raise HTTPException(status_code=500, detail="Import succeeded but test missing")
+        payload = questions_service.get_test_payload(fresh_db, tc.test_id) or {}
+        payload["assetsBaseUrl"] = f"/api/tests/{tc.test_id}/assets"
+        metadata = _metadata_for(tc, len(payload.get("questions", [])))
+        _ = current_user_id  # silence "unused"; kept for future BG dispatch
+
     return {
-        "metadata": _metadata_for(tc, len(payload.get("questions", []))),
+        "metadata": metadata,
         "payload": payload,
         "logs": [],
         "jobId": job_id,

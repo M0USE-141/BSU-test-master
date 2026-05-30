@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session as DbSession
 
-from api.database import get_db
+from api.database import SessionLocal, get_db
 from api.dependencies.auth import get_current_user
 from api.models.auth import (
     AvatarUploadResponse,
@@ -138,17 +138,28 @@ async def get_public_user(
 @router.get("/{user_id}/avatar")
 async def get_user_avatar(
     user_id: int,
-    db: Annotated[DbSession, Depends(get_db)],
 ) -> StreamingResponse:
-    """Get user avatar bytes (public endpoint, streamed from storage)."""
-    user = get_user_by_id(db, user_id)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+    """Get user avatar bytes (public endpoint, streamed from storage).
 
-    result = get_avatar_stream(user.id, user.avatar_path)
+    Uses a short manual DB scope (not `Depends(get_db)`) so the Postgres
+    connection is released BEFORE streaming begins. Avatars are public
+    and frequently fetched (every page that shows another user's avatar),
+    so a leaked session per request quickly drains the pool. See the
+    matching comment in `assets.get_asset`.
+    """
+    with SessionLocal() as db:
+        user = get_user_by_id(db, user_id)
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+        # Snapshot the two attributes we need before the session closes,
+        # otherwise SQLAlchemy raises DetachedInstanceError on lazy access.
+        avatar_user_id = user.id
+        avatar_path = user.avatar_path
+
+    result = get_avatar_stream(avatar_user_id, avatar_path)
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

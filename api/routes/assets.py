@@ -26,7 +26,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Path, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session as DbSession
 
-from api.database import get_db
+from api.database import SessionLocal, get_db
 from api.dependencies.auth import get_current_user, get_optional_user
 from api.dependencies.storage import get_storage
 from api.models.db.user import User
@@ -178,15 +178,16 @@ def upload_asset(
     except StorageKeyError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    # Idempotent write: object_exists short-circuits the upload when the
-    # content hash matches. Same-bytes-twice → same key, no rewrite needed.
-    if not storage.object_exists(key):
-        storage.put_object(
-            key,
-            io.BytesIO(data),
-            content_type=_guess_content_type(name),
-            length=len(data),
-        )
+    # Idempotent write — no HEAD-before-PUT. The key is derived from the
+    # content's sha1 prefix, so re-uploading the same bytes to the same key
+    # is a no-op semantically; saving the HEAD round-trip is a free win
+    # (and removes a confusing 404 line from S3 client debug logs).
+    storage.put_object(
+        key,
+        io.BytesIO(data),
+        content_type=_guess_content_type(name),
+        length=len(data),
+    )
 
     response: dict[str, str] = {
         "id": short_id,
@@ -209,12 +210,20 @@ def upload_asset(
 def list_materials(
     test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     current_user: Annotated[User | None, Depends(get_optional_user)],
-    db: Annotated[DbSession, Depends(get_db)],
     storage: Annotated[StorageBackend, Depends(get_storage)],
 ) -> dict[str, list[dict[str, str]]]:
-    """List every uploaded image/formula for this test."""
-    if not access_service.can_view_test(db, test_id, current_user):
-        raise HTTPException(status_code=403, detail="Access denied")
+    """List every uploaded image/formula for this test.
+
+    Note on DB scope: we open a short session ONLY for the access check
+    and close it before iterating S3. The remaining loop fetches every
+    MathML body from storage, which can take seconds — holding a pooled
+    Postgres connection across that loop starves the pool under load
+    (this used to cause `QueuePool limit reached` cascades).
+    """
+    with SessionLocal() as db:
+        if not access_service.can_view_test(db, test_id, current_user):
+            raise HTTPException(status_code=403, detail="Access denied")
+    # ↑ connection released — none of the work below needs the DB.
 
     try:
         prefix = storage_keys.materials_prefix(test_id)
@@ -302,7 +311,6 @@ def get_asset(
     test_id: Annotated[str, Path(pattern=TEST_ID_PATTERN)],
     asset_path: str,
     current_user: Annotated[User | None, Depends(get_optional_user)],
-    db: Annotated[DbSession, Depends(get_db)],
     storage: Annotated[StorageBackend, Depends(get_storage)],
 ) -> StreamingResponse:
     """Get test asset bytes by filename (preserves legacy URL contract).
@@ -311,9 +319,20 @@ def get_asset(
     redirecting would require rewriting every `[[img:abc1234]]` token in
     question payloads to the presigned URL on every render. Streaming
     costs one extra hop but keeps URLs stable and authz centralized.
+
+    DB scope is deliberately a SHORT `with SessionLocal()` block instead of
+    `Depends(get_db)`. With the dependency, FastAPI keeps the session open
+    until Starlette finishes iterating the StreamingResponse body — and
+    streaming a multi-MB asset from R2 takes hundreds of ms while pinning
+    one Postgres connection. On a test page with many `[[img:...]]` tokens
+    the browser fires those GETs in parallel, and the pool (size 20 + 10
+    overflow) is exhausted in seconds. Closing the session before the
+    StreamingResponse fixes the leak.
     """
-    if not access_service.can_view_test(db, test_id, current_user):
-        raise HTTPException(status_code=403, detail="Access denied")
+    with SessionLocal() as db:
+        if not access_service.can_view_test(db, test_id, current_user):
+            raise HTTPException(status_code=403, detail="Access denied")
+    # ↑ connection released before the R2 round-trip + body stream.
 
     # The catch-all path is *just* the filename in the current contract
     # (no slashes in tokens). We refuse anything else to keep behaviour
