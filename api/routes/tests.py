@@ -156,11 +156,22 @@ def list_tests(
         meta["is_owner"] = is_owner
         tests.append(meta)
 
-    # Attempt stats — optional, drives Discover sort.
+    # Attempt stats — optional, drives Discover sort AND test-card badges.
+    #
+    # Two scopes:
+    #  - Community (all users): only used for sort=popular/best so Discover
+    #    surfaces objectively popular/high-scoring tests.
+    #  - User-scoped: what the card badge shows. Previously we showed the
+    #    community aggregate which made shared/public tests display a
+    #    percentage even before the viewer had attempted them once.
     if with_stats or sort in {"popular", "best"}:
         accessed_ids = [str(t["id"]) for t in tests]
-        if accessed_ids:
-            stats_rows = db.execute(
+
+        community_stats: dict[str, dict] = {}
+        user_stats: dict[str, dict] = {}
+
+        if accessed_ids and sort in {"popular", "best"}:
+            community_rows = db.execute(
                 select(
                     Attempt.test_id,
                     func.count(Attempt.id).label("attempts_count"),
@@ -175,25 +186,61 @@ def list_tests(
                 )
                 .group_by(Attempt.test_id)
             ).all()
-            stats_map = {
+            community_stats = {
                 r.test_id: {
                     "attempts_count": int(r.attempts_count or 0),
                     "avg_score": round(float(r.avg_score)) if r.avg_score is not None else None,
                 }
-                for r in stats_rows
+                for r in community_rows
             }
-        else:
-            stats_map = {}
+
+        if accessed_ids and current_user is not None:
+            user_rows = db.execute(
+                select(
+                    Attempt.test_id,
+                    func.count(Attempt.id).label("attempts_count"),
+                    func.avg(
+                        (Attempt.correct_count * 100.0)
+                        / func.nullif(Attempt.question_count, 0)
+                    ).label("avg_score"),
+                )
+                .where(
+                    Attempt.test_id.in_(accessed_ids),
+                    Attempt.status == AttemptStatus.COMPLETED.value,
+                    Attempt.user_id == current_user.id,
+                )
+                .group_by(Attempt.test_id)
+            ).all()
+            user_stats = {
+                r.test_id: {
+                    "attempts_count": int(r.attempts_count or 0),
+                    "avg_score": round(float(r.avg_score)) if r.avg_score is not None else None,
+                }
+                for r in user_rows
+            }
+
+        # Display values default to user-scoped (or null if anonymous /
+        # never attempted). Community values are stashed under
+        # `community_*` so the sort step below can use them.
         for t in tests:
-            s = stats_map.get(t["id"], {"attempts_count": 0, "avg_score": None})
-            t["attempts_count"] = s["attempts_count"]
-            t["avg_score"] = s["avg_score"]
+            us = user_stats.get(t["id"], {"attempts_count": 0, "avg_score": None})
+            t["attempts_count"] = us["attempts_count"]
+            t["avg_score"] = us["avg_score"]
+            if sort in {"popular", "best"}:
+                cs = community_stats.get(t["id"], {"attempts_count": 0, "avg_score": None})
+                t["_community_attempts"] = cs["attempts_count"]
+                t["_community_avg"] = cs["avg_score"]
 
     if sort == "popular":
-        tests.sort(key=lambda t: t.get("attempts_count", 0), reverse=True)
+        # Sort by COMMUNITY popularity so Discover surfaces tests other
+        # users actually take, not by the current viewer's history.
+        tests.sort(key=lambda t: t.get("_community_attempts", 0), reverse=True)
     elif sort == "best":
         tests.sort(
-            key=lambda t: (t.get("avg_score") is None, -(t.get("avg_score") or 0))
+            key=lambda t: (
+                t.get("_community_avg") is None,
+                -(t.get("_community_avg") or 0),
+            )
         )
     elif sort == "new":
         # Newest first by created_at — we have it on TestCollection now.
@@ -210,6 +257,11 @@ def list_tests(
         tests = tests[offset:]
     if limit:
         tests = tests[:limit]
+
+    # Strip internal-only sort keys before serialising.
+    for t in tests:
+        t.pop("_community_attempts", None)
+        t.pop("_community_avg", None)
 
     return {"tests": tests, "total": total, "offset": offset, "limit": limit}
 

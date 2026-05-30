@@ -406,25 +406,48 @@ export function mSeg({ items = [], value, onChange, sm = false } = {}) {
       fontSize: sm ? '11px' : '12px',
     },
   });
+  // Track active key locally so taps restyle without a parent re-render.
+  // Without this, the initial isActive was frozen and the "selected" pill
+  // never moved visually when the user picked a different segment.
+  let activeKey = value;
+  const buttons = [];
+
+  function applyStyles() {
+    for (const { key, btn } of buttons) {
+      const isActive = activeKey === key;
+      Object.assign(btn.style, {
+        background: isActive ? 'var(--paper)' : 'transparent',
+        color: isActive ? 'var(--ink)' : 'var(--ink-fade)',
+        font: `${isActive ? '600' : '500'} ${sm ? 11 : 12}px Inter, sans-serif`,
+        boxShadow: isActive ? 'var(--shadow-sm)' : 'none',
+      });
+    }
+  }
+
   for (const raw of items) {
     const key = typeof raw === 'string' ? raw : raw.key;
     const label = typeof raw === 'string' ? raw : raw.label;
-    const isActive = value === key;
-    wrap.appendChild(el('button', {
+    const btn = el('button', {
       type: 'button',
-      onclick: () => onChange && onChange(key),
+      onclick: () => {
+        if (activeKey === key) return;
+        activeKey = key;
+        applyStyles();
+        onChange && onChange(key);
+      },
       style: {
         flex: '1', padding: sm ? '5px 6px' : '7px 8px',
         border: 'none',
-        background: isActive ? 'var(--paper)' : 'transparent',
-        color: isActive ? 'var(--ink)' : 'var(--ink-fade)',
         borderRadius: '999px',
-        font: `${isActive ? '600' : '500'} ${sm ? 11 : 12}px Inter, sans-serif`,
-        boxShadow: isActive ? 'var(--shadow-sm)' : 'none',
         cursor: 'pointer', whiteSpace: 'nowrap',
       },
-    }, label));
+    }, label);
+    buttons.push({ key, btn });
+    wrap.appendChild(btn);
   }
+  applyStyles();
+  // Imperative setter so callers (e.g. exam-mode auto-lock) can sync.
+  wrap.__setValue = (v) => { activeKey = v; applyStyles(); };
   return wrap;
 }
 

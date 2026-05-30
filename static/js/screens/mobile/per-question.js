@@ -28,6 +28,53 @@ let _keyHandler = null;
 
 let _renderToken = 0;
 
+// Module-level cache keyed by attemptId. Per-question navigation re-runs
+// this whole render function on every Prev/Next, which previously refetched
+// getAttempt + getTest + getMyQuestionStats + listFlagged on every step —
+// the user perceived this as a "loading flash" between questions. We now
+// fetch once on first entry and reuse the cached blob for subsequent
+// navigations within the same attempt.
+const _cache = new Map(); // attemptId -> { snap, testPayload, kdByQ, flaggedSet }
+
+async function loadAttemptBundle(testId, attemptId) {
+  const cached = _cache.get(attemptId);
+  if (cached) return cached;
+
+  let snap = readSnap(attemptId);
+  if (!snap) {
+    try { snap = await getAttempt(attemptId); }
+    catch { return null; }
+  }
+  if (!snap) return null;
+
+  let testPayload = null;
+  try { testPayload = await getTest(testId); } catch { /* graceful fallback */ }
+
+  let kdByQ = {};
+  try {
+    const ks = await getMyQuestionStats(testId);
+    for (const qStat of (ks.questions || [])) kdByQ[String(qStat.questionId)] = qStat;
+  } catch (_) { kdByQ = {}; }
+
+  let flaggedSet = new Set();
+  try {
+    const resp = await listFlagged(testId);
+    flaggedSet = new Set((resp && resp.flagged) || []);
+  } catch { /* not signed in or offline — leave empty */ }
+
+  const bundle = { snap, testPayload, kdByQ, flaggedSet };
+  _cache.set(attemptId, bundle);
+  return bundle;
+}
+
+// Invalidate caches that don't belong to this attempt — keeps memory bounded
+// to one attempt at a time. Called on first render of a new attemptId.
+function pruneCache(currentAttemptId) {
+  for (const k of _cache.keys()) {
+    if (k !== currentAttemptId) _cache.delete(k);
+  }
+}
+
 function readSnap(attemptId) {
   // taking.js writes the snapshot under `att:<id>:result` on submit.
   try {
@@ -150,29 +197,13 @@ export default async function render(root, params = {}) {
     body: skeleton, hideNav: true,
   });
 
-  // Resolve attempt snapshot.
-  let snap = readSnap(attemptId);
-  if (!snap) {
-    try { snap = await getAttempt(attemptId); }
-    catch { navigate('/error/404'); return; }
-  }
+  // Single bundle fetch (cached per attemptId — Prev/Next reuse it).
+  pruneCache(attemptId);
+  const bundle = await loadAttemptBundle(testId, attemptId);
   if (stale()) return;
-  if (!snap) { navigate('/error/404'); return; }
-
-  // The snapshot stores only `{id, text}` per question. Fetch the test
-  // payload separately for the full content (options + correct index).
-  let testPayload = null;
-  try { testPayload = await getTest(testId); } catch { /* graceful fallback */ }
-  if (stale()) return;
+  if (!bundle) { navigate('/error/404'); return; }
+  const { snap, testPayload, kdByQ } = bundle;
   const allTestQs = testPayload?.questions || [];
-
-  // Fetch K/D stats once for the whole review session.
-  let kdByQ = {};
-  try {
-    const ks = await getMyQuestionStats(testId);
-    for (const qStat of (ks.questions || [])) kdByQ[String(qStat.questionId)] = qStat;
-  } catch (_) { kdByQ = {}; }
-  if (stale()) return;
 
   const questions = snap.questions || [];
   const apiAnswers = Array.isArray(snap.answers) ? snap.answers : [];
@@ -354,13 +385,10 @@ export default async function render(root, params = {}) {
     body.appendChild(box);
   }
 
-  // Flag/unflag action row.
-  let flaggedSet = new Set();
-  try {
-    const resp = await listFlagged(testId);
-    flaggedSet = new Set((resp && resp.flagged) || []);
-  } catch { /* not signed in or offline — leave empty */ }
-  if (stale()) return;
+  // Flag/unflag action row — flaggedSet comes from the cached bundle and
+  // is mutated in-place when the user flags/unflags, so the next navigation
+  // reuses the updated state.
+  const flaggedSet = bundle.flaggedSet;
 
   const flagRow = document.createElement('div');
   Object.assign(flagRow.style, {

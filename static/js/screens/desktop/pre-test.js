@@ -607,10 +607,14 @@ function handleStart(testId, state, flaggedIds, weakOrdered, untakenIds) {
     return;
   }
 
+  // Weak-mode forces shuffle off so the ascending-K/D order from
+  // weakOrdered survives taking.js's Fisher-Yates step.
+  const effectiveShuffle = state.source === 'weak' ? false : state.shuffleQuestions;
+
   const handoff = {
     mode: state.mode,
     count: state.count,
-    shuffle: state.shuffleQuestions,
+    shuffle: effectiveShuffle,
     shuffleAnswers: state.shuffleAnswers,
     source: state.source,
     revealImmediately: state.revealImmediately,

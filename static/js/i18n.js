@@ -24,8 +24,12 @@ function detectLocale() {
  * @returns {Promise<Record<string, string>>}
  */
 async function loadLocale(locale) {
+  // Cache-bust via APP_VERSION instead of `no-store` so repeat visits within
+  // the same deploy hit the browser cache. Saves a network roundtrip on
+  // every page load.
+  const v = window.__APP_VERSION__ || 'dev';
   try {
-    const res = await fetch(`/static/locales/${locale}.json`, { cache: 'no-store' });
+    const res = await fetch(`/static/locales/${locale}.json?v=${v}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (e) {

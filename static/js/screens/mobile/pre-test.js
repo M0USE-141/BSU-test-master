@@ -258,7 +258,11 @@ export default async function render(root, params = {}) {
           onClick: () => {
             if (disabled) return;
             source = o.id;
+            // Weak-mode forces shuffleQuestions off so the K/D order
+            // survives taking.js. Reflect that in the toggle row UI.
+            if (source === 'weak') shuffleQuestions = false;
             rerender();
+            optsCard.__rebuild?.();
           },
         }, chipLabel);
         if (disabled) {
@@ -363,11 +367,12 @@ export default async function render(root, params = {}) {
     function rebuild() {
       cardBody.replaceChildren();
       const examLocked = (mode === 'exam');
+      const weakLocked = (source === 'weak');
       optShuffleQ = buildToggleRow(
         t('pretest.shuffle.questions') || 'Случайный порядок вопросов',
         shuffleQuestions,
         (v) => { shuffleQuestions = v; },
-        { first: true, disabled: examLocked },
+        { first: true, disabled: examLocked || weakLocked },
       );
       cardBody.appendChild(optShuffleQ);
       optShuffleA = buildToggleRow(
@@ -462,6 +467,9 @@ export default async function render(root, params = {}) {
       let filterIds = [];
       if (source === 'weak') {
         filterIds = weakOrdered.slice(0, count);
+        // Weak-mode: preserve ascending K/D order. taking.js would otherwise
+        // Fisher-Yates the pool and defeat the sort that made "weak" useful.
+        shuffleQuestions = false;
       } else if (source === 'new') {
         filterIds = untakenIds.slice();
       }

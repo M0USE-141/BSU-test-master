@@ -186,7 +186,9 @@ export default async function render(root, params = {}) {
     root,
     topbar: topBar({
       title: t('results.title') || 'Результат',
-      back: true, backHref: `#/test/${testId}`,
+      // Pass an explicit handler instead of relying on history.back(), which
+      // would walk us back into the taking screen we just finished.
+      back: () => navigate('/home'),
     }),
     body: skeleton, hideNav: true,
   });
@@ -401,7 +403,7 @@ export default async function render(root, params = {}) {
     root,
     topbar: topBar({
       title: t('results.title') || 'Результат',
-      back: true, backHref: `#/test/${testId}`,
+      back: () => navigate('/home'),
     }),
     body, sticky, hideNav: true,
   });
