@@ -272,17 +272,39 @@ class WordTestExtractor:
                         if rid and rid in image_map:
                             push_image(image_map[rid])
 
-                    # VML images (old equation previews)
+                    # VML images (old equation previews).
+                    # Old equation editors (Word Equation Editor 3.0,
+                    # MathType pre-OOXML) embed each formula as an
+                    # `<w:object>` containing BOTH a `<v:shape>/<v:imagedata>`
+                    # (the rendered WMF preview Word displays) AND an
+                    # `<o:OLEObject>` (the binary equation source). We
+                    # only use the image — it's what Word itself shows,
+                    # and our import pipeline converts the WMF to PNG.
+                    equation_image_emitted = False
                     for imdata in child.findall(".//v:imagedata", namespaces=NS):
                         rid = imdata.get(f"{{{NS['r']}}}id") or imdata.get(f"{{{NS['r']}}}embed")
                         if rid and rid in image_map:
                             push_image(image_map[rid])
+                            equation_image_emitted = True
                         else:
+                            # imagedata exists but image_map doesn't have
+                            # the rid — fall back to the literal marker
+                            # so the user sees SOMETHING in place of the
+                            # equation rather than silent omission.
                             flush_text()
                             items.append(ContentItem("text", formula_placeholder))
+                            equation_image_emitted = True
 
-                    # explicit OLE object marker
-                    if child.find(".//o:OLEObject", namespaces=NS) is not None:
+                    # explicit OLE object marker — ONLY emit the placeholder
+                    # if we couldn't surface the equation through its WMF
+                    # preview above. Without this guard every old-style
+                    # equation in the docx produced an unwanted "[formula]"
+                    # token RIGHT AFTER its rendered image, which is what
+                    # the user reported seeing in the preview.
+                    if (
+                        not equation_image_emitted
+                        and child.find(".//o:OLEObject", namespaces=NS) is not None
+                    ):
                         flush_text()
                         items.append(ContentItem("text", formula_placeholder))
 
