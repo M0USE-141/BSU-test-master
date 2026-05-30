@@ -261,7 +261,10 @@ def record_answer(
     answer.answered_at = datetime.now(timezone.utc)
 
     db.commit()
-    db.refresh(answer)
+    # No db.refresh(answer): the caller (record_attempt_answer route)
+    # only reads `is_correct` and `question_id` off the result, both
+    # of which we just set in Python. Refresh would be a wasted DB
+    # round-trip on the per-keystroke hot path.
     return answer
 
 

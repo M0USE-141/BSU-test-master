@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from api.database import get_db
 from api.dependencies.auth import get_current_user
+from api.models.db.attempt import Attempt
 from api.models.db.user import User
 from api.services.attempt_service import (
     start_attempt,
@@ -55,10 +56,23 @@ class FinishAttemptRequest(BaseModel):
 def _own_attempt_or_404(db: DbSession, attempt_id: str, user_id: int):
     """Fetch the attempt and raise 404 if it doesn't belong to `user_id`.
 
+    Lightweight by design: uses `db.get()` (PK lookup, no joins) so the
+    answer-recording hot path doesn't drag in N answer rows on every
+    keystroke. Handlers that actually need the joined answers should
+    call `get_attempt()` explicitly (see `get_attempt_details`).
+
+    History: this used to delegate to `get_attempt()`, which uses
+    `joinedload(Attempt.answers)`. Each `POST /api/attempts/.../answer`
+    therefore re-fetched every existing answer for the attempt — so a
+    20-question test paid quadratic transfer (1+2+3+…+20 = 210 rows
+    over the wire across the session). For users hitting POSTs in
+    rapid succession on a flaky network this surfaced as 13-second
+    response times in the browser network panel.
+
     404 (not 403) on the wrong-owner case to avoid leaking attempt-id
     existence to other users.
     """
-    attempt = get_attempt(db, attempt_id)
+    attempt = db.get(Attempt, attempt_id)
     if not attempt or attempt.user_id != user_id:
         raise HTTPException(status_code=404, detail="Attempt not found")
     return attempt
