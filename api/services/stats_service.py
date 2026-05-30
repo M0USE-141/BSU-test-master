@@ -25,7 +25,7 @@ def compute_kd(correct: int, total: int) -> tuple[float, str]:
     d = total - correct
     if k == 0 and d == 0:
         return 0.0, "none"
-    ratio = round((k * 2) if d == 0 else (k / d), 1)
+    ratio = round((k * 2.0) if d == 0 else (k / d), 1)
     if ratio >= KD_GOLD:
         rank = "gold"
     elif ratio >= KD_SILVER:
