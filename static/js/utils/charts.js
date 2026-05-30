@@ -16,6 +16,8 @@ import { escHtml } from './escape.js';
 function _clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 function _num(n) { return Number.isFinite(+n) ? +n : 0; }
 
+let _gradSeq = 0;
+
 /**
  * Donut / ring KPI. `value`/`max` drive the arc; `label` is the caption.
  * @param {number} value
@@ -33,15 +35,16 @@ export function donut(value, max, opts = {}) {
   const pct = max > 0 ? _clamp(value / max, 0, 1) : 0;
   const dash = (pct * circ).toFixed(1);
   const display = opts.unit === '%' ? Math.round(pct * 100) + '%' : String(value);
+  const safeDisplay = escHtml(display);
   const label = opts.label ? escHtml(String(opts.label)) : '';
   return `
-<div class="chart-donut" role="img" aria-label="${display}${label ? ' ' + label : ''}">
+<div class="chart-donut" role="img" aria-label="${safeDisplay}${label ? ' ' + label : ''}">
   <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
     <circle class="chart-donut__track" cx="${cx}" cy="${cy}" r="${r}" stroke-width="${stroke}" fill="none"/>
     <circle class="chart-donut__arc" cx="${cx}" cy="${cy}" r="${r}" stroke-width="${stroke}" fill="none"
       stroke-dasharray="${dash} ${(circ - dash).toFixed(1)}"
       stroke-dashoffset="${(circ / 4).toFixed(1)}" stroke-linecap="round"/>
-    <text class="chart-donut__value" x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central">${display}</text>
+    <text class="chart-donut__value" x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central">${safeDisplay}</text>
   </svg>
   ${label ? `<div class="chart-donut__label">${label}</div>` : ''}
 </div>`;
@@ -89,15 +92,16 @@ export function areaLine(points, opts = {}) {
   const n = points.length;
   const xAt = i => pad + (n === 1 ? (w - 2 * pad) / 2 : (i * (w - 2 * pad)) / (n - 1));
   const yAt = v => h - pad - ((v - min) / span) * (h - 2 * pad);
+  const gradId = `chartAreaGrad${_gradSeq++}`;
   const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xAt(i).toFixed(1)} ${yAt(_num(p.y)).toFixed(1)}`).join(' ');
   const area = `${line} L ${xAt(n - 1).toFixed(1)} ${h - pad} L ${xAt(0).toFixed(1)} ${h - pad} Z`;
   const dots = points.map((p, i) => `<circle class="chart-area__dot" cx="${xAt(i).toFixed(1)}" cy="${yAt(_num(p.y)).toFixed(1)}" r="2.5"><title>${escHtml(String(p.label || ''))} ${_num(p.y)}</title></circle>`).join('');
   return `
 <svg class="chart-area" viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none">
-  <defs><linearGradient id="chartAreaGrad" x1="0" x2="0" y1="0" y2="1">
+  <defs><linearGradient id="${gradId}" x1="0" x2="0" y1="0" y2="1">
     <stop offset="0%" class="chart-area__g0"/><stop offset="100%" class="chart-area__g1"/>
   </linearGradient></defs>
-  <path class="chart-area__fill" d="${area}"/>
+  <path class="chart-area__fill" fill="url(#${gradId})" d="${area}"/>
   <path class="chart-area__line" d="${line}" fill="none"/>
   ${dots}
 </svg>`;
