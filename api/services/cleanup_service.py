@@ -4,6 +4,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import OperationalError, TimeoutError as SAPoolTimeout
 
 from api.config import ABANDONED_RETENTION_DAYS
 from api.database import SessionLocal
@@ -152,6 +153,16 @@ def schedule_events_cleanup() -> tuple[threading.Thread, threading.Event]:
                 last_daily = now
             try:
                 retry_failed_emails()
+            except (SAPoolTimeout, OperationalError) as exc:
+                # cleanup_service is a VICTIM of pool starvation, never a
+                # cause: it only opens a session for ≤1 second per tick.
+                # Logging the full traceback every 5 minutes (as before)
+                # buries the actual leak source in logs. Demote to a
+                # single-line WARNING and let the next tick try again.
+                logging.getLogger(__name__).warning(
+                    "retry_failed_emails: DB busy (%s) — skipping this tick",
+                    type(exc).__name__,
+                )
             except Exception:  # noqa: BLE001
                 logging.getLogger(__name__).exception("retry_failed_emails raised")
             if stop_event.wait(email_retry_interval):

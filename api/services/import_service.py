@@ -55,7 +55,16 @@ def start_import(
     source_filename: str,
     docx_bytes: bytes,
 ) -> str:
-    """Create the job record + park the docx in storage. Returns job_id."""
+    """Create the job record + park the docx in storage. Returns job_id.
+
+    The DB write (job row) is committed FIRST, and we release the
+    session's connection BEFORE the (potentially multi-second) R2 PUT
+    of the source docx. A typical .docx is 5–30 MB; with the pool fixed
+    at size 20+10 and many concurrent uploads, holding the connection
+    through that network write was a real source of pool pressure.
+
+    Caller must not reuse `db` after this returns — it has been closed.
+    """
     job_id = uuid.uuid4().hex
     job = ImportJob(
         id=job_id,
@@ -65,13 +74,18 @@ def start_import(
     )
     db.add(job)
     db.commit()
+    # Detach + release the connection before any network I/O below.
+    # SQLAlchemy's session.close() returns the underlying connection to
+    # the pool; calling close() twice is a no-op so the upload_test
+    # handler's defensive `db.close()` afterwards is safe.
+    db.close()
 
     try:
         key = storage_keys.import_source_key(_hyphenate(job_id))
     except StorageKeyError as exc:
         # Should never happen — job_id is a fresh UUID — but if it does,
-        # mark the job failed before re-raising.
-        _set_status(db, job_id, ImportJobStatus.FAILED, error=str(exc))
+        # mark the job failed via a fresh session (db is already closed).
+        _set_status(None, job_id, ImportJobStatus.FAILED, error=str(exc))
         raise
     storage.put_object(
         key,
@@ -176,8 +190,11 @@ def run_import(
             log.info("import %s completed for test %s", job_id, test_id)
     except Exception as exc:  # noqa: BLE001 — best-effort import; surface to user via job
         log.exception("import %s failed: %s", job_id, exc)
+        # `db=None` so _set_status opens, commits, AND closes its own
+        # session. Passing `SessionLocal()` here used to leak (see the
+        # history note in _set_status).
         _set_status(
-            SessionLocal(),
+            None,
             job_id,
             ImportJobStatus.FAILED,
             error=f"{type(exc).__name__}: {exc}",
@@ -272,17 +289,28 @@ def _mirror_assets_to_storage(
     rule or a future sweeper).
     """
     if not assets_directory.exists():
+        log.warning("mirror: assets_directory %s does not exist for test %s",
+                    assets_directory, test_id)
         return
     files = [src for src in assets_directory.iterdir() if src.is_file()]
     if not files:
+        log.warning("mirror: no files in %s for test %s — nothing to upload",
+                    assets_directory, test_id)
         return
+    log.info("mirror: uploading %d asset(s) for test %s", len(files), test_id)
 
-    def _upload_one(src: Path) -> str | None:
+    successes: list[str] = []
+    failures: list[tuple[str, str]] = []
+
+    def _upload_one(src: Path) -> tuple[str, str | None]:
+        """Return (filename, key) on success, (filename, None) on skip-on-invalid-key.
+        Raises on actual upload errors so `as_completed` surfaces them.
+        """
         try:
             key = storage_keys.material_key(test_id, src.name)
         except StorageKeyError as exc:
-            log.warning("skip mirror of %s: %s", src.name, exc)
-            return None
+            log.warning("mirror skip %s: invalid key — %s", src.name, exc)
+            return src.name, None
         size = src.stat().st_size
         # Open per-task: file handles aren't thread-safe. Streaming via the
         # open file (not pre-reading into memory) keeps memory flat even
@@ -293,34 +321,61 @@ def _mirror_assets_to_storage(
                 content_type="application/octet-stream",
                 length=size,
             )
-        return key
+        return src.name, key
 
     # `ThreadPoolExecutor` over network-bound work — the GIL doesn't hurt
     # because each thread spends its time in C/socket code waiting on R2.
     workers = min(_MIRROR_MAX_WORKERS, len(files))
+    first_exc: BaseException | None = None
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="mirror") as pool:
-        futures = [pool.submit(_upload_one, src) for src in files]
+        futures = {pool.submit(_upload_one, src): src for src in files}
         for fut in as_completed(futures):
-            # Re-raise on first failure. The remaining futures still run
-            # to completion (ThreadPoolExecutor doesn't cancel running
-            # tasks), but we won't wait on their results.
-            fut.result()
+            src = futures[fut]
+            try:
+                name, key = fut.result()
+                if key is not None:
+                    successes.append(name)
+            except Exception as exc:  # noqa: BLE001 — collect, surface once
+                failures.append((src.name, f"{type(exc).__name__}: {exc}"))
+                log.error("mirror PUT failed for %s (test %s): %s",
+                          src.name, test_id, exc)
+                if first_exc is None:
+                    first_exc = exc
+    log.info("mirror complete for test %s: %d uploaded, %d failed",
+             test_id, len(successes), len(failures))
+    if first_exc is not None:
+        # Re-raise the first error AFTER all threads have drained — this
+        # gives us a complete success/failure picture in the logs above
+        # before the import is marked as failed by the caller.
+        raise first_exc
 
 
 def _set_status(
-    db: DbSession,
+    db: DbSession | None,
     job_id: str,
     status: ImportJobStatus,
     *,
     error: str | None = None,
 ) -> None:
-    """Helper that owns the session (used from background contexts).
+    """Update a job's status row.
 
-    Callers may pass in an existing session OR a fresh `SessionLocal()`;
-    we close it in the `finally` either way to avoid leaking connections.
+    Pass `db=None` to make this function own the session (open + commit +
+    close). Pass an existing `DbSession` to participate in the caller's
+    session lifecycle — we will NOT close it.
+
+    History: the previous version computed
+        `own = not isinstance(db, DbSession) or db is None`
+    which always evaluates to False when `db` is a real session (the
+    typical case — even the error path in `run_import` was calling this
+    with `SessionLocal()` directly). That meant every failed import
+    leaked one Postgres connection forever; ~30 failed imports drained
+    the SQLAlchemy pool, and the next `cleanup_service` tick hit a
+    `QueuePool limit reached` TimeoutError. That cascade was the actual
+    root cause behind the recurring `retry_failed_emails raised` errors
+    in production logs after the bigger pool-tuning fix.
     """
-    own = not isinstance(db, DbSession) or db is None
-    session = db if not own else SessionLocal()
+    own = db is None
+    session = db if db is not None else SessionLocal()
     try:
         job = session.get(ImportJob, job_id)
         if job is None:
