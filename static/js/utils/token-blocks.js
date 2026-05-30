@@ -5,7 +5,8 @@
  * Token syntax:
  *   [[img:relative/path.png]]   → { type:'image', src:'relative/path.png' }
  *   [[math:x^2+y^2]]            → { type:'formula', latex:'x^2+y^2' }
- *   [[mathml:<math>…</math>]]   → { type:'formula', mathml:'…' }
+ *   [[mathml:abc1234]]          → { type:'formula', id:'abc1234' }   (short-id ref)
+ *   [[mathml:<math>…</math>]]   → { type:'formula', mathml:'…' }     (inline XML)
  *   plain text                  → { type:'text', text:'…' }
  *   a single \n                 → { type:'line_break' }
  *   a blank line (\n\n)         → new paragraph
@@ -51,7 +52,10 @@ export function blocksToTokens(content, materialsByMathml) {
           parts.push(`[[img:${stripExt(inl.src || '')}]]`);
           break;
         case 'formula':
-          if (inl.latex) {
+          if (inl.id) {
+            // Referenced MathML — already a short id, emit as token directly.
+            parts.push(`[[mathml:${inl.id}]]`);
+          } else if (inl.latex) {
             parts.push(`[[math:${inl.latex}]]`);
           } else if (inl.mathml) {
             const knownId = materialsByMathml && materialsByMathml[inl.mathml];
@@ -118,9 +122,16 @@ function paragraphToInlines(para, materialsById) {
       inlines.push({ type: 'formula', latex: body });
     } else if (kind === 'mathml') {
       const mat = materialsById && materialsById[body];
-      // Resolve short-id → raw MathML XML. Body may also be the raw XML
-      // itself (e.g. user pasted a [[mathml:<math>…]] token directly).
-      inlines.push({ type: 'formula', mathml: (mat && mat.mathml) || body });
+      if (mat && mat.mathml) {
+        // Round-trip keeps the id-only form so the payload stays small
+        // and points at the same material file. Renderer resolves the
+        // id back to the .mml via attachAssets.
+        inlines.push({ type: 'formula', id: body });
+      } else {
+        // Hand-typed [[mathml:<xml>]] or unknown id — keep inline form
+        // so the renderer still has something to typeset.
+        inlines.push({ type: 'formula', mathml: body });
+      }
     }
     last = m.index + m[0].length;
   }

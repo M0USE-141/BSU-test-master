@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import shutil
@@ -20,7 +21,28 @@ NS = {
     "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
     "v": "urn:schemas-microsoft-com:vml",
     "o": "urn:schemas-microsoft-com:office:office",
+    "mc": "http://schemas.openxmlformats.org/markup-compatibility/2006",
 }
+
+
+# Length of the short content-hash id used for material filenames.
+# MUST equal `api.utils.file_utils.SHORT_ID_LEN`. We don't import from
+# `api.*` here (layering: `core/` is the parser, `api/` is the web app),
+# so the agreement is held by convention — change both together if you
+# ever rotate the length.
+SHORT_ID_LEN = 7
+
+
+def _short_id_for_bytes(data: bytes) -> str:
+    """First `SHORT_ID_LEN` hex chars of sha1 — content-addressing only.
+
+    Mirrors `api.routes.assets._short_id_for` so docx-extracted assets
+    dedupe against materials uploaded manually through the editor's
+    "Загрузить картинку" / "Загрузить MathML" buttons.
+
+    `usedforsecurity=False` — this is content-addressing, not crypto.
+    """
+    return hashlib.sha1(data, usedforsecurity=False).hexdigest()[:SHORT_ID_LEN]
 
 
 class WordTestExtractor:
@@ -53,16 +75,40 @@ class WordTestExtractor:
 
     # ---- Extract embedded images from docx media ----
     def _extract_images(self, doc: Document) -> dict[str, Path]:
+        """Extract embedded images.
+
+        Returns a map ``rel_id → on-disk Path`` where the filename is
+        ``<sha1[:7]><ext>`` (lowercased ext). Two .docx relationships that
+        point to the same bytes converge to the same Path → automatic
+        dedup. The rel_id stays as the map key because the rest of the
+        extractor still references images via Word's internal rel ids
+        when walking runs.
+        """
         image_map: dict[str, Path] = {}
         count = 0
         for rel_id, part in doc.part.related_parts.items():
             if "image" not in part.content_type:
                 continue
-            ext = Path(part.partname).suffix
-            image_path = self.extract_dir / f"{rel_id}{ext}"
-            image_path.write_bytes(part.blob)
+            ext = Path(part.partname).suffix.lower()
+            blob = part.blob
+            stem = _short_id_for_bytes(blob)
+            image_path = self.extract_dir / f"{stem}{ext}"
+            if not image_path.exists():
+                image_path.write_bytes(blob)
             converted_path = convert_metafile_to_png(image_path, self.extract_dir)
-            image_map[rel_id] = converted_path or image_path
+            if converted_path is not None and converted_path != image_path:
+                # WMF/EMF → PNG yields a sibling file; re-name it under the
+                # same sha1[:7] stem so the filename still encodes content.
+                # Also drop the original .wmf/.emf — otherwise it ends up
+                # mirrored to storage as a useless material alongside the PNG.
+                new_path = self.extract_dir / f"{stem}.png"
+                if converted_path != new_path:
+                    converted_path.replace(new_path)
+                image_path.unlink(missing_ok=True)
+                image_path = new_path
+            else:
+                image_path = converted_path or image_path
+            image_map[rel_id] = image_path
             count += 1
         log.info("Extracted embedded images: %d", count)
         self.logs.append(f"Изображений извлечено: {count}")
@@ -117,6 +163,25 @@ class WordTestExtractor:
         mathml = self._omml_xslt(omml_xml)
         return str(mathml)
 
+    def _register_formula(self, mathml_text: str | None) -> tuple[str | None, str | None]:
+        """Persist a MathML XML string to the assets dir, keyed by content hash.
+
+        Returns ``(formula_id, mathml_text)``:
+          - ``formula_id`` — 7-char sha1 stem; written to ``<id>.mml`` on disk.
+          - ``mathml_text`` — original XML, returned for callers that still
+            want to embed it as a fallback (legacy behavior; new payload
+            will prefer the id).
+        For invalid / empty mathml returns ``(None, None)``.
+        """
+        if not mathml_text:
+            return None, None
+        encoded = mathml_text.encode("utf-8")
+        stem = _short_id_for_bytes(encoded)
+        path = self.extract_dir / f"{stem}.mml"
+        if not path.exists():
+            path.write_bytes(encoded)
+        return stem, mathml_text
+
     # ---- Parse cell content (text + images + formulas) ----
     def _content_from_cell(
             self,
@@ -138,12 +203,17 @@ class WordTestExtractor:
 
         def push_formula(formula_text: str | None):
             flush_text()
+            formula_id, _ = self._register_formula(formula_text)
             items.append(
                 ContentItem(
                     "formula",
-                    formula_id=None,
+                    formula_id=formula_id,
                     path=None,
-                    formula_text=formula_text,
+                    # Keep formula_text only when registration failed (no
+                    # MathML — e.g. OMML XSLT missing). In the normal path
+                    # the serializer will emit just `id` and the renderer
+                    # will fetch the .mml via the materials endpoint.
+                    formula_text=formula_text if formula_id is None else None,
                 )
             )
 
@@ -169,6 +239,19 @@ class WordTestExtractor:
 
                 # runs/hyperlinks
                 if tag.endswith("}r") or tag.endswith("}hyperlink"):
+                    # If this run wraps an mc:AlternateContent with a Choice
+                    # that contains an oMath, prefer the formula and skip the
+                    # Fallback image — those are the rasterized previews Word
+                    # ships for older readers. Without this guard each formula
+                    # would appear twice (once as ContentItem("formula",...)
+                    # and once as a 30x12px PNG via v:imagedata).
+                    formula_from_choice = child.find(
+                        ".//mc:AlternateContent/mc:Choice//m:oMath", namespaces=NS
+                    )
+                    if formula_from_choice is not None:
+                        push_formula(self._omml_to_mathml(formula_from_choice))
+                        continue
+
                     # text
                     for t in child.findall(".//w:t", namespaces=NS):
                         if t.text:
