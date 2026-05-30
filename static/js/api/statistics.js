@@ -95,3 +95,14 @@ export async function getMyTrend(days = 30) {
 export async function listAttempts(params) {
   return apiFetch('GET', `/api/stats/attempts${qs(params)}`);
 }
+
+/**
+ * Personal per-question K/D for every question of a test.
+ * Returns { questions: [{ questionId, k, d, ratio, rank, totalCount, avgDurationMs }] }.
+ * `questionId` is the 1-based payload id (the same numeric id the frontend uses
+ * for questions). rank ∈ "none" | "bronze" | "silver" | "gold".
+ * @param {string} testId
+ */
+export async function getMyQuestionStats(testId) {
+  return apiFetch('GET', `/api/tests/${testId}/my-question-stats`);
+}
