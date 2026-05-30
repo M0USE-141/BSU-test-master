@@ -21,7 +21,7 @@
  */
 import { getTest } from '../../api/tests.js';
 import { listFlagged } from '../../api/flagged.js';
-import { getWeakQuestions } from '../../api/statistics.js';
+import { getMyQuestionStats } from '../../api/statistics.js';
 import { navigate } from '../../router.js';
 import { mountAppShell } from '../../components/app-shell.js';
 import { iconEl } from '../../icons.js';
@@ -106,11 +106,19 @@ export default async function render(root, params) {
   }
 
   const flaggedResp = await listFlagged(params.id).catch(function () { return { flagged: [] }; });
-  const weakResp    = await getWeakQuestions(params.id).catch(function () { return { questions: [] }; });
+  const kdResp = await getMyQuestionStats(params.id).catch(function () { return { questions: [] }; });
+  const kdList = kdResp.questions || [];
+  // Weak: ascending K/D; never-answered (rank "none") = weakest (sort first).
+  const weakOrdered = kdList.slice().sort(function (a, b) {
+    const ar = a.rank === 'none' ? -1 : a.ratio;
+    const br = b.rank === 'none' ? -1 : b.ratio;
+    return ar - br;
+  }).map(function (q) { return q.questionId; });
+  const untakenIds = kdList.filter(function (q) { return q.totalCount === 0; }).map(function (q) { return q.questionId; });
+  const untakenSet = new Set(untakenIds);
   const flaggedIds = new Set(flaggedResp.flagged || []);
-  const weakIds    = new Set(extractIds(weakResp));
 
-  const counts = { total: totalQs, weak: weakIds.size, flagged: flaggedIds.size };
+  const counts = { total: totalQs, weak: weakOrdered.length, flagged: flaggedIds.size, untaken: untakenSet.size };
   const state  = makeState(totalQs);
 
   card.innerHTML = '';
@@ -218,7 +226,7 @@ export default async function render(root, params) {
   startLabel.textContent = ' ' + (t('pretest.start') || 'Начать тест');
   startBtn.appendChild(startLabel);
   startBtn.addEventListener('click', function () {
-    handleStart(params.id, state, flaggedIds, weakIds);
+    handleStart(params.id, state, flaggedIds, weakOrdered, untakenIds);
   });
   btnRow.appendChild(startBtn);
 
@@ -226,23 +234,6 @@ export default async function render(root, params) {
 }
 
 // ─── Field constructors ─────────────────────────────────────
-
-function extractIds(resp) {
-  let arr;
-  if (resp && Array.isArray(resp.questions)) arr = resp.questions;
-  else if (resp && Array.isArray(resp.weak_questions)) arr = resp.weak_questions;
-  else if (Array.isArray(resp)) arr = resp;
-  else arr = [];
-  const out = [];
-  for (let i = 0; i < arr.length; i++) {
-    const q = arr[i];
-    if (typeof q === 'number') { out.push(q); continue; }
-    if (q && q.questionId !== undefined  && Number.isFinite(q.questionId))  out.push(q.questionId);
-    else if (q && q.question_id !== undefined && Number.isFinite(q.question_id)) out.push(q.question_id);
-    else if (q && q.id !== undefined && Number.isFinite(q.id)) out.push(q.id);
-  }
-  return out;
-}
 
 function section(key, fallback, body) {
   const wrap = document.createElement('div');
@@ -396,7 +387,7 @@ function renderSourceChips(state, counts, onChange) {
     { key: 'all',     label: 'Все темы',         count: counts.total },
     { key: 'weak',    label: 'Только слабые',    count: counts.weak },
     { key: 'flagged', label: '⚑ Отмеченные',    count: counts.flagged },
-    { key: 'untaken', label: 'Не пройденные',    count: null },
+    { key: 'untaken', label: 'Не пройденные',    count: counts.untaken },
   ];
 
   sources.forEach(function (s) {
@@ -405,7 +396,7 @@ function renderSourceChips(state, counts, onChange) {
     chip.dataset.source = s.key;
     chip.className = 'chip' + (state.source === s.key ? ' chip--active' : '');
     chip.textContent = s.label + (s.count !== null ? (' · ' + s.count) : '');
-    if (s.count === 0 && s.key !== 'untaken') {
+    if (s.count === 0) {
       chip.disabled = true;
       chip.style.opacity = '0.4';
       chip.style.cursor = 'not-allowed';
@@ -427,6 +418,7 @@ function renderSourceChips(state, counts, onChange) {
 function poolMax(state, counts) {
   if (state.source === 'weak')    return Math.max(counts.weak, 1);
   if (state.source === 'flagged') return Math.max(counts.flagged, 1);
+  if (state.source === 'untaken') return Math.max(counts.untaken, 1);
   return counts.total;
 }
 
@@ -604,12 +596,13 @@ function buildToggle(label, state, key) {
   };
 }
 
-function handleStart(testId, state, flaggedIds, weakIds) {
-  const filterIds = state.source === 'weak'    ? Array.from(weakIds)
+function handleStart(testId, state, flaggedIds, weakOrdered, untakenIds) {
+  const filterIds = state.source === 'weak'    ? weakOrdered.slice(0, state.count)
                   : state.source === 'flagged' ? Array.from(flaggedIds)
+                  : state.source === 'untaken' ? untakenIds.slice()
                   : [];
 
-  if (state.source !== 'all' && state.source !== 'untaken' && filterIds.length === 0) {
+  if (state.source !== 'all' && filterIds.length === 0) {
     toast('Нет доступных вопросов в выбранном источнике', { tone: 'warning' });
     return;
   }

@@ -9,7 +9,8 @@
  * Bottom nav is hidden to give the tab strip + sticky bar room.
  */
 import { getTest } from '../../api/tests.js';
-import { listAttempts } from '../../api/statistics.js';
+import { listAttempts, getMyQuestionStats } from '../../api/statistics.js';
+import { kdBadge, donut, areaLine } from '../../utils/charts.js';
 import { getTestShares, updateTestAccess, addShare } from '../../api/access.js';
 import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
@@ -210,7 +211,7 @@ function renderOverviewTab(test, attempts) {
   return wrap;
 }
 
-function renderQuestionsTab(test) {
+function renderQuestionsTab(test, kdByQ = {}) {
   const wrap = document.createElement('div');
   Object.assign(wrap.style, {
     padding: '12px 16px 24px',
@@ -299,6 +300,12 @@ function renderQuestionsTab(test) {
       });
       num.textContent = `Q${q.id ?? (idx + 1)}`;
       head.appendChild(num);
+      const qs = kdByQ[String(q.id ?? (idx + 1))];
+      if (qs) {
+        const b = document.createElement('span');
+        b.innerHTML = kdBadge(qs.k, qs.d, qs.ratio, qs.rank);
+        head.appendChild(b);
+      }
       if (test.is_owner) {
         const chev = iconEl('chevR', 12);
         chev.style.color = 'var(--ink-mute)';
@@ -320,9 +327,15 @@ function renderQuestionsTab(test) {
   return wrap;
 }
 
-function renderStatsTab(test, attempts) {
+function renderStatsTab(test, attempts, kdByQ = {}) {
   const wrap = document.createElement('div');
   wrap.style.padding = '12px 16px 24px';
+
+  // No attempts yet — show empty hint only, skip all donuts/KPI tiles.
+  if (attempts.length === 0) {
+    wrap.appendChild(emptyHint(t('test.no_data') || 'Данных пока нет.'));
+    return wrap;
+  }
 
   const scores = attempts
     .map(a => Math.round(a.percentCorrect ?? 0))
@@ -332,31 +345,78 @@ function renderStatsTab(test, attempts) {
   const totalMs = attempts.reduce((s, a) => s + (a.totalDurationMs || 0), 0);
   const avgMs = attempts.length ? totalMs / attempts.length : 0;
 
-  const grid = document.createElement('div');
-  Object.assign(grid.style, {
+  // KPI row: donut for avg% and best%, plain tiles for time and count.
+  const kpiRow = document.createElement('div');
+  Object.assign(kpiRow.style, {
     display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px',
     marginBottom: '12px',
   });
-  grid.appendChild(kpiCell(t('stats.avg')      || 'Средний', avg  != null ? `${avg}%`  : '—'));
-  grid.appendChild(kpiCell(t('test.attempts')  || 'Попыток', String(attempts.length)));
-  grid.appendChild(kpiCell(t('stats.avg_time') || 'Время', fmtMs(avgMs)));
-  grid.appendChild(kpiCell(t('stats.best')     || 'Лучший', best != null ? `${best}%` : '—'));
-  wrap.appendChild(grid);
 
+  // Donut tiles for avg and best.
+  const avgDonutCell = document.createElement('div');
+  Object.assign(avgDonutCell.style, {
+    border: '1.5px solid var(--ink)', borderRadius: 'var(--radius-md)',
+    padding: '10px 12px', background: 'var(--paper)',
+    boxShadow: 'var(--shadow-sm)', display: 'flex',
+    flexDirection: 'column', alignItems: 'center',
+  });
+  avgDonutCell.innerHTML = donut(avg != null ? avg : 0, 100, { unit: '%', label: t('stats.avg') || 'Средний' });
+  kpiRow.appendChild(avgDonutCell);
+
+  const bestDonutCell = document.createElement('div');
+  Object.assign(bestDonutCell.style, {
+    border: '1.5px solid var(--ink)', borderRadius: 'var(--radius-md)',
+    padding: '10px 12px', background: 'var(--paper)',
+    boxShadow: 'var(--shadow-sm)', display: 'flex',
+    flexDirection: 'column', alignItems: 'center',
+  });
+  bestDonutCell.innerHTML = donut(best != null ? best : 0, 100, { unit: '%', label: t('stats.best') || 'Лучший' });
+  kpiRow.appendChild(bestDonutCell);
+
+  // Plain tiles for time and count.
+  kpiRow.appendChild(kpiCell(t('stats.avg_time') || 'Время', fmtMs(avgMs)));
+  kpiRow.appendChild(kpiCell(t('test.attempts')  || 'Попыток', String(attempts.length)));
+  wrap.appendChild(kpiRow);
+
+  // Trend: areaLine from last 10 attempts' percentCorrect.
   if (scores.length >= 2) {
-    const trend = scores.slice(0, 10).reverse();
-    const spark = buildSparkline(trend);
-    if (spark) {
-      const trendBody = document.createElement('div');
-      trendBody.appendChild(spark);
-      wrap.appendChild(mCard({
-        title: `${t('stats.trend') || 'Тренд'} · ${trend.length} ${t('test.attempts') || 'попыток'}`,
-      }, trendBody));
-    }
+    const last10 = attempts.slice(-10);
+    const points = last10.map(a => ({ y: Math.round(a.percentCorrect || 0) }));
+    const trendBody = document.createElement('div');
+    trendBody.innerHTML = areaLine(points, { height: 72 });
+    wrap.appendChild(mCard({
+      title: `${t('stats.trend') || 'Тренд'} · ${last10.length} ${t('test.attempts') || 'попыток'}`,
+    }, trendBody));
   }
-  if (scores.length === 0) {
-    wrap.appendChild(mCard({}, emptyHint(t('test.no_data') || 'Данных пока нет.')));
+
+  // Per-question K/D list.
+  const kdEntries = Object.entries(kdByQ);
+  if (kdEntries.length > 0) {
+    const kdBody = document.createElement('div');
+    kdEntries
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .forEach(([qId, s], i) => {
+        const row = document.createElement('div');
+        Object.assign(row.style, {
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '8px 0',
+          borderTop: i ? '1px solid var(--ink-soft)' : 'none',
+        });
+        const label = document.createElement('span');
+        Object.assign(label.style, {
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: '11px', color: 'var(--ink-mute)', fontWeight: '600',
+        });
+        label.textContent = `Q${qId}`;
+        row.appendChild(label);
+        const badge = document.createElement('span');
+        badge.innerHTML = kdBadge(s.k, s.d, s.ratio, s.rank);
+        row.appendChild(badge);
+        kdBody.appendChild(row);
+      });
+    wrap.appendChild(mCard({ title: 'K/D по вопросам' }, kdBody));
   }
+
   return wrap;
 }
 
@@ -626,6 +686,13 @@ export default async function render(root, params = {}) {
   let activeTab = (params.tab && ['overview','questions','stats','access','activity'].includes(params.tab))
     ? params.tab : 'overview';
 
+  // Fetch K/D stats once for the questions tab.
+  let kdByQ = {};
+  try {
+    const ks = await getMyQuestionStats(testId);
+    for (const s of (ks.questions || [])) kdByQ[String(s.questionId)] = s;
+  } catch (_) { kdByQ = {}; }
+
   // Assemble body — strip stays at top, tab body underneath.
   const bodyEl = document.createElement('div');
   let strip = buildTabStrip(activeTab, switchTo);
@@ -636,8 +703,8 @@ export default async function render(root, params = {}) {
   function renderActive() {
     tabBody.replaceChildren();
     if (activeTab === 'overview')       tabBody.appendChild(renderOverviewTab(test, attempts));
-    else if (activeTab === 'questions') tabBody.appendChild(renderQuestionsTab(test));
-    else if (activeTab === 'stats')     tabBody.appendChild(renderStatsTab(test, attempts));
+    else if (activeTab === 'questions') tabBody.appendChild(renderQuestionsTab(test, kdByQ));
+    else if (activeTab === 'stats')     tabBody.appendChild(renderStatsTab(test, attempts, kdByQ));
     else if (activeTab === 'access')    tabBody.appendChild(renderAccessTab(test));
     else if (activeTab === 'activity')  tabBody.appendChild(renderActivityTab(test, attempts));
   }

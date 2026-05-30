@@ -784,6 +784,18 @@ export default async function render(root, params = {}) {
       showAnswers: mode === 'exam' ? false : !!preset.revealImmediately,
       forwardOnly: mode === 'exam',
     };
+    // Filter the question pool when a pre-test source produced an id list
+    // (weak / untaken / flagged). Mirrors desktop/taking.js.
+    if (Array.isArray(preset.filterIds) && preset.filterIds.length > 0) {
+      const allow = new Set(preset.filterIds.map(Number));
+      const filtered = _s.allQuestions.filter(function (q) { return allow.has(Number(q.id)); });
+      if (filtered.length > 0) {
+        _s.allQuestions = filtered;
+        if (_s.settings && typeof _s.settings.count === 'number') {
+          _s.settings.count = Math.min(_s.settings.count, filtered.length);
+        }
+      }
+    }
     beginAttempt();
     return;
   }

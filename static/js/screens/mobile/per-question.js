@@ -14,6 +14,8 @@
 import { getAttempt } from '../../api/attempts.js';
 import { getTest } from '../../api/tests.js';
 import { setFlag, listFlagged } from '../../api/flagged.js';
+import { getMyQuestionStats } from '../../api/statistics.js';
+import { kdBadge } from '../../utils/charts.js';
 import { navigate } from '../../router.js';
 import { t } from '../../utils/locale.js';
 import {
@@ -164,6 +166,14 @@ export default async function render(root, params = {}) {
   if (stale()) return;
   const allTestQs = testPayload?.questions || [];
 
+  // Fetch K/D stats once for the whole review session.
+  let kdByQ = {};
+  try {
+    const ks = await getMyQuestionStats(testId);
+    for (const qStat of (ks.questions || [])) kdByQ[String(qStat.questionId)] = qStat;
+  } catch (_) { kdByQ = {}; }
+  if (stale()) return;
+
   const questions = snap.questions || [];
   const apiAnswers = Array.isArray(snap.answers) ? snap.answers : [];
   const total = snap.questionCount ?? snap.question_count
@@ -231,6 +241,15 @@ export default async function render(root, params = {}) {
     topic.textContent = q.topic;
     verdictRow.appendChild(topic);
   }
+
+  // K/D badge — kdBadge() escapes all its inputs; safe to insert as HTML.
+  const _kd = kdByQ[String(q.id)];
+  if (_kd) {
+    const badgeWrap = document.createElement('span');
+    badgeWrap.innerHTML = kdBadge(_kd.k, _kd.d, _kd.ratio, _kd.rank);
+    verdictRow.appendChild(badgeWrap);
+  }
+
   body.appendChild(verdictRow);
 
   // Question text.

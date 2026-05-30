@@ -26,6 +26,7 @@ import { buildMailLayout } from '../../components/mail-layout.js';
 import { navigate } from '../../router.js';
 import { iconEl } from '../../icons.js';
 import { t } from '../../utils/locale.js';
+import { donut, areaLine, barChart } from '../../utils/charts.js';
 
 let _renderToken = 0;
 
@@ -296,21 +297,38 @@ async function renderSummaryView(body, state, tests) {
   const agg = aggResp || {};
   const streak = (streakResp && streakResp.streak) || 0;
 
-  // KPI grid.
+  // KPI grid — percentage metrics rendered as donuts, counts/time as plain tiles.
   const kpiGrid = document.createElement('div');
   kpiGrid.style.display = 'grid';
   kpiGrid.style.gridTemplateColumns = 'repeat(5, 1fr)';
   kpiGrid.style.gap = '8px';
   kpiGrid.style.marginBottom = '14px';
-  kpiGrid.appendChild(buildKpi('Средний балл',
-    typeof agg.avgPercentCorrect === 'number' ? Math.round(agg.avgPercentCorrect) + '%' : '—'));
+
+  // Avg score — donut (%).
+  const avgPct = typeof agg.avgPercentCorrect === 'number' ? Math.round(agg.avgPercentCorrect) : 0;
+  const avgDonutWrap = document.createElement('div');
+  avgDonutWrap.className = 'kpi';
+  avgDonutWrap.innerHTML = donut(avgPct, 100, { unit: '%', label: 'Средний балл' });
+  kpiGrid.appendChild(avgDonutWrap);
+
+  // Attempts count — plain.
   kpiGrid.appendChild(buildKpi('Попыток', String(agg.attemptCount || 0)));
+
+  // Time — plain.
   kpiGrid.appendChild(buildKpi('Время', fmtDurationShort(agg.totalDurationMs)));
+
+  // Streak — plain (it's a day count, not a %).
   kpiGrid.appendChild(buildKpi('Streak', streak ? streak + ' дн' : '—'));
-  const accuracy = (agg.totalAnswered > 0)
-    ? Math.round((agg.totalCorrect / agg.totalAnswered) * 100) + '%'
-    : '—';
-  kpiGrid.appendChild(buildKpi('Точность', accuracy));
+
+  // Accuracy — donut (%).
+  const accuracyPct = (agg.totalAnswered > 0)
+    ? Math.round((agg.totalCorrect / agg.totalAnswered) * 100)
+    : 0;
+  const accDonutWrap = document.createElement('div');
+  accDonutWrap.className = 'kpi';
+  accDonutWrap.innerHTML = donut(accuracyPct, 100, { unit: '%', label: 'Точность' });
+  kpiGrid.appendChild(accDonutWrap);
+
   body.appendChild(kpiGrid);
 
   // Two-up row: Прогресс по дням (Bars) + Слабые темы mini-card.
@@ -340,7 +358,10 @@ async function renderSummaryView(body, state, tests) {
       barsSlot.appendChild(emptyHint('Нет попыток за выбранный период'));
       return;
     }
-    renderTrendBars(barsSlot, rows);
+    const pts = rows.map(function (d) {
+      return { y: Math.round(d.avg_score || 0), label: d.date };
+    });
+    barsSlot.innerHTML = areaLine(pts, { height: 110 });
   }).catch(function () {
     barsSlot.appendChild(emptyHint('Не удалось загрузить прогресс'));
   });
@@ -406,6 +427,28 @@ async function renderSummaryView(body, state, tests) {
     }
   })();
 
+  // Score-distribution histogram card.
+  const distCard = buildCard('Распределение результатов');
+  const distSlot = document.createElement('div');
+  distSlot.style.minHeight = '120px';
+  distCard.body.appendChild(distSlot);
+  distCard.el.style.marginBottom = '14px';
+  body.appendChild(distCard.el);
+
+  listAttempts({ limit: 100 }).then(function (resp) {
+    const attempts = Array.isArray(resp) ? resp : (resp.attempts || resp.items || []);
+    const buckets = Array.from({ length: 10 }, function (_, i) {
+      return { label: String(i * 10), value: 0 };
+    });
+    for (const a of attempts) {
+      const idx = Math.min(9, Math.max(0, Math.floor((a.percentCorrect || 0) / 10)));
+      buckets[idx].value++;
+    }
+    distSlot.innerHTML = barChart(buckets, { height: 120 });
+  }).catch(function () {
+    distSlot.appendChild(emptyHint('Не удалось загрузить данные'));
+  });
+
   // Activity-for-year heatmap card.
   const hmCard = buildCard('Активность за год');
   const hmSlot = document.createElement('div');
@@ -420,49 +463,6 @@ async function renderSummaryView(body, state, tests) {
   } catch (_) {
     hmSlot.appendChild(emptyHint('Не удалось загрузить активность'));
   }
-}
-
-function renderTrendBars(slot, rows) {
-  slot.innerHTML = '';
-  // Normalise to fill 15 slots; rows are sparse (only days with attempts).
-  const wrap = document.createElement('div');
-  wrap.style.display = 'flex';
-  wrap.style.alignItems = 'flex-end';
-  wrap.style.gap = '4px';
-  wrap.style.height = '120px';
-  wrap.style.padding = '8px 0';
-
-  const maxScore = 100;
-  rows.slice(-15).forEach(function (r) {
-    const col = document.createElement('div');
-    col.style.flex = '1';
-    col.style.display = 'flex';
-    col.style.flexDirection = 'column';
-    col.style.alignItems = 'center';
-    col.style.gap = '4px';
-    col.title = r.date + ' · ' + r.avg_score + '% · ' + r.attempts_count + ' поп.';
-
-    const bar = document.createElement('div');
-    bar.style.width = '100%';
-    bar.style.minHeight = '4px';
-    const h = Math.max(4, Math.round((r.avg_score || 0) / maxScore * 96));
-    bar.style.height = h + 'px';
-    bar.style.background = (r.avg_score >= 70) ? 'var(--accent)'
-                          : (r.avg_score >= 50) ? 'var(--warning)'
-                          : 'var(--error)';
-    bar.style.borderRadius = '3px';
-    col.appendChild(bar);
-
-    const lbl = document.createElement('div');
-    lbl.style.fontSize = '10px';
-    lbl.style.color = 'var(--ink-tertiary)';
-    const dt = r.date && r.date.slice(5).replace('-', '.');
-    lbl.textContent = dt || '';
-    col.appendChild(lbl);
-
-    wrap.appendChild(col);
-  });
-  slot.appendChild(wrap);
 }
 
 async function renderWeakView(body, state, tests) {

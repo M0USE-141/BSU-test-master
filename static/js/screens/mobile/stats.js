@@ -15,6 +15,7 @@ import { navigate } from '../../router.js';
 import {
   topBar, mShell, mCard, mChip, mSeg, caps,
 } from '../../components/mobile-atoms.js';
+import { donut, areaLine, barChart } from '../../utils/charts.js';
 
 let _renderToken = 0;
 
@@ -74,48 +75,6 @@ function thinBar(value, max) {
   });
   wrap.appendChild(fill);
   return wrap;
-}
-
-function buildSparkline(values, h = 70) {
-  if (!Array.isArray(values) || values.length < 2) return null;
-  const NS = 'http://www.w3.org/2000/svg';
-  const W = 280, H = h, P = 6;
-  const max = Math.max(...values, 1);
-  const min = Math.min(...values);
-  const range = max - min || 1;
-  const step = (W - P * 2) / (values.length - 1);
-  const pts = values.map((v, i) => {
-    const x = P + i * step;
-    const y = H - P - ((v - min) / range) * (H - P * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  svg.setAttribute('width', '100%');
-  svg.setAttribute('height', String(H));
-  svg.setAttribute('preserveAspectRatio', 'none');
-  svg.style.display = 'block';
-  const line = document.createElementNS(NS, 'polyline');
-  line.setAttribute('points', pts);
-  line.setAttribute('fill', 'none');
-  line.setAttribute('stroke', 'var(--accent)');
-  line.setAttribute('stroke-width', '2');
-  line.setAttribute('stroke-linecap', 'round');
-  line.setAttribute('stroke-linejoin', 'round');
-  svg.appendChild(line);
-  values.forEach((v, i) => {
-    const x = P + i * step;
-    const y = H - P - ((v - min) / range) * (H - P * 2);
-    const last = i === values.length - 1;
-    const dot = document.createElementNS(NS, 'circle');
-    dot.setAttribute('cx', x.toFixed(1));
-    dot.setAttribute('cy', y.toFixed(1));
-    dot.setAttribute('r', last ? '4' : '2.5');
-    dot.setAttribute('fill', 'var(--accent)');
-    dot.setAttribute('opacity', last ? '1' : '0.5');
-    svg.appendChild(dot);
-  });
-  return svg;
 }
 
 function buildHeatmap(data, weeks) {
@@ -212,7 +171,7 @@ export default async function render(root) {
 
   const agg     = aggRes.status     === 'fulfilled' ? aggRes.value     : null;
   const streak  = streakRes.status  === 'fulfilled' ? (streakRes.value?.streak ?? 0) : 0;
-  const trend   = trendRes.status   === 'fulfilled' ? (trendRes.value?.points || trendRes.value?.values || trendRes.value || []) : [];
+  const trend   = trendRes.status   === 'fulfilled' ? (trendRes.value?.trend || []) : [];
   const heatmap = heatRes.status    === 'fulfilled' ? (heatRes.value?.days || heatRes.value || []) : [];
   const tests   = testsRes.status   === 'fulfilled' ? (testsRes.value?.tests || testsRes.value || []) : [];
   const recentAttempts = attemptsRes.status === 'fulfilled'
@@ -225,15 +184,6 @@ export default async function render(root) {
   // Total time (ms → hours, one decimal).
   const totalMs = Number(agg?.totalDurationMs ?? agg?.total_duration_ms ?? 0);
   const totalHours = totalMs > 0 ? (totalMs / 3.6e6).toFixed(1) + 'ч' : '—';
-
-  // Extract numeric series for the sparkline. Trend payload may be a
-  // list of objects {date, avg_score} or raw numbers — handle both.
-  const trendValues = Array.isArray(trend)
-    ? trend.map(p => {
-      if (typeof p === 'number') return p;
-      return Math.round(p.avg_score ?? p.avgScore ?? p.score ?? 0);
-    }).filter(n => Number.isFinite(n))
-    : [];
 
   // ── Build body ───────────────────────────────────────────────
   const body = document.createElement('div');
@@ -291,22 +241,61 @@ export default async function render(root) {
       display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px',
       marginBottom: '12px',
     });
-    grid.appendChild(kpiCell(t('stats.avg_score') || 'Средний балл',
-      avgPct > 0 ? `${avgPct}%` : '—'));
-    grid.appendChild(kpiCell(t('stats.attempts') || 'Попыток',
-      String(totalAttempts)));
+
+    // Avg score — donut (%).
+    const avgDonutCell = document.createElement('div');
+    Object.assign(avgDonutCell.style, {
+      border: '1.5px solid var(--ink)',
+      borderRadius: 'var(--radius-md)',
+      padding: '10px 12px',
+      background: 'var(--paper)',
+      boxShadow: 'var(--shadow-sm)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    });
+    avgDonutCell.innerHTML = donut(avgPct > 0 ? avgPct : 0, 100, {
+      unit: '%', label: t('stats.avg_score') || 'Средний балл',
+    });
+    grid.appendChild(avgDonutCell);
+
+    // Attempts count — plain.
+    grid.appendChild(kpiCell(t('stats.attempts') || 'Попыток', String(totalAttempts)));
+
+    // Streak — plain (day count, not a %).
     grid.appendChild(kpiCell(t('stats.streak') || 'Streak',
       streak > 0 ? `${streak} ${t('stats.days') || 'дн'}` : '—'));
+
+    // Time — plain.
     grid.appendChild(kpiCell(t('stats.time') || 'Время', totalHours));
+
     wrap.appendChild(grid);
 
-    if (trendValues.length >= 2) {
-      const spark = buildSparkline(trendValues, 70);
-      if (spark) {
-        const sBody = document.createElement('div');
-        sBody.appendChild(spark);
-        wrap.appendChild(mCard({ title: t('stats.trend') || 'Тренд' }, sBody));
+    // Trend — area line chart (replaces hand-rolled sparkline).
+    const trendPts = Array.isArray(trend)
+      ? trend.map(function (p) {
+        if (typeof p === 'number') return { y: p };
+        return { y: Math.round(p.avg_score ?? p.avgScore ?? p.score ?? 0), label: p.date };
+      }).filter(function (p) { return Number.isFinite(p.y); })
+      : [];
+    if (trendPts.length >= 2) {
+      const trendBody = document.createElement('div');
+      trendBody.innerHTML = areaLine(trendPts, { height: 72 });
+      wrap.appendChild(mCard({ title: t('stats.trend') || 'Тренд' }, trendBody));
+    }
+
+    // Score-distribution histogram — reuse recentAttempts (already fetched, limit 30).
+    if (recentAttempts.length > 0) {
+      const buckets = Array.from({ length: 10 }, function (_, i) {
+        return { label: String(i * 10), value: 0 };
+      });
+      for (const a of recentAttempts) {
+        const idx = Math.min(9, Math.max(0, Math.floor((a.percentCorrect || 0) / 10)));
+        buckets[idx].value++;
       }
+      const histBody = document.createElement('div');
+      histBody.innerHTML = barChart(buckets, { height: 120 });
+      wrap.appendChild(mCard({
+        title: t('stats.score_dist') || 'Распределение результатов',
+      }, histBody));
     }
 
     const withAvg = tests.filter(t => t.avg_score != null);
