@@ -193,7 +193,14 @@ export default async function render(root, params = {}) {
   }
   mShell({
     root,
-    topbar: topBar({ title: '…', back: true, backHref: `#/test/${testId}/results/${attemptId}` }),
+    topbar: topBar({
+      title: '…',
+      // Explicit function — topBar's default handler calls history.back()
+      // whenever browser history is non-empty, which on per-question would
+      // walk to the previous question (or the taking screen for q1)
+      // instead of returning to the results grid.
+      back: () => navigate(`/test/${testId}/results/${attemptId}`),
+    }),
     body: skeleton, hideNav: true,
   });
 
@@ -463,7 +470,8 @@ export default async function render(root, params = {}) {
     root,
     topbar: topBar({
       title: `Q${n} ${t('results.of') || 'из'} ${total}`,
-      back: true, backHref: `#/test/${testId}/results/${attemptId}`,
+      // Explicit function — see skeleton-topbar comment above.
+      back: () => navigate(`/test/${testId}/results/${attemptId}`),
     }),
     body, sticky, hideNav: true,
   });
