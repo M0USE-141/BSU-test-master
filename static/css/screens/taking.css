@@ -102,26 +102,29 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 36px 24px 80px;
+  padding: 40px 28px 96px;
 }
 
+/* Reading column. ~860px works well for question text + two-column
+   options on common 1440-wide layouts (rail occupies 216 on the right,
+   leaving ~1100 of usable width). */
 .tk__question {
   width: 100%;
-  max-width: 680px;
+  max-width: 860px;
 }
 
 .tk-q-cap {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ink-mute);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .tk-q-text {
-  font: 600 22px/1.4 'Inter', sans-serif;
+  font: 600 26px/1.5 'Inter', sans-serif;
   letter-spacing: -0.01em;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
 .tk-q-text p { margin-bottom: 6px; }
@@ -152,23 +155,23 @@
    their margins so consecutive paragraphs read tightly. */
 .rb-para { margin: 0; line-height: 1.7; display: inline; }
 .rb-para + .rb-para::before { content: " "; }
-/* Inline images: target ~50 % bigger than before so photos read clearly
-   without breaking the inline flow. Em-sized so the line box scales
-   automatically wherever the renderer is used (taking, review, editor,
-   preview). */
+/* Inline images: em-sized so they scale with the surrounding text. After
+   bumping question text to 26px and option text to 17px, the 3.2em
+   ceiling lets a typical equation render around 55–80px tall — readable
+   without bullying its caption. */
 .rb-image {
   display: inline-block;
   vertical-align: middle;
   max-width: 100%;
-  max-height: 2.7em;
+  max-height: 3.2em;
   border-radius: 4px;
-  margin: 2px 4px;
+  margin: 3px 5px;
   object-fit: contain;
 }
 .rb-image--large {
   display: block;
-  max-height: 360px;
-  margin: 8px 0;
+  max-height: 420px;
+  margin: 10px 0;
 }
 .rb-formula {
   display: inline;
@@ -181,10 +184,10 @@
 
 /* ── Options ─────────────────────────────────────────────────── */
 .tk-options {
-  margin-top: 22px;
+  margin-top: 28px;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 14px;
 }
 
 .tk-options--single { grid-template-columns: 1fr; }
@@ -192,14 +195,15 @@
 .tk-option {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
-  padding: 14px 16px;
+  gap: 16px;
+  padding: 20px 22px;
   border: var(--border);
   border-radius: var(--radius-md);
   cursor: pointer;
   background: var(--paper);
   text-align: left;
   width: 100%;
+  min-height: 64px;
   transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
 
@@ -226,14 +230,14 @@
 }
 
 .tk-option__key {
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   border-radius: var(--radius-pill);
   border: var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   flex-shrink: 0;
   margin-top: 1px;
@@ -247,10 +251,10 @@
 }
 
 .tk-option__text {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 500;
   flex: 1;
-  line-height: 1.45;
+  line-height: 1.55;
   text-align: left;
 }
 

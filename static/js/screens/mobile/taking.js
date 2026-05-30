@@ -573,22 +573,22 @@ function buildTaking() {
 
   // ── Question area ──
   const qArea = document.createElement('div');
-  qArea.style.cssText = 'flex:1;overflow-y:auto;padding:16px 16px 0;';
+  qArea.style.cssText = 'flex:1;overflow-y:auto;padding:18px 18px 0;';
 
   if (q) {
     const cap = document.createElement('div');
     cap.style.cssText = `
-      font:400 11px/1 Inter,sans-serif;color:var(--ink-mute);
-      text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;`;
+      font:400 12px/1 Inter,sans-serif;color:var(--ink-mute);
+      text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;`;
     cap.textContent = `${t('test.question') || 'Question'} ${_s.currentIdx + 1}`;
 
     const qText = document.createElement('div');
-    qText.style.cssText = 'font:600 17px/1.4 Inter,sans-serif;color:var(--ink);margin-bottom:16px;';
+    qText.style.cssText = 'font:600 20px/1.5 Inter,sans-serif;color:var(--ink);margin-bottom:20px;';
     qText.innerHTML = renderBlocks(q.question?.blocks, _s.test?.assetsBaseUrl)
       || esc(String(q.text || ''));
 
     const optsWrap = document.createElement('div');
-    optsWrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;padding-bottom:16px;';
+    optsWrap.style.cssText = 'display:flex;flex-direction:column;gap:12px;padding-bottom:20px;';
 
     const opts = q.options || [];
     for (let i = 0; i < opts.length; i++) {
@@ -615,20 +615,21 @@ function buildTaking() {
       }
 
       btn.style.cssText = `
-        display:flex;align-items:flex-start;gap:10px;padding:12px;
+        display:flex;align-items:flex-start;gap:14px;padding:16px 16px;
+        min-height:60px;
         border:1.5px solid ${borderColor};border-radius:var(--radius-md);
         background:${bg};cursor:pointer;text-align:left;width:100%;`;
 
       const keyEl = document.createElement('div');
       keyEl.style.cssText = `
-        width:22px;height:22px;border-radius:50%;border:1.5px solid var(--ink-soft);
+        width:30px;height:30px;border-radius:50%;border:1.5px solid var(--ink-soft);
         display:flex;align-items:center;justify-content:center;
-        font:600 11px/1 'JetBrains Mono',monospace;color:var(--ink-mute);
+        font:600 13px/1 'JetBrains Mono',monospace;color:var(--ink-mute);
         flex-shrink:0;margin-top:1px;`;
       keyEl.textContent = KEYS[i] || String(i + 1);
 
       const textEl = document.createElement('div');
-      textEl.style.cssText = 'font:400 14px/1.4 Inter,sans-serif;color:var(--ink);flex:1;';
+      textEl.style.cssText = 'font:400 16px/1.5 Inter,sans-serif;color:var(--ink);flex:1;';
       textEl.innerHTML = renderBlocks(opt.content?.blocks, _s.test?.assetsBaseUrl)
         || esc(String(opt.text || `Option ${i + 1}`));
 

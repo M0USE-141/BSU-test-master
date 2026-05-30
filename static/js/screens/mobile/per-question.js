@@ -286,12 +286,12 @@ export default async function render(root, params = {}) {
 
     const letter = document.createElement('span');
     Object.assign(letter.style, {
-      width: '22px', height: '22px', borderRadius: '999px',
+      width: '28px', height: '28px', borderRadius: '999px',
       background: isAns ? 'var(--accent)' : isUser ? 'var(--error)' : 'transparent',
       border: (isAns || isUser) ? 'none' : '1.5px solid var(--ink)',
       color: (isAns || isUser) ? '#fff' : 'var(--ink)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: '11px', fontWeight: '700', flexShrink: '0',
+      fontSize: '13px', fontWeight: '700', flexShrink: '0',
     });
     letter.textContent = String.fromCharCode(65 + i); // A, B, C…
     row.appendChild(letter);
