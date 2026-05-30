@@ -1,5 +1,5 @@
 /**
- * materials.js — Test materials (images + MathML formulas) API wrapper.
+ * materials.js — Test materials (images + MathML/LaTeX formulas) API wrapper.
  *
  * Each material has a 7-char content-hash short ID; the editor refers
  * to them via [[img:abc1234]] / [[mathml:abc1234]] tokens.
@@ -9,9 +9,10 @@ import { apiFetch } from './_fetch.js';
 /**
  * List every material attached to a test.
  *
- * Returns { items: [{ id, src, name, kind, mathml? }] }.
+ * Returns { items: [{ id, src, name, kind, mathml?, latex? }] }.
  *   kind ∈ "image" | "formula"
- *   mathml is included only for formulas (raw XML text).
+ *   mathml is included for MathML formulas (.mml/.xml — raw XML text);
+ *   latex is included for LaTeX formulas (.tex — raw LaTeX source).
  *
  * @param {string} testId
  */
@@ -20,14 +21,14 @@ export async function listMaterials(testId) {
 }
 
 /**
- * Upload an image or MathML file.
+ * Upload an image, MathML (.mml/.xml), or LaTeX (.tex) file.
  *
- * Server rejects malformed MathML (400) — caller should surface the
- * error to the user.
+ * Server rejects malformed MathML / non-UTF-8 LaTeX (400) — caller should
+ * surface the error to the user.
  *
  * @param {string} testId
  * @param {File} file
- * @returns {Promise<{id:string, src:string, kind:string, mathml?:string, name:string}>}
+ * @returns {Promise<{id:string, src:string, kind:string, mathml?:string, latex?:string, name:string}>}
  */
 export async function uploadMaterial(testId, file) {
   const fd = new FormData();

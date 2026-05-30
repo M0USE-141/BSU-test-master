@@ -82,12 +82,18 @@ def main(docx_path: Path) -> int:
             for inl in block.get("inlines", []):
                 if inl.get("type") != "formula":
                     continue
+                # Post-unification the serializer must NEVER embed inline
+                # content — formulas are id-only, mirrored to <id>.mml in S3.
+                if "mathml" in inl:
+                    errors.append("formula carries inline 'mathml' (must be id-only)")
+                if "latex" in inl:
+                    errors.append("formula carries inline 'latex' (must be id-only)")
                 fid = inl.get("id")
                 if fid:
                     formula_ids.append(fid)
-                    mml_path = assets / f"{fid}.mml"
-                    if not mml_path.exists():
-                        errors.append(f"formula id={fid} has no {mml_path.name}")
+                    # Material may be MathML (.mml) or LaTeX (.tex).
+                    if not (assets / f"{fid}.mml").exists() and not (assets / f"{fid}.tex").exists():
+                        errors.append(f"formula id={fid} has no {fid}.mml or {fid}.tex")
                 else:
                     inline_only_count += 1
 
@@ -106,9 +112,10 @@ def main(docx_path: Path) -> int:
             "(likely OMML XSLT unavailable on this host - Inkscape OK, but no Office or core/omml2mml.xsl)"
         )
 
+    _FORMULA_SUFFIXES = {".mml", ".tex"}
     print(f"[INFO] questions: {len(questions)}")
-    print(f"[INFO] image assets: {sum(1 for f in assets.iterdir() if f.suffix.lower() != '.mml')}")
-    print(f"[INFO] formula assets: {sum(1 for f in assets.iterdir() if f.suffix.lower() == '.mml')}")
+    print(f"[INFO] image assets: {sum(1 for f in assets.iterdir() if f.suffix.lower() not in _FORMULA_SUFFIXES)}")
+    print(f"[INFO] formula assets: {sum(1 for f in assets.iterdir() if f.suffix.lower() in _FORMULA_SUFFIXES)}")
     print(f"[INFO] formula refs in payload: {len(formula_ids)}")
     for w in warnings:
         print(f"[WARN] {w}")

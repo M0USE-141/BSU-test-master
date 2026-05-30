@@ -158,44 +158,62 @@ export async function attachAssets(container) {
     }
   }
 
-  // ---- Referenced MathML formulas ----
+  // ---- Referenced formulas (MathML or LaTeX) ----
   // Spans emitted by renderInline as <span class="rb-formula rb-formula--ref"
-  // data-mml-url="…/<id>.mml">. Fetch each unique URL once, inject the XML
-  // as the span's innerHTML. The caller is responsible for typesetMath()
-  // afterwards (same as before for inline MathML).
+  // data-mml-url="…/<id>.mml">. The payload ref is id-only, so we don't know
+  // upfront whether the material is `.mml` (MathML) or `.tex` (LaTeX). We
+  // probe `.mml` first; on 404 we fall back to `.tex` and render it as a
+  // MathJax `\(...\)` source string. The caller runs typesetMath() afterwards.
   const refs = Array.from(container.querySelectorAll('span.rb-formula--ref[data-mml-url]'));
   if (refs.length) {
-    const mmlCache = new Map();
+    const headers = { Authorization: 'Bearer ' + tok };
+    // Cache per mml-url → { kind: 'mathml'|'latex', text } | null.
+    const cache = new Map();
+    const resolveRef = async (mmlUrl) => {
+      // 1. Try MathML.
+      try {
+        const r = await fetch(mmlUrl, { headers, credentials: 'include' });
+        if (r.ok) return { kind: 'mathml', text: await r.text() };
+      } catch (_) { /* fall through to LaTeX probe */ }
+      // 2. Fall back to LaTeX at the same id with a .tex extension.
+      const texUrl = mmlUrl.replace(/\.mml($|\?)/, '.tex$1');
+      if (texUrl === mmlUrl) return null;
+      try {
+        const r = await fetch(texUrl, { headers, credentials: 'include' });
+        if (r.ok) return { kind: 'latex', text: await r.text() };
+      } catch (_) { /* give up */ }
+      return null;
+    };
     for (const span of refs) {
       const url = span.getAttribute('data-mml-url');
       if (!url || span.dataset.resolved === '1') continue;
-      if (!mmlCache.has(url)) {
-        mmlCache.set(url, fetch(url, {
-          headers: { Authorization: 'Bearer ' + tok },
-          credentials: 'include',
-        }).then(r => r.ok ? r.text() : null)
-          .catch(() => null));
-      }
+      if (!cache.has(url)) cache.set(url, resolveRef(url));
     }
     for (const span of refs) {
       const url = span.getAttribute('data-mml-url');
       if (!url || span.dataset.resolved === '1') continue;
-      const xml = await mmlCache.get(url);
-      if (xml) {
-        // Parse as XML so we get a proper <math> element, not raw HTML.
-        // This avoids innerHTML-based XSS: DOMParser in "application/xml"
-        // mode does not execute scripts or event handlers. We then import
-        // the root node and append it — no innerHTML touching HTML parser.
-        try {
-          const doc = new DOMParser().parseFromString(xml, 'application/xml');
-          const root = doc.documentElement;
-          if (root && root.nodeName !== 'parsererror') {
-            span.appendChild(document.importNode(root, true));
-            span.dataset.resolved = '1';
-          }
-        } catch (_) {
-          // Malformed XML — leave the placeholder empty rather than crashing.
+      const res = await cache.get(url);
+      if (!res) continue;
+      if (res.kind === 'latex') {
+        // Raw LaTeX → MathJax source. textContent (not innerHTML) keeps it
+        // inert; typesetMath() turns the \(...\) delimiters into math.
+        span.textContent = '\\(' + res.text + '\\)';
+        span.dataset.resolved = '1';
+        continue;
+      }
+      // MathML: parse as XML so we get a proper <math> element, not raw HTML.
+      // This avoids innerHTML-based XSS: DOMParser in "application/xml" mode
+      // does not execute scripts or event handlers. We then import the root
+      // node and append it — no innerHTML touching the HTML parser.
+      try {
+        const doc = new DOMParser().parseFromString(res.text, 'application/xml');
+        const root = doc.documentElement;
+        if (root && root.nodeName !== 'parsererror') {
+          span.appendChild(document.importNode(root, true));
+          span.dataset.resolved = '1';
         }
+      } catch (_) {
+        // Malformed XML — leave the placeholder empty rather than crashing.
       }
     }
   }

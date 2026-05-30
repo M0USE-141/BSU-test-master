@@ -14,11 +14,6 @@ INLINE_LINE_BREAK_TYPE = "line_break"
 BLOCK_PARAGRAPH_TYPE = "paragraph"
 
 
-def _is_mathml(value: str) -> bool:
-    stripped = value.lstrip()
-    return stripped.startswith("<math") or stripped.startswith("<m:math") or stripped.startswith("<?xml")
-
-
 def _asset_src(path: str | None, assets_dir: Path | None) -> str | None:
     if not path:
         return None
@@ -65,23 +60,19 @@ def content_items_to_blocks(
             )
             continue
         if item.item_type == "formula":
-            inline: dict[str, Any] = {
-                "type": INLINE_FORMULA_TYPE,
-                "id": item.formula_id,
-            }
-            # Prefer referenced form. When `formula_id` is set, the extractor
-            # already mirrored the MathML to `<id>.mml` in materials/, so
-            # the frontend resolves it through the materials map. Only fall
-            # back to inline `mathml`/`latex` when there's no id (e.g. OMML
-            # XSLT missing → we got raw text we couldn't classify).
-            if item.formula_id:
-                pass
-            elif item.formula_text:
-                if _is_mathml(item.formula_text):
-                    inline["mathml"] = item.formula_text
-                else:
-                    inline["latex"] = item.formula_text
-            inlines.append(inline)
+            # Always id-only. The extractor mirrors the MathML to `<id>.mml`
+            # in materials/ (S3); the frontend resolves it through the
+            # materials endpoint. We NEVER embed raw `mathml`/`latex` in the
+            # payload — that would bloat the JSONB column and break the
+            # "materials live in S3" invariant. When `formula_id` is None
+            # (e.g. OMML XSLT missing → no MathML to externalize), we emit an
+            # id-null formula; the audit flags these as warnings.
+            inlines.append(
+                {
+                    "type": INLINE_FORMULA_TYPE,
+                    "id": item.formula_id,
+                }
+            )
             continue
     if inlines:
         flush()

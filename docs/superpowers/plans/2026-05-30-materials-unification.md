@@ -2,6 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **UPDATE (post-greenfield):** Task 7 (backfill) is DROPPED. The project is
+> greenfield and data is reset rather than migrated, so `scripts/backfill_materials.py`
+> was deleted. Its read-only DB/storage walker logic was repurposed into
+> `scripts/audit_materials.py`, which verifies the "materials live in S3, payload
+> is id-only" invariant against the live DB + storage (no mutation). Formulas are
+> now ALWAYS id-only (inline `mathml`/`latex` fallback removed from
+> `core/serialization.py`); LaTeX `.tex` uploads are accepted as materials.
+
 **Goal:** Привести материалы импортированных из .docx тестов к тому же контракту, что и материалы, загруженные через UI: один формат ID (sha1[:7] от содержимого), формулы как отдельные файлы в `materials/`, без дублей формул из `mc:AlternateContent`.
 
 **Architecture:** Все изменения локализованы в pipeline'е импорта — `core/word_extract.py` (извлечение + наименование) и `core/serialization.py` (как `formula_id` попадает в payload). Никаких изменений в API-роутах, frontend'е или схеме БД: формат payload (`{type:'image', src:'<filename>'}` и `{type:'formula', mathml:'<xml>'}` / `{type:'formula', id:'<hash>'}`) уже совместим с тем, что нужно. Дополнительно — одноразовый backfill-скрипт для уже импортированных тестов.

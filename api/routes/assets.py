@@ -45,7 +45,9 @@ router = APIRouter(prefix="/api/tests/{test_id}/assets", tags=["assets"])
 
 # File-extension classification for the materials panel.
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
-FORMULA_EXTS = {".mml", ".xml", ".mathml"}
+# `.tex` carries raw LaTeX (not XML); the others carry MathML.
+LATEX_EXTS = {".tex"}
+FORMULA_EXTS = {".mml", ".xml", ".mathml"} | LATEX_EXTS
 
 # Max upload size — defense in depth against runaway PUTs. Real limit is
 # usually enforced by the reverse proxy (Caddy `request_body max_size`).
@@ -80,6 +82,21 @@ def _validate_mathml(data: bytes) -> str:
             status_code=400,
             detail=f"MathML root must be <math>, got <{local}>",
         )
+    return text
+
+
+def _validate_latex(data: bytes) -> str:
+    """Reject malformed LaTeX uploads. Returns the decoded source text.
+
+    LaTeX is not XML, so we only enforce UTF-8 + non-empty. The frontend
+    wraps it in MathJax `\\(...\\)` delimiters at render time.
+    """
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="LaTeX file must be UTF-8")
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Empty LaTeX upload")
     return text
 
 
@@ -146,11 +163,15 @@ def upload_asset(
     name = f"{short_id}{suffix}"
     kind = _classify(suffix)
 
+    # Validate BEFORE writing — keeps invalid blobs out of storage. `.tex`
+    # is raw LaTeX (UTF-8 check only); the rest are MathML (XML + <math>).
+    mathml = None
+    latex = None
     if kind == "formula":
-        # Validate BEFORE writing — keeps invalid blobs out of storage.
-        mathml = _validate_mathml(data)
-    else:
-        mathml = None
+        if suffix in LATEX_EXTS:
+            latex = _validate_latex(data)
+        else:
+            mathml = _validate_mathml(data)
 
     try:
         key = storage_keys.material_key(test_id, name)
@@ -175,6 +196,8 @@ def upload_asset(
     }
     if mathml is not None:
         response["mathml"] = mathml
+    if latex is not None:
+        response["latex"] = latex
     return response
 
 
@@ -216,9 +239,11 @@ def list_materials(
         }
         if kind == "formula":
             try:
-                entry["mathml"] = storage.get_object_bytes(key).decode("utf-8")
+                text = storage.get_object_bytes(key).decode("utf-8")
             except (ObjectNotFoundError, UnicodeDecodeError):
                 continue
+            # `.tex` → raw LaTeX; everything else in FORMULA_EXTS → MathML.
+            entry["latex" if suffix in LATEX_EXTS else "mathml"] = text
         items.append(entry)
 
     return {"items": items}
