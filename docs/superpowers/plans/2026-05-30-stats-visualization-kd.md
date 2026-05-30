@@ -187,10 +187,16 @@ def get_my_question_kd(db: DBSession, test_id: str, user_id: int) -> list[dict]:
     Enumerates ALL questions (LEFT JOIN performance) so never-answered
     questions appear with k=0,d=0,totalCount=0,rank="none" — this powers
     the "untaken" practice source. Ordered by question order_index.
+
+    JOIN KEY: the 1-based payload question id (`order_index + 1`), NOT
+    `Question.id` (a UUID). `question_performance.question_id` is an int that
+    stores the same 1-based id the serializer emits (`payload id = enumerate
+    start=1`) and the frontend uses everywhere. Joining on `Question.id`
+    (UUID string) would match nothing → every question would look unanswered.
     """
     rows = db.execute(
         select(
-            Question.id,
+            Question.order_index,
             QuestionPerformance.correct_count,
             QuestionPerformance.total_count,
             QuestionPerformance.total_duration_ms,
@@ -199,7 +205,7 @@ def get_my_question_kd(db: DBSession, test_id: str, user_id: int) -> list[dict]:
         .outerjoin(
             QuestionPerformance,
             and_(
-                QuestionPerformance.question_id == Question.id,
+                QuestionPerformance.question_id == Question.order_index + 1,
                 QuestionPerformance.user_id == user_id,
                 QuestionPerformance.test_id == test_id,
             ),
@@ -209,18 +215,18 @@ def get_my_question_kd(db: DBSession, test_id: str, user_id: int) -> list[dict]:
     ).all()
 
     result: list[dict] = []
-    for qid, correct, total, dur in rows:
+    for order_index, correct, total, dur in rows:
         correct = correct or 0
         total = total or 0
         ratio, rank = compute_kd(correct, total)
         result.append({
-            "questionId": qid,
+            "questionId": order_index + 1,   # 1-based payload id (frontend key)
             "k": correct,
             "d": total - correct,
             "ratio": ratio,
             "rank": rank,
             "totalCount": total,
-            "avgDurationMs": (dur // total) if total else 0,
+            "avgDurationMs": ((dur or 0) // total) if total else 0,
         })
     return result
 ```
@@ -244,6 +250,10 @@ def list_my_question_stats(
 ) -> dict[str, Any]:
     """Personal per-question K/D for every question of the test."""
     validate_test_exists(db, test_id)
+    # Visibility gate: this enumerates every question id, so enforce view
+    # access (private/shared tests 403 for non-shared users), per the spec.
+    if not access_service.can_view_test(db, test_id, current_user):
+        raise HTTPException(status_code=403, detail="Access denied")
     return {"questions": get_my_question_kd(db, test_id, current_user.id)}
 ```
 
