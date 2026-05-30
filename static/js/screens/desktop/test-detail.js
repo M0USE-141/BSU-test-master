@@ -9,7 +9,7 @@ import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
 import { getState } from '../../state.js';
 import { escHtml as esc } from '../../utils/escape.js';
-import { getMyQuestionStats, getMyAggregate, getMyTrend } from '../../api/statistics.js';
+import { getMyQuestionStats, getMyAggregate, listAttempts } from '../../api/statistics.js';
 import { kdBadge, donut, areaLine } from '../../utils/charts.js';
 
 function accessChip(level) {
@@ -50,7 +50,7 @@ export default async function render(root, params = {}) {
     const [ksRes, aggRes, trendRes] = await Promise.allSettled([
       getMyQuestionStats(testId),
       getMyAggregate({ test_id: testId }),
-      getMyTrend(30),
+      listAttempts({ testId, limit: 30 }),
     ]);
     if (ksRes.status === 'fulfilled') {
       for (const s of (ksRes.value?.questions || [])) kdByQ[String(s.questionId)] = s;
@@ -139,7 +139,9 @@ export default async function render(root, params = {}) {
             // Stats section — only render if we have any data.
             const attemptCount = agg?.attemptCount || 0;
             const avgPct = Math.round(agg?.avgPercentCorrect || 0);
-            const trendPoints = (trendData?.trend || []).map(d => ({ y: Math.round(d.avg_score || 0), label: d.date }));
+            const _att = (trendData?.attempts || []);
+            // API returns newest-first; reverse to get oldest→newest for the chart.
+            const trendPoints = _att.slice().reverse().map(a => ({ y: Math.round(a.percentCorrect || 0) }));
             const kdEntries = Object.entries(kdByQ).sort(([a], [b]) => Number(a) - Number(b));
             if (!agg && kdEntries.length === 0) return '';
             return `
@@ -147,9 +149,12 @@ export default async function render(root, params = {}) {
             <div style="font:600 13px/1 Inter,sans-serif;margin-bottom:12px;color:var(--ink);">Статистика</div>
 
             ${agg ? `
-            <div style="display:flex;gap:8px;justify-content:center;margin-bottom:12px;">
+            <div style="display:flex;gap:8px;justify-content:center;align-items:center;margin-bottom:12px;">
               ${donut(avgPct, 100, { unit: '%', label: 'Средний %' })}
-              ${donut(attemptCount, Math.max(1, attemptCount), { label: 'Попытки' })}
+              <div style="text-align:center;">
+                <div style="font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:700;color:var(--ink);">${attemptCount}</div>
+                <div style="font-size:11px;color:var(--ink-tertiary);">Попытки</div>
+              </div>
             </div>` : ''}
 
             ${trendPoints.length >= 2 ? `

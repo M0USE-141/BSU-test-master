@@ -331,6 +331,12 @@ function renderStatsTab(test, attempts, kdByQ = {}) {
   const wrap = document.createElement('div');
   wrap.style.padding = '12px 16px 24px';
 
+  // No attempts yet — show empty hint only, skip all donuts/KPI tiles.
+  if (attempts.length === 0) {
+    wrap.appendChild(emptyHint(t('test.no_data') || 'Данных пока нет.'));
+    return wrap;
+  }
+
   const scores = attempts
     .map(a => Math.round(a.percentCorrect ?? 0))
     .filter(n => n > 0);
@@ -411,9 +417,6 @@ function renderStatsTab(test, attempts, kdByQ = {}) {
     wrap.appendChild(mCard({ title: 'K/D по вопросам' }, kdBody));
   }
 
-  if (scores.length === 0) {
-    wrap.appendChild(mCard({}, emptyHint(t('test.no_data') || 'Данных пока нет.')));
-  }
   return wrap;
 }
 
