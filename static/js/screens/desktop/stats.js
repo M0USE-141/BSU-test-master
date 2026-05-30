@@ -26,6 +26,7 @@ import { buildMailLayout } from '../../components/mail-layout.js';
 import { navigate } from '../../router.js';
 import { iconEl } from '../../icons.js';
 import { t } from '../../utils/locale.js';
+import { donut, areaLine, barChart } from '../../utils/charts.js';
 
 let _renderToken = 0;
 
@@ -296,21 +297,38 @@ async function renderSummaryView(body, state, tests) {
   const agg = aggResp || {};
   const streak = (streakResp && streakResp.streak) || 0;
 
-  // KPI grid.
+  // KPI grid — percentage metrics rendered as donuts, counts/time as plain tiles.
   const kpiGrid = document.createElement('div');
   kpiGrid.style.display = 'grid';
   kpiGrid.style.gridTemplateColumns = 'repeat(5, 1fr)';
   kpiGrid.style.gap = '8px';
   kpiGrid.style.marginBottom = '14px';
-  kpiGrid.appendChild(buildKpi('Средний балл',
-    typeof agg.avgPercentCorrect === 'number' ? Math.round(agg.avgPercentCorrect) + '%' : '—'));
+
+  // Avg score — donut (%).
+  const avgPct = typeof agg.avgPercentCorrect === 'number' ? Math.round(agg.avgPercentCorrect) : 0;
+  const avgDonutWrap = document.createElement('div');
+  avgDonutWrap.className = 'kpi';
+  avgDonutWrap.innerHTML = donut(avgPct, 100, { unit: '%', label: 'Средний балл' });
+  kpiGrid.appendChild(avgDonutWrap);
+
+  // Attempts count — plain.
   kpiGrid.appendChild(buildKpi('Попыток', String(agg.attemptCount || 0)));
+
+  // Time — plain.
   kpiGrid.appendChild(buildKpi('Время', fmtDurationShort(agg.totalDurationMs)));
+
+  // Streak — plain (it's a day count, not a %).
   kpiGrid.appendChild(buildKpi('Streak', streak ? streak + ' дн' : '—'));
-  const accuracy = (agg.totalAnswered > 0)
-    ? Math.round((agg.totalCorrect / agg.totalAnswered) * 100) + '%'
-    : '—';
-  kpiGrid.appendChild(buildKpi('Точность', accuracy));
+
+  // Accuracy — donut (%).
+  const accuracyPct = (agg.totalAnswered > 0)
+    ? Math.round((agg.totalCorrect / agg.totalAnswered) * 100)
+    : 0;
+  const accDonutWrap = document.createElement('div');
+  accDonutWrap.className = 'kpi';
+  accDonutWrap.innerHTML = donut(accuracyPct, 100, { unit: '%', label: 'Точность' });
+  kpiGrid.appendChild(accDonutWrap);
+
   body.appendChild(kpiGrid);
 
   // Two-up row: Прогресс по дням (Bars) + Слабые темы mini-card.
@@ -340,7 +358,10 @@ async function renderSummaryView(body, state, tests) {
       barsSlot.appendChild(emptyHint('Нет попыток за выбранный период'));
       return;
     }
-    renderTrendBars(barsSlot, rows);
+    const pts = rows.map(function (d) {
+      return { y: Math.round(d.avg_score || 0), label: d.date };
+    });
+    barsSlot.innerHTML = areaLine(pts, { height: 110 });
   }).catch(function () {
     barsSlot.appendChild(emptyHint('Не удалось загрузить прогресс'));
   });
@@ -405,6 +426,28 @@ async function renderSummaryView(body, state, tests) {
       weakMiniSlot.appendChild(emptyHint('—'));
     }
   })();
+
+  // Score-distribution histogram card.
+  const distCard = buildCard('Распределение результатов');
+  const distSlot = document.createElement('div');
+  distSlot.style.minHeight = '120px';
+  distCard.body.appendChild(distSlot);
+  distCard.el.style.marginBottom = '14px';
+  body.appendChild(distCard.el);
+
+  listAttempts({ limit: 100 }).then(function (resp) {
+    const attempts = Array.isArray(resp) ? resp : (resp.attempts || resp.items || []);
+    const buckets = Array.from({ length: 10 }, function (_, i) {
+      return { label: String(i * 10), value: 0 };
+    });
+    for (const a of attempts) {
+      const idx = Math.min(9, Math.max(0, Math.floor((a.percentCorrect || 0) / 10)));
+      buckets[idx].value++;
+    }
+    distSlot.innerHTML = barChart(buckets, { height: 120 });
+  }).catch(function () {
+    distSlot.appendChild(emptyHint('Не удалось загрузить данные'));
+  });
 
   // Activity-for-year heatmap card.
   const hmCard = buildCard('Активность за год');

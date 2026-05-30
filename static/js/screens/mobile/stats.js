@@ -15,6 +15,7 @@ import { navigate } from '../../router.js';
 import {
   topBar, mShell, mCard, mChip, mSeg, caps,
 } from '../../components/mobile-atoms.js';
+import { donut, areaLine, barChart } from '../../utils/charts.js';
 
 let _renderToken = 0;
 
@@ -291,22 +292,61 @@ export default async function render(root) {
       display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px',
       marginBottom: '12px',
     });
-    grid.appendChild(kpiCell(t('stats.avg_score') || 'Средний балл',
-      avgPct > 0 ? `${avgPct}%` : '—'));
-    grid.appendChild(kpiCell(t('stats.attempts') || 'Попыток',
-      String(totalAttempts)));
+
+    // Avg score — donut (%).
+    const avgDonutCell = document.createElement('div');
+    Object.assign(avgDonutCell.style, {
+      border: '1.5px solid var(--ink)',
+      borderRadius: 'var(--radius-md)',
+      padding: '10px 12px',
+      background: 'var(--paper)',
+      boxShadow: 'var(--shadow-sm)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    });
+    avgDonutCell.innerHTML = donut(avgPct > 0 ? avgPct : 0, 100, {
+      unit: '%', label: t('stats.avg_score') || 'Средний балл',
+    });
+    grid.appendChild(avgDonutCell);
+
+    // Attempts count — plain.
+    grid.appendChild(kpiCell(t('stats.attempts') || 'Попыток', String(totalAttempts)));
+
+    // Streak — plain (day count, not a %).
     grid.appendChild(kpiCell(t('stats.streak') || 'Streak',
       streak > 0 ? `${streak} ${t('stats.days') || 'дн'}` : '—'));
+
+    // Time — plain.
     grid.appendChild(kpiCell(t('stats.time') || 'Время', totalHours));
+
     wrap.appendChild(grid);
 
-    if (trendValues.length >= 2) {
-      const spark = buildSparkline(trendValues, 70);
-      if (spark) {
-        const sBody = document.createElement('div');
-        sBody.appendChild(spark);
-        wrap.appendChild(mCard({ title: t('stats.trend') || 'Тренд' }, sBody));
+    // Trend — area line chart (replaces hand-rolled sparkline).
+    const trendPts = Array.isArray(trend)
+      ? trend.map(function (p) {
+        if (typeof p === 'number') return { y: p };
+        return { y: Math.round(p.avg_score ?? p.avgScore ?? p.score ?? 0), label: p.date };
+      }).filter(function (p) { return Number.isFinite(p.y); })
+      : [];
+    if (trendPts.length >= 2) {
+      const trendBody = document.createElement('div');
+      trendBody.innerHTML = areaLine(trendPts, { height: 72 });
+      wrap.appendChild(mCard({ title: t('stats.trend') || 'Тренд' }, trendBody));
+    }
+
+    // Score-distribution histogram — reuse recentAttempts (already fetched, limit 30).
+    if (recentAttempts.length > 0) {
+      const buckets = Array.from({ length: 10 }, function (_, i) {
+        return { label: String(i * 10), value: 0 };
+      });
+      for (const a of recentAttempts) {
+        const idx = Math.min(9, Math.max(0, Math.floor((a.percentCorrect || 0) / 10)));
+        buckets[idx].value++;
       }
+      const histBody = document.createElement('div');
+      histBody.innerHTML = barChart(buckets, { height: 120 });
+      wrap.appendChild(mCard({
+        title: t('stats.score_dist') || 'Распределение результатов',
+      }, histBody));
     }
 
     const withAvg = tests.filter(t => t.avg_score != null);
