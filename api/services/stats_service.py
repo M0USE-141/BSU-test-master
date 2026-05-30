@@ -9,6 +9,32 @@ from api.models.db.attempt import Attempt, AttemptAnswer, AttemptStatus
 from api.models.db.question_performance import QuestionPerformance
 
 
+# K/D rank thresholds (single source of truth — frontend only colors by rank).
+KD_GOLD = 2.0     # ratio >= 2.0  -> gold (green)
+KD_SILVER = 1.0   # 1.0 <= ratio < 2.0 -> silver (yellow); below -> bronze (red)
+
+
+def compute_kd(correct: int, total: int) -> tuple[float, str]:
+    """Return (ratio, rank) for a personal per-question K/D.
+
+    K = correct, D = total - correct. When D == 0 (no wrong answers) the
+    ratio is K*2 instead of infinity. Never-answered (K==0 and D==0) is
+    rank "none".
+    """
+    k = correct
+    d = total - correct
+    if k == 0 and d == 0:
+        return 0.0, "none"
+    ratio = round((k * 2) if d == 0 else (k / d), 1)
+    if ratio >= KD_GOLD:
+        rank = "gold"
+    elif ratio >= KD_SILVER:
+        rank = "silver"
+    else:
+        rank = "bronze"
+    return ratio, rank
+
+
 def get_attempt_stats(db: DBSession, attempt_id: str) -> dict[str, Any] | None:
     """
     Get statistics for a single attempt.
