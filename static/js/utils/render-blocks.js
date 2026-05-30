@@ -128,6 +128,21 @@ export function hasFormulas(html) {
  *   `span.rb-formula--ref[data-mml-url]` under it are processed.
  * @returns {Promise<void>}
  */
+// Module-scoped caches so SPA navigation between screens doesn't re-fetch
+// the same asset over and over. Content-hash URLs are immutable, so caching
+// for the whole tab lifetime is safe and a big perceived-speed win:
+//   * Going from the import preview → editor → test taking re-renders the
+//     SAME images; before, each render kicked off a fresh HTTP+blob cycle.
+//   * Combined with `Cache-Control: private, immutable` on the backend,
+//     even a cold cache (first navigation) skips R2 on the second.
+//
+// Memory cost: a typical session holds at most a few hundred small images.
+// We deliberately do NOT call URL.revokeObjectURL — those would invalidate
+// every <img> still referencing the blob URL across the SPA. The blobs
+// die naturally when the tab closes.
+const _imgBlobCache = new Map();   // absolute URL → Promise<blobURL|null>
+const _formulaCache = new Map();   // absolute URL → Promise<{kind, text}|null>
+
 export async function attachAssets(container) {
   if (!container) return;
   const tok = getAccessToken();
@@ -135,23 +150,34 @@ export async function attachAssets(container) {
 
   // ---- Images ----
   const imgs = Array.from(container.querySelectorAll('img.rb-image'));
-  const imgCache = new Map();
   for (const img of imgs) {
     const src = img.getAttribute('src');
     if (!src || src.startsWith('blob:')) continue;
-    if (!imgCache.has(src)) {
-      imgCache.set(src, fetch(src, {
+    if (!_imgBlobCache.has(src)) {
+      _imgBlobCache.set(src, fetch(src, {
         headers: { Authorization: 'Bearer ' + tok },
         credentials: 'include',
-      }).then(r => r.ok ? r.blob() : null)
+      }).then(async r => {
+        if (!r.ok) {
+          // Surface the failure once so a broken asset doesn't silently
+          // disappear behind onerror="display:none". Cached negative result
+          // (null) prevents repeated failed fetches for the same URL.
+          console.warn('[attachAssets] image fetch failed', r.status, src);
+          return null;
+        }
+        return r.blob();
+      })
         .then(b => b ? URL.createObjectURL(b) : null)
-        .catch(() => null));
+        .catch(err => {
+          console.warn('[attachAssets] image fetch error', src, err);
+          return null;
+        }));
     }
   }
   for (const img of imgs) {
     const src = img.getAttribute('src');
     if (!src || src.startsWith('blob:')) continue;
-    const url = await imgCache.get(src);
+    const url = await _imgBlobCache.get(src);
     if (url) {
       img.src = url;
       img.style.display = '';
@@ -167,14 +193,17 @@ export async function attachAssets(container) {
   const refs = Array.from(container.querySelectorAll('span.rb-formula--ref[data-mml-url]'));
   if (refs.length) {
     const headers = { Authorization: 'Bearer ' + tok };
-    // Cache per mml-url → { kind: 'mathml'|'latex', text } | null.
-    const cache = new Map();
     const resolveRef = async (mmlUrl) => {
       // 1. Try MathML.
       try {
         const r = await fetch(mmlUrl, { headers, credentials: 'include' });
         if (r.ok) return { kind: 'mathml', text: await r.text() };
-      } catch (_) { /* fall through to LaTeX probe */ }
+        if (r.status !== 404) {
+          console.warn('[attachAssets] formula MathML fetch failed', r.status, mmlUrl);
+        }
+      } catch (err) {
+        console.warn('[attachAssets] formula MathML fetch error', mmlUrl, err);
+      }
       // 2. Fall back to LaTeX at the same id with a .tex extension.
       const texUrl = mmlUrl.replace(/\.mml($|\?)/, '.tex$1');
       if (texUrl === mmlUrl) return null;
@@ -187,12 +216,12 @@ export async function attachAssets(container) {
     for (const span of refs) {
       const url = span.getAttribute('data-mml-url');
       if (!url || span.dataset.resolved === '1') continue;
-      if (!cache.has(url)) cache.set(url, resolveRef(url));
+      if (!_formulaCache.has(url)) _formulaCache.set(url, resolveRef(url));
     }
     for (const span of refs) {
       const url = span.getAttribute('data-mml-url');
       if (!url || span.dataset.resolved === '1') continue;
-      const res = await cache.get(url);
+      const res = await _formulaCache.get(url);
       if (!res) continue;
       if (res.kind === 'latex') {
         // Raw LaTeX → MathJax source. textContent (not innerHTML) keeps it

@@ -350,9 +350,26 @@ def get_asset(
     except ObjectNotFoundError:
         raise HTTPException(status_code=404, detail="Asset not found")
 
+    # Aggressive HTTP cache: every asset URL embeds a content-hash short id
+    # (sha1[:7] of the bytes), so a given URL → bytes mapping is immutable
+    # for life. Browsers can safely keep the response indefinitely.
+    #
+    # `public` + `immutable` is the right pair even though our requests
+    # carry `Authorization: Bearer ...`. RFC 7234 §3.2 forbids SHARED
+    # caches from reusing authorized responses, but PRIVATE caches
+    # (the browser's own disk/memory cache) reuse them when `public` is
+    # set — which is exactly the behaviour we want: each user's browser
+    # caches their own assets, no proxy/CDN holds someone else's bytes.
+    # The frontend's blob-URL swap layer (`attachAssets`) takes the
+    # cached body too, so a returning user gets instant rendering with
+    # zero R2 round-trips.
+    headers = {
+        "Cache-Control": "private, max-age=86400, immutable",
+    }
     return StreamingResponse(
         _iter_and_close(stream),
         media_type=_guess_content_type(asset_path),
+        headers=headers,
     )
 
 
