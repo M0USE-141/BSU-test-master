@@ -19,6 +19,7 @@
  * timer chip (timed/exam require a hard time limit).
  */
 import { getTest } from '../../api/tests.js';
+import { getMyQuestionStats } from '../../api/statistics.js';
 import { navigate } from '../../router.js';
 import { t } from '../../utils/locale.js';
 import {
@@ -134,6 +135,20 @@ export default async function render(root, params = {}) {
     return;
   }
 
+  // ── K/D stats for weak/untaken sources ──────────────────────────
+  const kdResp = await getMyQuestionStats(testId).catch(function () { return { questions: [] }; });
+  if (stale()) return;
+  const kdList = kdResp.questions || [];
+  // Weak: ascending K/D; never-answered (rank "none") = weakest (sort first).
+  const weakOrdered = kdList.slice().sort(function (a, b) {
+    const ar = a.rank === 'none' ? -1 : a.ratio;
+    const br = b.rank === 'none' ? -1 : b.ratio;
+    return ar - br;
+  }).map(function (q) { return q.questionId; });
+  const untakenIds = kdList.filter(function (q) { return q.totalCount === 0; }).map(function (q) { return q.questionId; });
+  const untakenSet = new Set(untakenIds);
+  const kdCounts = { weak: weakOrdered.length, untaken: untakenSet.size };
+
   // ── State ────────────────────────────────────────────────────────
   const stored = (() => {
     try { return JSON.parse(sessionStorage.getItem(`pretest:${testId}`) || '{}'); }
@@ -228,18 +243,29 @@ export default async function render(root, params = {}) {
     const cardBody = document.createElement('div');
     Object.assign(cardBody.style, { display: 'flex', gap: '6px', flexWrap: 'wrap' });
     const opts = [
-      { id: 'all',    label: t('pretest.src.all')    || 'Все темы' },
-      { id: 'weak',   label: t('pretest.src.weak')   || 'Слабые' },
-      { id: 'new',    label: t('pretest.src.new')    || 'Не пройденные' },
-      { id: 'flag',   label: t('pretest.src.flag')   || 'Отмеченные' },
+      { id: 'all',  label: t('pretest.src.all')  || 'Все темы',        count: qCount },
+      { id: 'weak', label: t('pretest.src.weak') || 'Слабые',           count: kdCounts.weak },
+      { id: 'new',  label: t('pretest.src.new')  || 'Не пройденные',   count: kdCounts.untaken },
+      { id: 'flag', label: t('pretest.src.flag') || 'Отмеченные',      count: null },
     ];
     function rerender() {
       cardBody.replaceChildren();
       for (const o of opts) {
-        cardBody.appendChild(mChip({
+        const chipLabel = o.count !== null ? (o.label + ' · ' + o.count) : o.label;
+        const disabled = o.count === 0;
+        const chip = mChip({
           sm: true, active: source === o.id,
-          onClick: () => { source = o.id; rerender(); },
-        }, o.label));
+          onClick: () => {
+            if (disabled) return;
+            source = o.id;
+            rerender();
+          },
+        }, chipLabel);
+        if (disabled) {
+          chip.style.opacity = '0.4';
+          chip.style.cursor = 'not-allowed';
+        }
+        cardBody.appendChild(chip);
       }
     }
     rerender();
@@ -430,12 +456,27 @@ export default async function render(root, params = {}) {
       } else if (mode === 'timed' && timeLimitMin <= 0) {
         timeLimitMin = 20;
       }
+
+      // Build filterIds for weak/untaken sources (taking.js uses these
+      // when present to restrict the question pool).
+      let filterIds = [];
+      if (source === 'weak') {
+        filterIds = weakOrdered.slice(0, count);
+      } else if (source === 'new') {
+        filterIds = untakenIds.slice();
+      }
+      // Guard: if the selected source has no questions, skip navigation.
+      if ((source === 'weak' || source === 'new') && filterIds.length === 0) {
+        return; // chip is disabled so this is a safety net only
+      }
+
       try {
         sessionStorage.setItem(`pretest:${testId}`, JSON.stringify({
           mode, count, source,
           shuffleQuestions, shuffleAnswers,
           revealImmediately: reveal,
           timeLimitMin,
+          filterIds,
         }));
       } catch { /* private mode — proceed anyway */ }
       navigate(`/test/${testId}/take`);
