@@ -18,6 +18,15 @@
 
 ---
 
+## As-built deltas (deviations from the original plan)
+
+During execution these tasks were adapted to the real codebase (the plan's file targets were approximations):
+
+- **Task 2 (join key):** join on the stable public id `cast(Question.payload["id"])`, not `order_index+1` (which shifts on question delete). See the corrected code in Task 2.
+- **Task 6 (collection list badge):** the learner-facing question LIST lives in `static/js/screens/desktop/test-detail.js` and `static/js/screens/mobile/collection.js` (`renderQuestionsTab`), NOT `edit-collection.js` (which is the owner settings editor). Badges were added there.
+- **Task 7 (per-collection stats):** NO new screens/route/home changes. Mobile already had a collection **Stats tab** (`mobile/collection.js renderStatsTab`) — it was ENHANCED (donut KPIs, per-test `areaLine` trend from `listAttempts({testId})`, per-question K/D list). Desktop got a stats SECTION added to `test-detail.js`. Both are reached by opening a collection from home. Attempts shown as a plain tile (a count/count donut is meaningless).
+- **Task 9 (mobile filter):** `static/js/screens/mobile/taking.js` did NOT consume `filterIds`; a filter step was added there (mirroring `desktop/taking.js`) so weak/untaken actually filter the pool on mobile. Mobile untaken chip key is `'new'`.
+
 ## File Structure
 
 **Create:**
@@ -188,15 +197,16 @@ def get_my_question_kd(db: DBSession, test_id: str, user_id: int) -> list[dict]:
     questions appear with k=0,d=0,totalCount=0,rank="none" — this powers
     the "untaken" practice source. Ordered by question order_index.
 
-    JOIN KEY: the 1-based payload question id (`order_index + 1`), NOT
-    `Question.id` (a UUID). `question_performance.question_id` is an int that
-    stores the same 1-based id the serializer emits (`payload id = enumerate
-    start=1`) and the frontend uses everywhere. Joining on `Question.id`
-    (UUID string) would match nothing → every question would look unanswered.
+    JOIN KEY: the STABLE public id `payload["id"]`, NOT `order_index` (which
+    shifts on delete_question) and NOT `Question.id` (a UUID). `question_
+    performance.question_id` stores this same public id (the serializer/
+    frontend id). Mirrors questions_service `_payload_int_id_filter`
+    (`cast(Question.payload["id"], SAString)`). order_index+1 only coincides
+    with the public id on never-edited tests — using it breaks after any edit.
     """
     rows = db.execute(
         select(
-            Question.order_index,
+            Question.payload["id"],
             QuestionPerformance.correct_count,
             QuestionPerformance.total_count,
             QuestionPerformance.total_duration_ms,
@@ -205,7 +215,8 @@ def get_my_question_kd(db: DBSession, test_id: str, user_id: int) -> list[dict]:
         .outerjoin(
             QuestionPerformance,
             and_(
-                QuestionPerformance.question_id == Question.order_index + 1,
+                cast(QuestionPerformance.question_id, SAString)
+                == cast(Question.payload["id"], SAString),
                 QuestionPerformance.user_id == user_id,
                 QuestionPerformance.test_id == test_id,
             ),
@@ -215,12 +226,16 @@ def get_my_question_kd(db: DBSession, test_id: str, user_id: int) -> list[dict]:
     ).all()
 
     result: list[dict] = []
-    for order_index, correct, total, dur in rows:
+    for pid_raw, correct, total, dur in rows:
+        try:
+            qid = int(pid_raw)
+        except (TypeError, ValueError):
+            continue
         correct = correct or 0
         total = total or 0
         ratio, rank = compute_kd(correct, total)
         result.append({
-            "questionId": order_index + 1,   # 1-based payload id (frontend key)
+            "questionId": qid,   # stable public payload id (frontend key)
             "k": correct,
             "d": total - correct,
             "ratio": ratio,
@@ -230,6 +245,7 @@ def get_my_question_kd(db: DBSession, test_id: str, user_id: int) -> list[dict]:
         })
     return result
 ```
+(Requires `cast` + `String as SAString` in the sqlalchemy imports — mirror `questions_service.py`.)
 
 - [ ] **Step 3: Add the route**
 
