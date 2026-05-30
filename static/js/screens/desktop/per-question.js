@@ -18,8 +18,9 @@
  *      reconstructs the snap for direct deep-links.
  */
 import { getTest } from '../../api/tests.js';
-import { getAttempt } from '../../api/statistics.js';
+import { getAttempt, getMyQuestionStats } from '../../api/statistics.js';
 import { setFlag, listFlagged } from '../../api/flagged.js';
+import { kdBadge } from '../../utils/charts.js';
 import { navigate } from '../../router.js';
 import { mountAppShell } from '../../components/app-shell.js';
 import { buildMailLayout } from '../../components/mail-layout.js';
@@ -60,6 +61,13 @@ export default async function render(root, params) {
     flaggedIds = new Set((resp && resp.flagged) || []);
   } catch (_) { /* best-effort */ }
 
+  // Fetch K/D stats once for the whole review session.
+  let kdByQ = {};
+  try {
+    const ks = await getMyQuestionStats(testId);
+    for (const qStat of (ks.questions || [])) kdByQ[String(qStat.questionId)] = qStat;
+  } catch (_) { kdByQ = {}; }
+
   main.innerHTML = '';
   if (qIdx >= data.questions.length) qIdx = 0;
 
@@ -70,11 +78,11 @@ export default async function render(root, params) {
     qIdx = newIdx;
     history.replaceState({}, '', `#/test/${encodeURIComponent(testId)}/results/${encodeURIComponent(attemptId)}/q/${qIdx + 1}`);
     renderSidebar(built.sidebar, data, qIdx, step);
-    renderDetail(built.detail, data, qIdx, flaggedIds, testId);
+    renderDetail(built.detail, data, qIdx, flaggedIds, testId, kdByQ);
   }
 
   renderSidebar(built.sidebar, data, qIdx, step);
-  renderDetail(built.detail, data, qIdx, flaggedIds, testId);
+  renderDetail(built.detail, data, qIdx, flaggedIds, testId, kdByQ);
 
   // Hotkeys.
   function onKey(e) {
@@ -255,7 +263,7 @@ function renderSidebar(sidebar, data, currentIdx, onStep) {
 
 // ── Detail (single question) ─────────────────────────────────
 
-function renderDetail(detail, data, qIdx, flaggedIds, testId) {
+function renderDetail(detail, data, qIdx, flaggedIds, testId, kdByQ) {
   detail.innerHTML = '';
   const q = data.questions[qIdx];
   if (!q) {
@@ -288,6 +296,14 @@ function renderDetail(detail, data, qIdx, flaggedIds, testId) {
   meta.style.color = 'var(--ink-tertiary)';
   meta.textContent = `Q${qIdx + 1} · ваш ответ: ${userIdx >= 0 ? String.fromCharCode(65 + userIdx) : '—'}`;
   tagRow.appendChild(meta);
+
+  // K/D badge — kdBadge() escapes all its inputs; safe to insert as HTML.
+  const _kd = kdByQ[String(q.id)];
+  if (_kd) {
+    const badgeWrap = document.createElement('span');
+    badgeWrap.innerHTML = kdBadge(_kd.k, _kd.d, _kd.ratio, _kd.rank);
+    tagRow.appendChild(badgeWrap);
+  }
 
   wrap.appendChild(tagRow);
 
