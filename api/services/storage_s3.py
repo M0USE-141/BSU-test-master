@@ -43,33 +43,49 @@ log = logging.getLogger(__name__)
 # Why we build our own urllib3.PoolManager instead of letting minio-py
 # create its default one:
 #
-#   1. Retry on transient failures. R2 occasionally returns 429 (SlowDown),
-#      503, or 5xx during edge restarts. minio-py's defaults don't retry
-#      429 on PUT, so a single Cloudflare hiccup mid-import would surface
-#      to the user as a 500. With exponential backoff (0.5s, 1s, 2s, 4s,
-#      8s ≈ 15s total worst case) we ride out edge-level transients
-#      transparently.
-#
-#   2. Wider connection pool. minio-py's default is maxsize=10 per host.
-#      With the new ThreadPoolExecutor(8) in import_service.mirror plus
+#   1. Wider connection pool. minio-py's default is maxsize=10 per host.
+#      With the ThreadPoolExecutor(8) in import_service.mirror plus
 #      concurrent asset GETs from page loads, 10 sockets becomes the
 #      bottleneck — extra threads wait on the urllib3 lock, not on R2.
 #      32 leaves comfortable headroom for both flows.
 #
-# Methods covered: every S3 verb we issue. urllib3's default `allowed_methods`
-# excludes POST and PUT, which are exactly the ones we need.
+#   2. Modest retry on transient 429/5xx. Cloudflare R2 occasionally
+#      returns 429 (SlowDown) during edge restarts. minio-py's defaults
+#      don't retry 429 on PUT.
+#
+# Retry sizing rationale (this is the bit we burned ourselves on):
+# the FIRST iteration of this code had total=5 + backoff_factor=0.5 +
+# read_timeout=60s. Worst-case per request was 5×60s ≈ 5 minutes of
+# silent hang. When R2 hiccupped mid-page-load, all 22 inflight MathML
+# GETs serialised behind those retries; the edge proxy (Cloudflare /
+# Railway, 100-125s) killed every request with a 499 and the user saw
+# "site doesn't open". Fast failure > slow retry: any genuine fix for
+# a flaky R2 should happen at the operator level (cache, presign,
+# circuit break), not by silently stalling the page.
+#
+# Numbers below: total=2 retries, 0.3s backoff (≤0.6s extra wall-clock),
+# 10s read timeout. Per request ceiling ~21s instead of 5 min.
 _R2_RETRY = Retry(
-    total=5,
-    connect=3,
-    read=3,
-    status=5,
-    backoff_factor=0.5,
-    status_forcelist=(408, 429, 500, 502, 503, 504),
+    total=2,
+    connect=2,
+    read=1,                # one read retry max; reads that hang once usually keep hanging
+    status=2,
+    backoff_factor=0.3,
+    status_forcelist=(429, 503),  # narrowly scoped — 5xx other than 503 usually indicates a real fault
     allowed_methods=frozenset(("GET", "HEAD", "PUT", "POST", "DELETE")),
-    raise_on_status=False,  # let minio-py classify the final response
+    raise_on_status=False,
     respect_retry_after_header=True,
 )
 _R2_POOL_MAXSIZE = 32
+
+# Per-operation HTTP timeouts. Connect is cheap and should fail fast.
+# Read covers the entire body transfer for streaming responses; we
+# stream multi-MB assets through the app, so it can't be too tight,
+# but 10s is plenty for any healthy R2 response on the assets we host
+# (typical: <500 KB images, <10 KB MathML). If R2 takes longer the
+# right answer is to surface the failure to the user immediately so
+# they can refresh — NOT to silently retry behind their back.
+_R2_TIMEOUT = urllib3.Timeout(connect=5, read=10)
 
 
 def _make_http_client(secure: bool) -> urllib3.PoolManager:
@@ -77,7 +93,7 @@ def _make_http_client(secure: bool) -> urllib3.PoolManager:
     # `cert_reqs` follows the secure flag: HTTPS → verify the chain;
     # HTTP (internal MinIO) → no TLS at all, so cert config is irrelevant.
     return urllib3.PoolManager(
-        timeout=urllib3.Timeout(connect=10, read=60),
+        timeout=_R2_TIMEOUT,
         maxsize=_R2_POOL_MAXSIZE,
         retries=_R2_RETRY,
         cert_reqs="CERT_REQUIRED" if secure else "CERT_NONE",
