@@ -97,8 +97,8 @@ export async function listAttempts(params) {
 }
 
 /**
- * Personal per-question K/D for every question of a test.
- * Returns { questions: [{ questionId, k, d, ratio, rank, totalCount, avgDurationMs }] }.
+ * Personal per-question accuracy for every question of a test.
+ * Returns { questions: [{ questionId, correct, total, accuracy, rank, avgDurationMs }] }.
  * `questionId` is the 1-based payload id (the same numeric id the frontend uses
  * for questions). rank ∈ "none" | "bronze" | "silver" | "gold".
  * @param {string} testId

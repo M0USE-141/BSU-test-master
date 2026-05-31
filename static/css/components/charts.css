@@ -18,9 +18,9 @@
 .chart-area__g1 { stop-color: var(--accent); stop-opacity:0; }
 .chart-area__dot { fill: var(--accent); }
 
-/* K/D badge — mapped to semantic tokens so it adapts to light/dark. */
-.kd-badge { display:inline-block; padding:1px 7px; border-radius:999px; font-size:12px; font-weight:600; line-height:1.5; }
-.kd-badge--gold   { background: var(--success-soft); color: var(--success); }
-.kd-badge--silver { background: var(--warning-soft); color: var(--warning); }
-.kd-badge--bronze { background: var(--error-soft);   color: var(--error); }
-.kd-badge--none   { background: var(--ink-soft);     color: var(--ink-tertiary); }
+/* Accuracy badge — mapped to semantic tokens so it adapts to light/dark. */
+.acc-badge { display:inline-block; padding:1px 7px; border-radius:999px; font-size:12px; font-weight:600; line-height:1.5; }
+.acc-badge--gold   { background: var(--success-soft); color: var(--success); }
+.acc-badge--silver { background: var(--warning-soft); color: var(--warning); }
+.acc-badge--bronze { background: var(--error-soft);   color: var(--error); }
+.acc-badge--none   { background: var(--ink-soft);     color: var(--ink-tertiary); }

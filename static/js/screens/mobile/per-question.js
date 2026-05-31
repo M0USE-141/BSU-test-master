@@ -15,7 +15,7 @@ import { getAttempt } from '../../api/attempts.js';
 import { getTest } from '../../api/tests.js';
 import { setFlag, listFlagged } from '../../api/flagged.js';
 import { getMyQuestionStats } from '../../api/statistics.js';
-import { kdBadge } from '../../utils/charts.js';
+import { accuracyBadge } from '../../utils/charts.js';
 import { navigate } from '../../router.js';
 import { t } from '../../utils/locale.js';
 import {
@@ -280,11 +280,11 @@ export default async function render(root, params = {}) {
     verdictRow.appendChild(topic);
   }
 
-  // K/D badge — kdBadge() escapes all its inputs; safe to insert as HTML.
+  // Accuracy badge — accuracyBadge() escapes all its inputs; safe as HTML.
   const _kd = kdByQ[String(q.id)];
   if (_kd) {
     const badgeWrap = document.createElement('span');
-    badgeWrap.innerHTML = kdBadge(_kd.k, _kd.d, _kd.ratio, _kd.rank);
+    badgeWrap.innerHTML = accuracyBadge(_kd.correct, _kd.total, _kd.accuracy, _kd.rank);
     verdictRow.appendChild(badgeWrap);
   }
 

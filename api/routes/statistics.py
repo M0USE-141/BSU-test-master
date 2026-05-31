@@ -20,7 +20,7 @@ from api.services.stats_service import (
     get_aggregate_stats,
     get_test_owner_stats,
     get_weak_questions,
-    get_my_question_kd,
+    get_my_question_stats,
     get_streak,
     get_owner_kpis,
     get_owner_question_difficulty,
@@ -256,11 +256,11 @@ def list_my_question_stats(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> dict[str, Any]:
-    """Personal per-question K/D for every question of the test."""
+    """Personal per-question accuracy for every question of the test."""
     validate_test_exists(db, test_id)
     if not access_service.can_view_test(db, test_id, current_user):
         raise HTTPException(status_code=403, detail="Access denied")
-    return {"questions": get_my_question_kd(db, test_id, current_user.id)}
+    return {"questions": get_my_question_stats(db, test_id, current_user.id)}
 
 
 @router.get("/stats/streak")

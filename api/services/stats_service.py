@@ -12,30 +12,27 @@ from api.models.db.question_performance import QuestionPerformance
 from api.models.db.test_collection import TestCollection
 
 
-# K/D rank thresholds (single source of truth — frontend only colors by rank).
-KD_GOLD = 2.0     # ratio >= 2.0  -> gold (green)
-KD_SILVER = 1.0   # 1.0 <= ratio < 2.0 -> silver (yellow); below -> bronze (red)
+# Accuracy rank thresholds (single source of truth — frontend only colors by rank).
+ACC_GOLD = 90.0    # accuracy >= 90% -> gold (green); mastered, not weak
+ACC_SILVER = 60.0  # 60% <= accuracy < 90% -> silver (yellow); below -> bronze (red)
 
 
-def compute_kd(correct: int, total: int) -> tuple[float, str]:
-    """Return (ratio, rank) for a personal per-question K/D.
+def compute_accuracy(correct: int, total: int) -> tuple[float, str]:
+    """Return (accuracy_percent, rank) for a personal per-question accuracy.
 
-    K = correct, D = total - correct. When D == 0 (no wrong answers) the
-    ratio is K*2 instead of infinity. Never-answered (K==0 and D==0) is
-    rank "none".
+    accuracy = correct / total * 100. Never-answered (total == 0) is rank
+    "none". A question is "weak" when accuracy < ACC_GOLD (mastered >= 90%).
     """
-    k = correct
-    d = total - correct
-    if k == 0 and d == 0:
+    if total == 0:
         return 0.0, "none"
-    ratio = round((k * 2.0) if d == 0 else (k / d), 1)
-    if ratio >= KD_GOLD:
+    accuracy = round(correct / total * 100, 1)
+    if accuracy >= ACC_GOLD:
         rank = "gold"
-    elif ratio >= KD_SILVER:
+    elif accuracy >= ACC_SILVER:
         rank = "silver"
     else:
         rank = "bronze"
-    return ratio, rank
+    return accuracy, rank
 
 
 def get_attempt_stats(db: DBSession, attempt_id: str) -> dict[str, Any] | None:
@@ -332,10 +329,10 @@ def get_weak_questions(
     db: DBSession,
     test_id: str,
     user_id: int,
-    threshold: float = 0.6,
+    threshold: float = 0.9,
     limit: int = 10,
 ) -> list[dict]:
-    """Return questions where personal correct rate < threshold (default 60%). Worst first."""
+    """Return questions where personal correct rate < threshold (default 90%). Worst first."""
     rows = db.execute(
         select(QuestionPerformance)
         .where(
@@ -363,11 +360,11 @@ def get_weak_questions(
     return result
 
 
-def get_my_question_kd(db: DBSession, test_id: str, user_id: int) -> list[dict]:
-    """Per-question personal K/D for every question of a test.
+def get_my_question_stats(db: DBSession, test_id: str, user_id: int) -> list[dict]:
+    """Per-question personal accuracy for every question of a test.
 
     Enumerates ALL questions (LEFT JOIN performance) so never-answered
-    questions appear with k=0,d=0,totalCount=0,rank="none" — powers the
+    questions appear with correct=0,total=0,rank="none" — powers the
     "untaken" practice source. Ordered by question order_index.
 
     JOIN KEY: the stable public id `payload["id"]` (NOT `order_index`, which
@@ -403,14 +400,13 @@ def get_my_question_kd(db: DBSession, test_id: str, user_id: int) -> list[dict]:
             continue
         correct = correct or 0
         total = total or 0
-        ratio, rank = compute_kd(correct, total)
+        accuracy, rank = compute_accuracy(correct, total)
         result.append({
             "questionId": qid,
-            "k": correct,
-            "d": total - correct,
-            "ratio": ratio,
+            "correct": correct,
+            "total": total,
+            "accuracy": accuracy,
             "rank": rank,
-            "totalCount": total,
             "avgDurationMs": ((dur or 0) // total) if total else 0,
         })
     return result

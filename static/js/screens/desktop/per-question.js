@@ -20,7 +20,7 @@
 import { getTest } from '../../api/tests.js';
 import { getAttempt, getMyQuestionStats } from '../../api/statistics.js';
 import { setFlag, listFlagged } from '../../api/flagged.js';
-import { kdBadge } from '../../utils/charts.js';
+import { accuracyBadge } from '../../utils/charts.js';
 import { navigate } from '../../router.js';
 import { mountAppShell } from '../../components/app-shell.js';
 import { buildMailLayout } from '../../components/mail-layout.js';
@@ -61,7 +61,7 @@ export default async function render(root, params) {
     flaggedIds = new Set((resp && resp.flagged) || []);
   } catch (_) { /* best-effort */ }
 
-  // Fetch K/D stats once for the whole review session.
+  // Fetch accuracy stats once for the whole review session.
   let kdByQ = {};
   try {
     const ks = await getMyQuestionStats(testId);
@@ -297,11 +297,11 @@ function renderDetail(detail, data, qIdx, flaggedIds, testId, kdByQ) {
   meta.textContent = `Q${qIdx + 1} · ваш ответ: ${userIdx >= 0 ? String.fromCharCode(65 + userIdx) : '—'}`;
   tagRow.appendChild(meta);
 
-  // K/D badge — kdBadge() escapes all its inputs; safe to insert as HTML.
+  // Accuracy badge — accuracyBadge() escapes all its inputs; safe as HTML.
   const _kd = kdByQ[String(q.id)];
   if (_kd) {
     const badgeWrap = document.createElement('span');
-    badgeWrap.innerHTML = kdBadge(_kd.k, _kd.d, _kd.ratio, _kd.rank);
+    badgeWrap.innerHTML = accuracyBadge(_kd.correct, _kd.total, _kd.accuracy, _kd.rank);
     tagRow.appendChild(badgeWrap);
   }
 

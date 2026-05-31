@@ -108,19 +108,19 @@ export function areaLine(points, opts = {}) {
 }
 
 /**
- * Compact K/D pill. Colors by `rank` (backend-computed, closed set). When
- * d === 0 the backend already set ratio to K*2.
- * @param {number} k
- * @param {number} d
- * @param {number} ratio
+ * Compact accuracy pill. Colors by `rank` (backend-computed, closed set):
+ * gold >= 90%, silver 60-89%, bronze < 60%, none = never answered.
+ * @param {number} correct
+ * @param {number} total
+ * @param {number} accuracy  personal accuracy percent (correct/total*100)
  * @param {"none"|"bronze"|"silver"|"gold"} rank
  * @returns {string}
  */
-export function kdBadge(k, d, ratio, rank) {
+export function accuracyBadge(correct, total, accuracy, rank) {
   const safeRank = ['gold', 'silver', 'bronze', 'none'].includes(rank) ? rank : 'none';
-  k = _num(k); d = _num(d); ratio = _num(ratio);
+  correct = _num(correct); total = _num(total); accuracy = _num(accuracy);
   if (safeRank === 'none') {
-    return `<span class="kd-badge kd-badge--none" title="K/D">—</span>`;
+    return `<span class="acc-badge acc-badge--none" title="Точность">—</span>`;
   }
-  return `<span class="kd-badge kd-badge--${safeRank}" title="K/D ${k}/${d}">${k}/${d} · ${ratio}</span>`;
+  return `<span class="acc-badge acc-badge--${safeRank}" title="${correct}/${total}">${Math.round(accuracy)}%</span>`;
 }

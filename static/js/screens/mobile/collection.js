@@ -10,7 +10,7 @@
  */
 import { getTest } from '../../api/tests.js';
 import { listAttempts, getMyQuestionStats } from '../../api/statistics.js';
-import { kdBadge, donut, areaLine } from '../../utils/charts.js';
+import { accuracyBadge, donut, areaLine } from '../../utils/charts.js';
 import { getTestShares, updateTestAccess, addShare } from '../../api/access.js';
 import { t } from '../../utils/locale.js';
 import { iconEl } from '../../icons.js';
@@ -300,12 +300,6 @@ function renderQuestionsTab(test, kdByQ = {}) {
       });
       num.textContent = `Q${q.id ?? (idx + 1)}`;
       head.appendChild(num);
-      const qs = kdByQ[String(q.id ?? (idx + 1))];
-      if (qs) {
-        const b = document.createElement('span');
-        b.innerHTML = kdBadge(qs.k, qs.d, qs.ratio, qs.rank);
-        head.appendChild(b);
-      }
       if (test.is_owner) {
         const chev = iconEl('chevR', 12);
         chev.style.color = 'var(--ink-mute)';
@@ -389,7 +383,7 @@ function renderStatsTab(test, attempts, kdByQ = {}) {
     }, trendBody));
   }
 
-  // Per-question K/D list.
+  // Per-question accuracy list.
   const kdEntries = Object.entries(kdByQ);
   if (kdEntries.length > 0) {
     const kdBody = document.createElement('div');
@@ -410,11 +404,11 @@ function renderStatsTab(test, attempts, kdByQ = {}) {
         label.textContent = `Q${qId}`;
         row.appendChild(label);
         const badge = document.createElement('span');
-        badge.innerHTML = kdBadge(s.k, s.d, s.ratio, s.rank);
+        badge.innerHTML = accuracyBadge(s.correct, s.total, s.accuracy, s.rank);
         row.appendChild(badge);
         kdBody.appendChild(row);
       });
-    wrap.appendChild(mCard({ title: 'K/D по вопросам' }, kdBody));
+    wrap.appendChild(mCard({ title: 'Точность по вопросам' }, kdBody));
   }
 
   return wrap;
@@ -686,7 +680,7 @@ export default async function render(root, params = {}) {
   let activeTab = (params.tab && ['overview','questions','stats','access','activity'].includes(params.tab))
     ? params.tab : 'overview';
 
-  // Fetch K/D stats once for the questions tab.
+  // Fetch accuracy stats once for the questions tab.
   let kdByQ = {};
   try {
     const ks = await getMyQuestionStats(testId);

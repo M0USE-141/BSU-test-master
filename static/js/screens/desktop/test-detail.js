@@ -10,7 +10,7 @@ import { iconEl } from '../../icons.js';
 import { getState } from '../../state.js';
 import { escHtml as esc } from '../../utils/escape.js';
 import { getMyQuestionStats, getMyAggregate, listAttempts } from '../../api/statistics.js';
-import { kdBadge, donut, areaLine } from '../../utils/charts.js';
+import { accuracyBadge, donut, areaLine } from '../../utils/charts.js';
 
 function accessChip(level) {
   const map = { public: 'public', shared: 'shared', private: 'private' };
@@ -42,7 +42,7 @@ export default async function render(root, params = {}) {
     return;
   }
 
-  // Fetch K/D stats, aggregate, and trend in parallel; degrade gracefully on failure.
+  // Fetch accuracy stats, aggregate, and trend in parallel; degrade gracefully on failure.
   let kdByQ = {};
   let agg = null;
   let trendData = null;
@@ -91,9 +91,7 @@ export default async function render(root, params = {}) {
                     const qText = typeof q.question === 'string'
                       ? q.question
                       : (q.question?.blocks?.[0]?.text || q.question?.blocks?.[0]?.value || `Q${i + 1}`);
-                    const s = kdByQ[String(q.id ?? (i + 1))];
-                    const badge = s ? kdBadge(s.k, s.d, s.ratio, s.rank) : '';
-                    return `<li style="font-size:13px;color:var(--ink);line-height:1.4;display:flex;align-items:baseline;gap:6px;"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-mute);font-weight:600;flex-shrink:0;">Q${q.id ?? (i + 1)}</span>${badge}<span>${esc(String(qText).slice(0, 160))}${String(qText).length > 160 ? '…' : ''}</span></li>`;
+                    return `<li style="font-size:13px;color:var(--ink);line-height:1.4;display:flex;align-items:baseline;gap:6px;"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-mute);font-weight:600;flex-shrink:0;">Q${q.id ?? (i + 1)}</span><span>${esc(String(qText).slice(0, 160))}${String(qText).length > 160 ? '…' : ''}</span></li>`;
                   }).join('')}
                   ${questions.length > 20 ? `<li style="color:var(--ink-mute);font-size:12px;">…and ${questions.length - 20} more</li>` : ''}
                 </ol>`
@@ -165,12 +163,12 @@ export default async function render(root, params = {}) {
 
             ${kdEntries.length > 0 ? `
             <div>
-              <div style="font:500 11px/1 Inter,sans-serif;color:var(--ink-mute);margin-bottom:6px;">K/D по вопросам</div>
+              <div style="font:500 11px/1 Inter,sans-serif;color:var(--ink-mute);margin-bottom:6px;">Точность по вопросам</div>
               <div style="display:flex;flex-direction:column;gap:4px;">
                 ${kdEntries.map(([qId, s]) => `
                   <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-top:1px solid var(--ink-soft);">
                     <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-mute);font-weight:600;">Q${esc(qId)}</span>
-                    ${kdBadge(s.k, s.d, s.ratio, s.rank)}
+                    ${accuracyBadge(s.correct, s.total, s.accuracy, s.rank)}
                   </div>`).join('')}
               </div>
             </div>` : ''}

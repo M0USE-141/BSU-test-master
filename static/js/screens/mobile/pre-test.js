@@ -135,17 +135,26 @@ export default async function render(root, params = {}) {
     return;
   }
 
-  // ── K/D stats for weak/untaken sources ──────────────────────────
+  // ── Accuracy stats for weak/untaken sources ─────────────────────
   const kdResp = await getMyQuestionStats(testId).catch(function () { return { questions: [] }; });
   if (stale()) return;
   const kdList = kdResp.questions || [];
-  // Weak: ascending K/D; never-answered (rank "none") = weakest (sort first).
-  const weakOrdered = kdList.slice().sort(function (a, b) {
-    const ar = a.rank === 'none' ? -1 : a.ratio;
-    const br = b.rank === 'none' ? -1 : b.ratio;
-    return ar - br;
-  }).map(function (q) { return q.questionId; });
-  const untakenIds = kdList.filter(function (q) { return q.totalCount === 0; }).map(function (q) { return q.questionId; });
+  // Weak = answered at least once (total>0) and not yet mastered (accuracy<90%).
+  // Never-answered questions belong to the separate "untaken" source.
+  // Order weakest-first: lower accuracy, then more wrong answers, then more
+  // attempts, then slower average time as tie-breakers.
+  const weakOrdered = kdList
+    .filter(function (q) { return q.total > 0 && q.accuracy < 90; })
+    .slice()
+    .sort(function (a, b) {
+      if (a.accuracy !== b.accuracy) return a.accuracy - b.accuracy;
+      var aw = a.total - a.correct, bw = b.total - b.correct;
+      if (aw !== bw) return bw - aw;
+      if (a.total !== b.total) return b.total - a.total;
+      return (b.avgDurationMs || 0) - (a.avgDurationMs || 0);
+    })
+    .map(function (q) { return q.questionId; });
+  const untakenIds = kdList.filter(function (q) { return q.total === 0; }).map(function (q) { return q.questionId; });
   const untakenSet = new Set(untakenIds);
   const kdCounts = { weak: weakOrdered.length, untaken: untakenSet.size };
 
@@ -258,7 +267,7 @@ export default async function render(root, params = {}) {
           onClick: () => {
             if (disabled) return;
             source = o.id;
-            // Weak-mode forces shuffleQuestions off so the K/D order
+            // Weak-mode forces shuffleQuestions off so the accuracy order
             // survives taking.js. Reflect that in the toggle row UI.
             if (source === 'weak') shuffleQuestions = false;
             rerender();
@@ -467,7 +476,7 @@ export default async function render(root, params = {}) {
       let filterIds = [];
       if (source === 'weak') {
         filterIds = weakOrdered.slice(0, count);
-        // Weak-mode: preserve ascending K/D order. taking.js would otherwise
+        // Weak-mode: preserve ascending-accuracy order. taking.js would otherwise
         // Fisher-Yates the pool and defeat the sort that made "weak" useful.
         shuffleQuestions = false;
       } else if (source === 'new') {

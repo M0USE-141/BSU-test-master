@@ -108,13 +108,22 @@ export default async function render(root, params) {
   const flaggedResp = await listFlagged(params.id).catch(function () { return { flagged: [] }; });
   const kdResp = await getMyQuestionStats(params.id).catch(function () { return { questions: [] }; });
   const kdList = kdResp.questions || [];
-  // Weak: ascending K/D; never-answered (rank "none") = weakest (sort first).
-  const weakOrdered = kdList.slice().sort(function (a, b) {
-    const ar = a.rank === 'none' ? -1 : a.ratio;
-    const br = b.rank === 'none' ? -1 : b.ratio;
-    return ar - br;
-  }).map(function (q) { return q.questionId; });
-  const untakenIds = kdList.filter(function (q) { return q.totalCount === 0; }).map(function (q) { return q.questionId; });
+  // Weak = answered at least once (total>0) and not yet mastered (accuracy<90%).
+  // Never-answered questions belong to the separate "untaken" source.
+  // Order weakest-first: lower accuracy, then more wrong answers, then more
+  // attempts, then slower average time as tie-breakers.
+  const weakOrdered = kdList
+    .filter(function (q) { return q.total > 0 && q.accuracy < 90; })
+    .slice()
+    .sort(function (a, b) {
+      if (a.accuracy !== b.accuracy) return a.accuracy - b.accuracy;
+      var aw = a.total - a.correct, bw = b.total - b.correct;
+      if (aw !== bw) return bw - aw;
+      if (a.total !== b.total) return b.total - a.total;
+      return (b.avgDurationMs || 0) - (a.avgDurationMs || 0);
+    })
+    .map(function (q) { return q.questionId; });
+  const untakenIds = kdList.filter(function (q) { return q.total === 0; }).map(function (q) { return q.questionId; });
   const untakenSet = new Set(untakenIds);
   const flaggedIds = new Set(flaggedResp.flagged || []);
 
@@ -607,7 +616,7 @@ function handleStart(testId, state, flaggedIds, weakOrdered, untakenIds) {
     return;
   }
 
-  // Weak-mode forces shuffle off so the ascending-K/D order from
+  // Weak-mode forces shuffle off so the ascending-accuracy order from
   // weakOrdered survives taking.js's Fisher-Yates step.
   const effectiveShuffle = state.source === 'weak' ? false : state.shuffleQuestions;
 
