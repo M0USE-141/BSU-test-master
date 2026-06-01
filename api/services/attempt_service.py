@@ -302,14 +302,34 @@ def finish_attempt(
         select(AttemptAnswer).where(AttemptAnswer.attempt_id == attempt_id)
     ).scalars().all()
 
+    # Lazy import avoids any import cycle (questions_service imports models only).
+    from api.services.questions_service import get_correct_option_index
+
     answered_count = 0
     correct_count = 0
 
     for answer in answers:
-        if not answer.is_skipped and answer.answer_index is not None:
-            answered_count += 1
-            if answer.is_correct:
-                correct_count += 1
+        if answer.is_skipped or answer.answer_index is None:
+            continue
+        answered_count += 1
+
+        # Safety net: the /start snapshot is the usual source of
+        # `correct_option_index`, but it can be missing — the /answer write
+        # won the race against /start (which then skips back-patching), or
+        # /start failed validation and never ran. Without it, is_correct
+        # stays None and the answer is silently counted wrong, yielding 0%
+        # results and every question flagged "weak". Resolve it now from the
+        # authoritative questions table so the final tally is correct.
+        if answer.correct_option_index is None:
+            canonical = get_correct_option_index(
+                db, attempt.test_id, answer.question_id
+            )
+            if canonical is not None:
+                answer.correct_option_index = canonical
+                answer.is_correct = answer.answer_index == canonical
+
+        if answer.is_correct:
+            correct_count += 1
 
     # Update attempt
     attempt.status = AttemptStatus.COMPLETED.value

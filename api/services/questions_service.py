@@ -130,6 +130,35 @@ def get_question(
     return row.payload, row.order_index
 
 
+def get_correct_option_index(
+    db: DbSession,
+    test_id: str,
+    question_id: int,
+) -> int | None:
+    """Authoritative index of the correct option for a question.
+
+    Reads the marked-correct option straight from the `questions` table
+    (`payload.options[].isCorrect`) rather than a per-attempt snapshot.
+    Used as a safety net when an attempt-answer's `correct_option_index`
+    snapshot is absent — e.g. the `/start` snapshot lost the race against
+    the `/answer` write, or `/start` never succeeded. Returns None (never
+    raises) when the test/question is gone or no option is marked correct.
+    """
+    tc = db.execute(
+        select(TestCollection).where(TestCollection.test_id == test_id)
+    ).scalar_one_or_none()
+    if tc is None:
+        return None
+    row = _find_question_row(db, tc.id, question_id)
+    if row is None:
+        return None
+    options = (row.payload or {}).get("options") or []
+    for index, option in enumerate(options):
+        if isinstance(option, dict) and option.get("isCorrect"):
+            return index
+    return None
+
+
 def add_question(
     db: DbSession,
     test_id: str,
