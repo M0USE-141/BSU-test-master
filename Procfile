@@ -1,1 +1,1 @@
-web: gunicorn -k uvicorn.workers.UvicornWorker main:app
+web: sh scripts/start.sh gunicorn -k uvicorn.workers.UvicornWorker main:app

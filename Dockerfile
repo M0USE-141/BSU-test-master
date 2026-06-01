@@ -69,4 +69,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD curl -fsS http://localhost:8000/api/health || exit 1
 
+# Entrypoint runs migrations + data repair, then exec's the CMD server.
+ENTRYPOINT ["sh", "scripts/start.sh"]
 CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
